@@ -1,5 +1,5 @@
 # Build node feature discovery
-FROM golang:1.8 as builder
+FROM registry.svc.ci.openshift.org/openshift/release:golang:1.8 as builder
 
 ADD . /go/src/github.com/kubernetes-incubator/node-feature-discovery
 
