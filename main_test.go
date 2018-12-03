@@ -5,6 +5,7 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
+	"strings"
 	"testing"
 	"time"
 
@@ -25,10 +26,16 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 		fakeFeatureNames := []string{"testfeature1", "testfeature2", "testfeature3"}
 		fakeFeatures := source.Features{}
 		fakeFeatureLabels := Labels{}
+		fakeAnnotations := Annotations{"version": version,
+			"feature-labels": "testSource-testfeature1,testSource-testfeature2,testSource-testfeature3"}
+		fakeFeatureLabelNames := make([]string, 0, len(fakeFeatureNames))
 		for _, f := range fakeFeatureNames {
 			fakeFeatures[f] = true
-			fakeFeatureLabels[fmt.Sprintf("%s-testSource-%s", prefix, f)] = "true"
+			labelName := fakeFeatureSourceName + "-" + f
+			fakeFeatureLabels[labelName] = "true"
+			fakeFeatureLabelNames = append(fakeFeatureLabelNames, labelName)
 		}
+		fakeAnnotations["feature-labels"] = strings.Join(fakeFeatureLabelNames, ",")
 		fakeFeatureSource := source.FeatureSource(mockFeatureSource)
 
 		Convey("When I successfully get the labels from the mock source", func() {
@@ -59,14 +66,17 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 
 		mockAPIHelper := new(MockAPIHelpers)
 		testHelper := APIHelpers(mockAPIHelper)
+		mockNode := &api.Node{}
 		var mockClient *k8sclient.Clientset
-		var mockNode *api.Node
 
 		Convey("When I successfully update the node with feature labels", func() {
 			mockAPIHelper.On("GetClient").Return(mockClient, nil)
 			mockAPIHelper.On("GetNode", mockClient).Return(mockNode, nil).Once()
 			mockAPIHelper.On("AddLabels", mockNode, fakeFeatureLabels).Return().Once()
-			mockAPIHelper.On("RemoveLabels", mockNode, prefix).Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, labelNs).Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/nfd").Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/node-feature-discovery").Return().Once()
+			mockAPIHelper.On("AddAnnotations", mockNode, fakeAnnotations).Return().Once()
 			mockAPIHelper.On("UpdateNode", mockClient, mockNode).Return(nil).Once()
 			noPublish := false
 			err := updateNodeWithFeatureLabels(testHelper, noPublish, fakeFeatureLabels)
@@ -90,7 +100,7 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 		Convey("When I fail to get a mock client while advertising feature labels", func() {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(nil, expectedError)
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels)
+			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -101,7 +111,7 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(mockClient, nil)
 			mockAPIHelper.On("GetNode", mockClient).Return(nil, expectedError).Once()
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels)
+			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -112,10 +122,13 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(mockClient, nil)
 			mockAPIHelper.On("GetNode", mockClient).Return(mockNode, nil).Once()
-			mockAPIHelper.On("RemoveLabels", mockNode, prefix).Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, labelNs).Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/nfd").Return().Once()
+			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/node-feature-discovery").Return().Once()
 			mockAPIHelper.On("AddLabels", mockNode, fakeFeatureLabels).Return().Once()
+			mockAPIHelper.On("AddAnnotations", mockNode, fakeAnnotations).Return().Once()
 			mockAPIHelper.On("UpdateNode", mockClient, mockNode).Return(expectedError).Once()
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels)
+			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -139,7 +152,7 @@ func TestArgsParse(t *testing.T) {
 				So(args.sleepInterval, ShouldEqual, 60*time.Second)
 				So(args.noPublish, ShouldBeTrue)
 				So(args.oneshot, ShouldBeTrue)
-				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
+				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
 				So(len(args.labelWhiteList), ShouldEqual, 0)
 			})
 		})
@@ -161,7 +174,7 @@ func TestArgsParse(t *testing.T) {
 
 			Convey("args.labelWhiteList is set to appropriate value and args.sources is set to default value", func() {
 				So(args.noPublish, ShouldBeFalse)
-				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
+				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
 				So(args.labelWhiteList, ShouldResemble, ".*rdt.*")
 			})
 		})
@@ -281,10 +294,10 @@ func TestCreateFeatureLabels(t *testing.T) {
 			labels := createFeatureLabels(sources, emptyLabelWL)
 
 			Convey("Proper fake labels are returned", func() {
-				So(len(labels), ShouldEqual, 4)
-				So(labels, ShouldContainKey, prefix+"-fake-fakefeature1")
-				So(labels, ShouldContainKey, prefix+"-fake-fakefeature2")
-				So(labels, ShouldContainKey, prefix+"-fake-fakefeature3")
+				So(len(labels), ShouldEqual, 3)
+				So(labels, ShouldContainKey, "fake-fakefeature1")
+				So(labels, ShouldContainKey, "fake-fakefeature2")
+				So(labels, ShouldContainKey, "fake-fakefeature3")
 			})
 		})
 		Convey("When fake feature source is configured with a whitelist that doesn't match", func() {
@@ -295,10 +308,10 @@ func TestCreateFeatureLabels(t *testing.T) {
 			labels := createFeatureLabels(sources, emptyLabelWL)
 
 			Convey("fake labels are not returned", func() {
-				So(len(labels), ShouldEqual, 1)
-				So(labels, ShouldNotContainKey, prefix+"-fake-fakefeature1")
-				So(labels, ShouldNotContainKey, prefix+"-fake-fakefeature2")
-				So(labels, ShouldNotContainKey, prefix+"-fake-fakefeature3")
+				So(len(labels), ShouldEqual, 0)
+				So(labels, ShouldNotContainKey, "fake-fakefeature1")
+				So(labels, ShouldNotContainKey, "fake-fakefeature2")
+				So(labels, ShouldNotContainKey, "fake-fakefeature3")
 			})
 		})
 	})
@@ -323,15 +336,15 @@ func TestAddLabels(t *testing.T) {
 		})
 
 		Convey("They should be added to the node.Labels", func() {
-			test1 := prefix + ".test1"
+			test1 := "test1"
 			labels[test1] = "true"
 			helper.AddLabels(n, labels)
-			So(n.Labels, ShouldContainKey, test1)
+			So(n.Labels, ShouldContainKey, labelNs+test1)
 		})
 	})
 }
 
-func TestRemoveLabels(t *testing.T) {
+func TestRemoveLabelsWithPrefix(t *testing.T) {
 	Convey("When removing labels", t, func() {
 		helper := k8sHelpers{}
 		n := &api.Node{
@@ -345,20 +358,20 @@ func TestRemoveLabels(t *testing.T) {
 		}
 
 		Convey("a unique label should be removed", func() {
-			helper.RemoveLabels(n, "single")
+			helper.RemoveLabelsWithPrefix(n, "single")
 			So(len(n.Labels), ShouldEqual, 2)
 			So(n.Labels, ShouldNotContainKey, "single")
 		})
 
 		Convey("a non-unique search string should remove all matching keys", func() {
-			helper.RemoveLabels(n, "multiple")
+			helper.RemoveLabelsWithPrefix(n, "multiple")
 			So(len(n.Labels), ShouldEqual, 1)
 			So(n.Labels, ShouldNotContainKey, "multiple_A")
 			So(n.Labels, ShouldNotContainKey, "multiple_B")
 		})
 
 		Convey("a search string with no matches should not alter labels", func() {
-			helper.RemoveLabels(n, "unique")
+			helper.RemoveLabelsWithPrefix(n, "unique")
 			So(n.Labels, ShouldContainKey, "single")
 			So(n.Labels, ShouldContainKey, "multiple_A")
 			So(n.Labels, ShouldContainKey, "multiple_B")

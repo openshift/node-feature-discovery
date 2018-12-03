@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -16,6 +17,7 @@ import (
 	"github.com/kubernetes-incubator/node-feature-discovery/source/fake"
 	"github.com/kubernetes-incubator/node-feature-discovery/source/iommu"
 	"github.com/kubernetes-incubator/node-feature-discovery/source/kernel"
+	"github.com/kubernetes-incubator/node-feature-discovery/source/local"
 	"github.com/kubernetes-incubator/node-feature-discovery/source/memory"
 	"github.com/kubernetes-incubator/node-feature-discovery/source/network"
 	"github.com/kubernetes-incubator/node-feature-discovery/source/panic_fake"
@@ -35,15 +37,18 @@ const (
 	ProgramName = "node-feature-discovery"
 
 	// Namespace is the prefix for all published labels.
-	Namespace = "node.alpha.kubernetes-incubator.io"
+	labelNs = "feature.node.kubernetes.io/"
+
+	// Namespace is the prefix for all published labels.
+	annotationNs = "nfd.node.kubernetes.io/"
 
 	// NodeNameEnv is the environment variable that contains this node's name.
 	NodeNameEnv = "NODE_NAME"
 )
 
 var (
-	version = "" // Must not be const, set using ldflags at build time
-	prefix  = fmt.Sprintf("%s/nfd", Namespace)
+	version            = "" // Must not be const, set using ldflags at build time
+	validFeatureNameRe = regexp.MustCompile(`^([-.\w]*)?[A-Za-z0-9]$`)
 )
 
 // package loggers
@@ -64,6 +69,9 @@ var config = NFDConfig{}
 // Labels are a Kubernetes representation of discovered features.
 type Labels map[string]string
 
+// Annotations are used for NFD-related node metadata
+type Annotations map[string]string
+
 // APIHelpers represents a set of API helpers for Kubernetes
 type APIHelpers interface {
 	// GetClient returns a client
@@ -72,15 +80,21 @@ type APIHelpers interface {
 	// GetNode returns the Kubernetes node on which this container is running.
 	GetNode(*k8sclient.Clientset) (*api.Node, error)
 
-	// RemoveLabels removes labels from the supplied node that contain the
+	// RemoveLabelsWithPrefix removes labels from the supplied node that contain the
 	// search string provided. In order to publish the changes, the node must
 	// subsequently be updated via the API server using the client library.
-	RemoveLabels(*api.Node, string)
+	RemoveLabelsWithPrefix(*api.Node, string)
 
-	// AddLabels modifies the supplied node's labels collection.
+	// RemoveLabels removes NFD labels from a node object
+	RemoveLabels(*api.Node, []string)
+
+	// AddLabels adds new NFD labels to the node object.
 	// In order to publish the labels, the node must be subsequently updated via the
 	// API server using the client library.
 	AddLabels(*api.Node, Labels)
+
+	// Add annotations
+	AddAnnotations(*api.Node, Annotations)
 
 	// UpdateNode updates the node via the API server using a client.
 	UpdateNode(*k8sclient.Clientset, *api.Node) error
@@ -102,6 +116,7 @@ func main() {
 	if version == "" {
 		stderrLogger.Fatalf("main.version not set! Set -ldflags \"-X main.version `git describe --tags --dirty --always`\" during build or run.")
 	}
+	stdoutLogger.Printf("Node Feature Discovery %s", version)
 
 	// Parse command-line arguments.
 	args := argsParse(nil)
@@ -166,7 +181,7 @@ func argsParse(argv []string) (args Args) {
                               will override settings read from the config file.
                               [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
-                              [Default: cpuid,iommu,kernel,memory,network,pci,pstate,rdt,selinux,storage]
+                              [Default: cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,selinux,storage]
   --no-publish                Do not publish discovered features to the
                               cluster-local Kubernetes API server.
   --label-whitelist=<pattern> Regular expression to filter label names to
@@ -253,6 +268,9 @@ func configureParameters(sourcesWhiteList []string, labelWhiteListStr string) (e
 		rdt.Source{},
 		selinux.Source{},
 		storage.Source{},
+		// local needs to be the last source so that it is able to override
+		// labels from other sources
+		local.Source{},
 	}
 
 	enabledSources = []source.FeatureSource{}
@@ -276,12 +294,6 @@ func configureParameters(sourcesWhiteList []string, labelWhiteListStr string) (e
 // sources and the whitelist argument.
 func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.Regexp) (labels Labels) {
 	labels = Labels{}
-	// Add the version of this discovery code as a node label
-	versionLabel := fmt.Sprintf("%s/%s.version", Namespace, ProgramName)
-	labels[versionLabel] = version
-
-	// Log version label.
-	stdoutLogger.Printf("%s = %s", versionLabel, version)
 
 	// Do feature discovery from all configured sources.
 	for _, source := range sources {
@@ -310,7 +322,16 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 // disabled via --no-publish flag.
 func updateNodeWithFeatureLabels(helper APIHelpers, noPublish bool, labels Labels) error {
 	if !noPublish {
-		err := advertiseFeatureLabels(helper, labels)
+		// Advertise NFD version and label names as annotations
+		keys := make([]string, 0, len(labels))
+		for k, _ := range labels {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		annotations := Annotations{"version": version,
+			"feature-labels": strings.Join(keys, ",")}
+
+		err := advertiseFeatureLabels(helper, labels, annotations)
 		if err != nil {
 			stderrLogger.Printf("failed to advertise labels: %s", err.Error())
 			return err
@@ -335,14 +356,26 @@ func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
 		return nil, err
 	}
 	for k := range features {
-		labels[fmt.Sprintf("%s-%s-%s", prefix, source.Name(), k)] = fmt.Sprintf("%v", features[k])
+		// Validate label
+		if !validFeatureNameRe.MatchString(k) {
+			stderrLogger.Printf("Invalid feature name '%s', ignoring...", k)
+			continue
+		}
+
+		prefix := source.Name() + "-"
+		switch source.(type) {
+		case local.Source:
+			// Do not prefix labels from the hooks
+			prefix = ""
+		}
+		labels[fmt.Sprintf("%s%s", prefix, k)] = fmt.Sprintf("%v", features[k])
 	}
 	return labels, nil
 }
 
 // advertiseFeatureLabels advertises the feature labels to a Kubernetes node
 // via the API server.
-func advertiseFeatureLabels(helper APIHelpers, labels Labels) error {
+func advertiseFeatureLabels(helper APIHelpers, labels Labels, annotations Annotations) error {
 	cli, err := helper.GetClient()
 	if err != nil {
 		stderrLogger.Printf("can't get kubernetes client: %s", err.Error())
@@ -356,10 +389,21 @@ func advertiseFeatureLabels(helper APIHelpers, labels Labels) error {
 		return err
 	}
 
-	// Remove labels with our prefix
-	helper.RemoveLabels(node, prefix)
+	// Remove old labels
+	if l, ok := node.Annotations[annotationNs+"feature-labels"]; ok {
+		oldLabels := strings.Split(l, ",")
+		helper.RemoveLabels(node, oldLabels)
+	}
+
+	// Also, remove all labels with the old prefix, and the old version label
+	helper.RemoveLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/nfd")
+	helper.RemoveLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/node-feature-discovery")
+
 	// Add labels to the node object.
 	helper.AddLabels(node, labels)
+
+	// Add annotations
+	helper.AddAnnotations(node, annotations)
 
 	// Send the updated node to the apiserver.
 	err = helper.UpdateNode(cli, node)
@@ -402,9 +446,9 @@ func (h k8sHelpers) GetNode(cli *k8sclient.Clientset) (*api.Node, error) {
 	return node, nil
 }
 
-// RemoveLabels searches through all labels on Node n and removes
+// RemoveLabelsWithPrefix searches through all labels on Node n and removes
 // any where the key contain the search string.
-func (h k8sHelpers) RemoveLabels(n *api.Node, search string) {
+func (h k8sHelpers) RemoveLabelsWithPrefix(n *api.Node, search string) {
 	for k := range n.Labels {
 		if strings.Contains(k, search) {
 			delete(n.Labels, k)
@@ -412,9 +456,23 @@ func (h k8sHelpers) RemoveLabels(n *api.Node, search string) {
 	}
 }
 
+// RemoveLabels removes given NFD labels
+func (h k8sHelpers) RemoveLabels(n *api.Node, labelNames []string) {
+	for _, l := range labelNames {
+		delete(n.Labels, labelNs+l)
+	}
+}
+
 func (h k8sHelpers) AddLabels(n *api.Node, labels Labels) {
 	for k, v := range labels {
-		n.Labels[k] = v
+		n.Labels[labelNs+k] = v
+	}
+}
+
+// Add Annotations to the Node object
+func (h k8sHelpers) AddAnnotations(n *api.Node, annotations Annotations) {
+	for k, v := range annotations {
+		n.Annotations[annotationNs+k] = v
 	}
 }
 

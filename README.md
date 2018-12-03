@@ -54,7 +54,7 @@ node-feature-discovery.
                               will override settings read from the config file.
                               [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
-                              [Default: cpuid,iommu,kernel,memory,network,pci,pstate,rdt,selinux,storage]
+                              [Default: cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,selinux,storage]
   --no-publish                Do not publish discovered features to the
                               cluster-local Kubernetes API server.
   --label-whitelist=<pattern> Regular expression to filter label names to
@@ -80,6 +80,7 @@ The current set of feature sources are the following:
 - [CPUID][cpuid] for x86/Arm64 CPU details
 - IOMMU
 - Kernel
+- Local (user-specific features)
 - Memory
 - Network
 - Pstate ([Intel P-State driver][intel-pstate])
@@ -91,7 +92,7 @@ The current set of feature sources are the following:
 
 The published node labels encode a few pieces of information:
 
-- A "namespace" (e.g. `node.alpha.kubernetes-incubator.io`).
+- Namespace, i.e. `feature.node.kubernetes.io`
 - The version of this discovery code that wrote the label, according to
   `git describe --tags --dirty --always`.
 - The source for each label (e.g. `cpuid`).
@@ -112,17 +113,18 @@ the only label value published for features is the string `"true"`._
 
 ```json
 {
-  "node.alpha.kubernetes-incubator.io/node-feature-discovery.version": "v0.3.0",
-  "node.alpha.kubernetes-incubator.io/nfd-cpuid-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-iommu-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-kernel-version.<version component>": "<version number>",
-  "node.alpha.kubernetes-incubator.io/nfd-memory-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-network-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-pci-<device label>.present": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-pstate-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-rdt-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-selinux-<feature-name>": "true",
-  "node.alpha.kubernetes-incubator.io/nfd-storage-<feature-name>": "true"
+  "feature.node.kubernetes.io/node-feature-discovery.version": "v0.3.0",
+  "feature.node.kubernetes.io/nfd-cpuid-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-iommu-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-kernel-version.<version component>": "<version number>",
+  "feature.node.kubernetes.io/nfd-memory-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-network-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-pci-<device label>.present": "true",
+  "feature.node.kubernetes.io/nfd-pstate-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-rdt-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-selinux-<feature-name>": "true",
+  "feature.node.kubernetes.io/nfd-storage-<feature-name>": "true",
+  "feature.node.kubernetes.io/<hook name>-<feature name>": "<feature value>"
 }
 ```
 
@@ -176,6 +178,59 @@ such as restricting discovered features with the --label-whitelist option._
 | <br>    | minor     | Second component of the kernel version (e.g. '5')
 | <br>    | revision  | Third component of the kernel version (e.g. '6')
 
+### Local (User-specific Features)
+
+NFD has a special feature source named *local* which is designed for running
+user-specific feature detector hooks. It provides a mechanism for users to
+implement custom feature sources in a pluggable way, without modifying nfd
+source code or Docker images. The local feature source can be used to advertise
+new user-specific features, and, for overriding labels created by the other
+feature sources.
+
+The *local* feature source tries to execute files found under
+`/etc/kubernetes/node-feature-discovery/source.d/` directory. The hooks must be
+available inside the Docker image so Volumes and VolumeMounts must be used if
+standard NFD images are used.
+
+The hook files must be executable. When executed, the hooks are supposed to
+print all discovered features in `stdout`, one feature per line. Hooks can
+advertise both binary and non-binary labels, using either `<name>` or
+`<name>=<value>` output format.
+
+Unlike the other feature sources, the name of the hook, instead of the name of
+the feature source (that would be `local` in this case), is used as a prefix in
+the label name, normally. However, if the `<name>` printed by the hook starts
+with a slash (`/`) it is used as the label name as is, without any additional
+prefix. This makes it possible for the hooks to fully control the feature
+label names, e.g. for overriding labels created by other feature sources.
+
+The value of the label is either `true` (for binary labels) or `<value>`
+(for non-binary labels).
+`stderr` output of the hooks is propagated to NFD log so it can be used for
+debugging and logging.
+
+**An example:**<br/>
+User has a shell script
+`/etc/kubernetes/node-feature-discovery/source.d/my-source` which has the
+following `stdout` output:
+```
+MY_FEATURE_1
+MY_FEATURE_2=myvalue
+/override_source-OVERRIDE_BOOL
+/override_source-OVERRIDE_VALUE=123
+```
+which, in turn, will translate into the following node labels:
+```
+feature.node.kubernetes.io/my-source-MY_FEATURE_1=true
+feature.node.kubernetes.io/my-source-MY_FEATURE_2=myvalue
+feature.node.kubernetes.io/override_source-OVERRIDE_BOOL=true
+feature.node.kubernetes.io/override_source-OVERRIDE_VALUE=123
+```
+
+**NOTE!** NFD will blindly run any executables placed/mounted in the hooks
+directory. It is the user's responsibility to review the hooks for e.g.
+possible security implications.
+
 ### Memory Features
 
 | Feature name   | Description                                                                         |
@@ -201,7 +256,7 @@ The set of fields used in `<device label>` is configurable, valid fields being
 Defaults fields are `class` and `vendor`. An example label using the default
 label fields:
 ```
-node.alpha.kubernetes-incubator.io/nfd-pci-1200_8086.present=true
+feature.node.kubernetes.io/nfd-pci-1200_8086.present=true
 ```
 
 Also  the set of PCI device classes that the feature source detects is
@@ -272,7 +327,7 @@ The label-nodes.sh script tries to launch as many jobs as there are Ready nodes.
 Note that this approach does not guarantee running once on every node.
 For example, if some node is tainted NoSchedule or fails to start a job for some other reason, then some other node will run extra job instance(s) to satisfy the request and the tainted/failed node does not get labeled.
 
-[![asciicast](https://asciinema.org/a/11wir751y89617oemwnsgli4a.png)](https://asciinema.org/a/11wir751y89617oemwnsgli4a)
+[![asciicast](https://asciinema.org/a/11wir751y89617oemwnsgli4a.svg)](https://asciinema.org/a/11wir751y89617oemwnsgli4a)
 
 ### Configuration options
 
@@ -356,8 +411,8 @@ docker push <quay-domain-name>/<registry-user>/<image-name>:<version>
 **Change the job spec to use your custom image (optional):**
 
 To use your published image from the step above instead of the
-`quay.io/kubernetes_incubator/node-feature-discovery` image, edit line 40 in the file
-[node-feature-discovery-job.yaml.template](node-feature-discovery-job.yaml.template)
+`quay.io/kubernetes_incubator/node-feature-discovery` image, edit `image` attribute in the file
+[node-feature-discovery-job.yaml.template](node-feature-discovery-job.yaml.template#L23)
 to the new location (`<quay-domain-name>/<registry-user>/<image-name>[:<version>]`).
 
 ## Targeting Nodes with Specific Features
@@ -377,7 +432,7 @@ spec:
     - image: golang
       name: go1
   nodeSelector:
-    node.alpha.kubernetes-incubator.io/nfd-pstate-turbo: 'true'
+    feature.node.kubernetes.io/nfd-pstate-turbo: 'true'
 ```
 
 For more details on targeting nodes, see [node selection][node-sel].
