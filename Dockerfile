@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
 WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
 COPY . . 
