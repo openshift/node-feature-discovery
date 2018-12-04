@@ -12,20 +12,20 @@ import (
 
 	"github.com/docopt/docopt-go"
 	"github.com/ghodss/yaml"
-	"github.com/kubernetes-incubator/node-feature-discovery/source"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/cpuid"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/fake"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/iommu"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/kernel"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/local"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/memory"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/network"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/panic_fake"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/pci"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/pstate"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/rdt"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/selinux"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/storage"
+	"sigs.k8s.io/node-feature-discovery/source"
+	"sigs.k8s.io/node-feature-discovery/source/cpuid"
+	"sigs.k8s.io/node-feature-discovery/source/fake"
+	"sigs.k8s.io/node-feature-discovery/source/iommu"
+	"sigs.k8s.io/node-feature-discovery/source/kernel"
+	"sigs.k8s.io/node-feature-discovery/source/local"
+	"sigs.k8s.io/node-feature-discovery/source/memory"
+	"sigs.k8s.io/node-feature-discovery/source/network"
+	"sigs.k8s.io/node-feature-discovery/source/panic_fake"
+	"sigs.k8s.io/node-feature-discovery/source/pci"
+	"sigs.k8s.io/node-feature-discovery/source/pstate"
+	"sigs.k8s.io/node-feature-discovery/source/rdt"
+	"sigs.k8s.io/node-feature-discovery/source/selinux"
+	"sigs.k8s.io/node-feature-discovery/source/storage"
 	api "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sclient "k8s.io/client-go/kubernetes"
@@ -60,7 +60,8 @@ var (
 // Global config
 type NFDConfig struct {
 	Sources struct {
-		Pci *pci.NFDConfig `json:"pci,omitempty"`
+		Kernel *kernel.NFDConfig `json:"kernel,omitempty"`
+		Pci    *pci.NFDConfig    `json:"pci,omitempty"`
 	} `json:"sources,omitempty"`
 }
 
@@ -223,6 +224,7 @@ func argsParse(argv []string) (args Args) {
 
 // Parse configuration options
 func configParse(filepath string, overrides string) error {
+	config.Sources.Kernel = &kernel.Config
 	config.Sources.Pci = &pci.Config
 
 	data, err := ioutil.ReadFile(filepath)

@@ -1,7 +1,7 @@
 # Node feature discovery for [Kubernetes](https://kubernetes.io)
 
-[![Build Status](https://api.travis-ci.org/kubernetes-incubator/node-feature-discovery.svg?branch=master)](https://travis-ci.com/kubernetes-incubator/node-feature-discovery)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-incubator/node-feature-discovery)](https://goreportcard.com/report/github.com/kubernetes-incubator/node-feature-discovery)
+[![Build Status](https://api.travis-ci.org/kubernetes-sigs/node-feature-discovery.svg?branch=master)](https://travis-ci.com/kubernetes-sigs/node-feature-discovery)
+[![Go Report Card](https://goreportcard.com/badge/github.com/kubernetes-sigs/node-feature-discovery)](https://goreportcard.com/report/github.com/kubernetes-sigs/node-feature-discovery)
 
 - [Overview](#overview)
 - [Command line interface](#command-line-interface)
@@ -17,15 +17,13 @@
 - [License](#license)
 - [Demo](#demo)
 
-_**NOTE:** We are gathering evidence in order to graduate from the Kubernetes incubator. If you are a user of the project, please add yourself to [this list](https://github.com/kubernetes-incubator/node-feature-discovery/wiki/Users) with as much detail as you are comfortable providing (name and email optional)._
-
 ## Overview
 
 This software enables node feature discovery for Kubernetes. It detects
 hardware features available on each node in a Kubernetes cluster, and advertises
 those features using node labels.
 
-This project uses GitHub [milestones](https://github.com/kubernetes-incubator/node-feature-discovery/milestones) for release planning.
+This project uses GitHub [milestones](https://github.com/kubernetes-sigs/node-feature-discovery/milestones) for release planning.
 
 ## Command line interface
 
@@ -68,7 +66,7 @@ node-feature-discovery.
 host mounted inside the NFD container. Thus, you need to provide Docker with the
 correct `--volume` options in order for them to work correctly when run
 stand-alone directly with `docker run`. See the
-[template spec](https://github.com/kubernetes-incubator/node-feature-discovery/blob/master/node-feature-discovery-daemonset.yaml.template)
+[template spec](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/node-feature-discovery-daemonset.yaml.template)
 for up-to-date information about the required volume mounts.
 
 ## Feature discovery
@@ -93,8 +91,6 @@ The current set of feature sources are the following:
 The published node labels encode a few pieces of information:
 
 - Namespace, i.e. `feature.node.kubernetes.io`
-- The version of this discovery code that wrote the label, according to
-  `git describe --tags --dirty --always`.
 - The source for each label (e.g. `cpuid`).
 - The name of the discovered feature as it appears in the underlying
   source, (e.g. `AESNI` from cpuid).
@@ -102,7 +98,7 @@ The published node labels encode a few pieces of information:
 
 Feature label names adhere to the following pattern:
 ```
-<namespace>/nfd-<source name>-<feature name>[.<attribute name>]
+<namespace>/<source name>-<feature name>[.<attribute name>]
 ```
 The last component (i.e. `attribute-name`) is optional, and only used if a
 feature logically has sub-hierarchy, e.g. `sriov.capable` and
@@ -113,17 +109,17 @@ the only label value published for features is the string `"true"`._
 
 ```json
 {
-  "feature.node.kubernetes.io/node-feature-discovery.version": "v0.3.0",
-  "feature.node.kubernetes.io/nfd-cpuid-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-iommu-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-kernel-version.<version component>": "<version number>",
-  "feature.node.kubernetes.io/nfd-memory-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-network-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-pci-<device label>.present": "true",
-  "feature.node.kubernetes.io/nfd-pstate-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-rdt-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-selinux-<feature-name>": "true",
-  "feature.node.kubernetes.io/nfd-storage-<feature-name>": "true",
+  "feature.node.kubernetes.io/cpuid-<feature-name>": "true",
+  "feature.node.kubernetes.io/iommu-<feature-name>": "true",
+  "feature.node.kubernetes.io/kernel-config.<option-name>": "true",
+  "feature.node.kubernetes.io/kernel-version.<version component>": "<version number>",
+  "feature.node.kubernetes.io/memory-<feature-name>": "true",
+  "feature.node.kubernetes.io/network-<feature-name>": "true",
+  "feature.node.kubernetes.io/pci-<device label>.present": "true",
+  "feature.node.kubernetes.io/pstate-<feature-name>": "true",
+  "feature.node.kubernetes.io/rdt-<feature-name>": "true",
+  "feature.node.kubernetes.io/selinux-<feature-name>": "true",
+  "feature.node.kubernetes.io/storage-<feature-name>": "true",
   "feature.node.kubernetes.io/<hook name>-<feature name>": "<feature value>"
 }
 ```
@@ -171,12 +167,17 @@ such as restricting discovered features with the --label-whitelist option._
 
 ### Kernel Features
 
-| Feature | Attribute | Description                                            |
-| ------- | --------- | ------------------------------------------------------ |
-| version | full      | Full kernel version as reported by `/proc/sys/kernel/osrelease` (e.g. '4.5.6-7-g123abcde')
-| <br>    | major     | First component of the kernel version (e.g. '4')
-| <br>    | minor     | Second component of the kernel version (e.g. '5')
-| <br>    | revision  | Third component of the kernel version (e.g. '6')
+| Feature | Attribute           | Description                                  |
+| ------- | ------------------- | -------------------------------------------- |
+| config  | &lt;option name&gt; | Kernel config option is enabled (set 'y' or 'm').<br> Default options are `NO_HZ`, `NO_HZ_IDLE`, `NO_HZ_FULL` and `PREEMPT`
+| version | full                | Full kernel version as reported by `/proc/sys/kernel/osrelease` (e.g. '4.5.6-7-g123abcde')
+| <br>    | major               | First component of the kernel version (e.g. '4')
+| <br>    | minor               | Second component of the kernel version (e.g. '5')
+| <br>    | revision            | Third component of the kernel version (e.g. '6')
+
+Kernel config file to use, and, the set of config options to be detected are
+configurable.
+See [configuration options](#configuration-options) for more information.
 
 ### Local (User-specific Features)
 
@@ -256,7 +257,7 @@ The set of fields used in `<device label>` is configurable, valid fields being
 Defaults fields are `class` and `vendor`. An example label using the default
 label fields:
 ```
-feature.node.kubernetes.io/nfd-pci-1200_8086.present=true
+feature.node.kubernetes.io/pci-1200_8086.present=true
 ```
 
 Also  the set of PCI device classes that the feature source detects is
@@ -313,7 +314,7 @@ to the node to advertise hardware features.
 If you have RBAC authorization enabled (as is the default e.g. with clusters initialized with kubeadm) you need to configure the appropriate ClusterRoles, ClusterRoleBindings and a ServiceAccount in order for NFD to create node labels. The provided templates will configure these for you.
 
 When run as a daemonset, nodes are re-labeled at an interval specified using
-the `--sleep-interval` option. In the [template](https://github.com/kubernetes-incubator/node-feature-discovery/blob/master/node-feature-discovery-daemonset.yaml.template#L26) the default interval is set to 60s
+the `--sleep-interval` option. In the [template](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/node-feature-discovery-daemonset.yaml.template#L26) the default interval is set to 60s
 which is also the default when no `--sleep-interval` is specified.
 
 Feature discovery can alternatively be configured as a one-shot job. There is
@@ -362,7 +363,7 @@ You could also use other types of volumes, of course. That is, hostPath if
 different config for different nodes would be required, for example.
 
 The (empty-by-default)
-[example config](https://github.com/kubernetes-incubator/node-feature-discovery/blob/master/node-feature-discovery.conf.example)
+[example config](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/node-feature-discovery.conf.example)
 is used as a config in the NFD Docker image. Thus, this can be used as a default
 configuration in custom-built images.
 
@@ -376,14 +377,14 @@ Configuration options specified from the command line will override those read
 from the config file.
 
 Currently, the only available configuration options are related to the
-[PCI feature source](#pci-features).
+[PCI](#pci-features) and [Kernel](#kernel-features) feature sources.
 
 ## Building from source
 
 Download the source code.
 
 ```
-git clone https://github.com/kubernetes-incubator/node-feature-discovery
+git clone https://github.com/kubernetes-sigs/node-feature-discovery
 ```
 
 **Build the container image:**
@@ -432,7 +433,7 @@ spec:
     - image: golang
       name: go1
   nodeSelector:
-    feature.node.kubernetes.io/nfd-pstate-turbo: 'true'
+    feature.node.kubernetes.io/pstate-turbo: 'true'
 ```
 
 For more details on targeting nodes, see [node selection][node-sel].
@@ -447,13 +448,14 @@ Github issues
 
 [Design proposal](https://docs.google.com/document/d/1uulT2AjqXjc_pLtDu0Kw9WyvvXm-WAZZaSiUziKsr68/edit)
 
-## Kubernetes Incubator
+## Governance
 
-This is a [Kubernetes Incubator project](https://github.com/kubernetes/community/blob/master/incubator.md). The project was established 2016-08-29. The incubator team for the project is:
-
-- Sponsor: Dawn Chen (@dchen1107)
-- Champion: David Oppenheimer (@davidopp)
-- SIG: sig-node
+This is a [SIG-node](https://github.com/kubernetes/community/blob/master/sig-node/README.md)
+subproject, hosted under the
+[Kubernetes SIGs](https://github.com/kubernetes-sigs) organization in
+Github. The project was established in 2016 as a
+[Kubernetes Incubator](https://github.com/kubernetes/community/blob/master/incubator.md)
+project and migrated to Kubernetes SIGs in 2018.
 
 ## License
 
