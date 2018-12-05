@@ -11,8 +11,6 @@ RUN git clone --depth 1 -b $CMT_CAT_VERSION https://github.com/intel/intel-cmt-c
     make -C rdt-discovery && \
     make -C rdt-discovery install
 
-RUN go get github.com/Masterminds/glide
-RUN glide install --strip-vendor
 RUN go install \
   -ldflags "-s -w -X main.version=$NFD_VERSION" \
   sigs.k8s.io/node-feature-discovery
