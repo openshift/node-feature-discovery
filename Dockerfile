@@ -4,7 +4,7 @@ COPY . .
 
 ENV CMT_CAT_VERSION="v1.2.0"
 
-ARG NFD_VERSION
+ARG NFD_VERSION="v4.0"
 
 RUN git clone --depth 1 -b $CMT_CAT_VERSION https://github.com/intel/intel-cmt-cat.git && \
     make -C intel-cmt-cat/lib install && \

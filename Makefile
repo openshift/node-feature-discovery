@@ -3,7 +3,7 @@
 IMAGE_BUILD_CMD := buildah bud
 
 QUAY_DOMAIN_NAME := quay.io
-QUAY_REGISTRY_USER := kubernetes_incubator
+QUAY_REGISTRY_USER := zvonkok
 DOCKER_IMAGE_NAME := node-feature-discovery
 
 VERSION := $(shell git describe --tags --dirty --always)
