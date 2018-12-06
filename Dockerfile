@@ -4,12 +4,13 @@ COPY . .
 
 ENV CMT_CAT_VERSION="v1.2.0"
 
-ARG NFD_VERSION="v4.0"
-
 RUN git clone --depth 1 -b $CMT_CAT_VERSION https://github.com/intel/intel-cmt-cat.git && \
     make -C intel-cmt-cat/lib install && \
     make -C rdt-discovery && \
     make -C rdt-discovery install
+
+RUN curl https://raw.githubusercontent.com/golang/dep/master/install.sh | sh
+RUN $GOPATH/bin/dep ensure
 
 RUN go install \
   -ldflags "-s -w -X main.version=$NFD_VERSION" \
