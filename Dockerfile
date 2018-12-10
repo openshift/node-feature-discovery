@@ -9,9 +9,6 @@ RUN  make -C intel-cmt-cat/lib install && \
      make -C rdt-discovery && \
      make -C rdt-discovery install
 
-RUN go get -u github.com/golang/dep/cmd/dep
-RUN $GOPATH/bin/dep ensure
-
 RUN go install \
   -ldflags "-s -w -X main.version=$NFD_VERSION" \
   sigs.k8s.io/node-feature-discovery
