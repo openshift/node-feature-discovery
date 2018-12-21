@@ -3,6 +3,7 @@ WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
 COPY . . 
 
 ENV CMT_CAT_VERSION="v1.2.0"
+ENV NFD_VERSION="v4.0"
 
 #RUN git clone --depth 1 -b $CMT_CAT_VERSION https://github.com/intel/intel-cmt-cat.git && \
 RUN  make -C intel-cmt-cat/lib install && \
