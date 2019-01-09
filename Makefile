@@ -1,6 +1,6 @@
 .PHONY: all
 
-IMAGE_BUILD_CMD := buildah bud
+IMAGE_BUILD_CMD := buildah bud 
 
 QUAY_DOMAIN_NAME := quay.io
 QUAY_REGISTRY_USER := zvonkok

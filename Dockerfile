@@ -1,5 +1,5 @@
 FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
-WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
+WORKDIR ${GOPATH}/src/sigs.k8s.io/node-feature-discovery
 COPY . . 
 
 ENV CMT_CAT_VERSION="v1.2.0"
@@ -9,6 +9,7 @@ ENV NFD_VERSION="v4.0"
 RUN  make -C intel-cmt-cat/lib install && \
      make -C rdt-discovery && \
      make -C rdt-discovery install
+
 
 RUN go install \
   -ldflags "-s -w -X main.version=$NFD_VERSION" \
