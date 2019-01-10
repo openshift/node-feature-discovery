@@ -31,6 +31,7 @@ import (
 	"sigs.k8s.io/node-feature-discovery/source/rdt"
 	"sigs.k8s.io/node-feature-discovery/source/storage"
 	"sigs.k8s.io/node-feature-discovery/source/system"
+	"sigs.k8s.io/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -48,7 +49,6 @@ const (
 )
 
 var (
-	version            = "" // Must not be const, set using ldflags at build time
 	validFeatureNameRe = regexp.MustCompile(`^([-.\w]*)?[A-Za-z0-9]$`)
 )
 
@@ -115,10 +115,10 @@ type Args struct {
 
 func main() {
 	// Assert that the version is known
-	if version == "" {
-		stderrLogger.Fatalf("main.version not set! Set -ldflags \"-X main.version `git describe --tags --dirty --always`\" during build or run.")
+	if version.Get() == "undefined" {
+		stderrLogger.Fatalf("version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
-	stdoutLogger.Printf("Node Feature Discovery %s", version)
+	stdoutLogger.Printf("Node Feature Discovery %s", version.Get())
 
 	// Parse command-line arguments.
 	args := argsParse(nil)
@@ -199,7 +199,7 @@ func argsParse(argv []string) (args Args) {
 	)
 
 	arguments, _ := docopt.Parse(usage, argv, true,
-		fmt.Sprintf("%s %s", ProgramName, version), false)
+		fmt.Sprintf("%s %s", ProgramName, version.Get()), false)
 
 	// Parse argument values as usable types.
 	var err error
@@ -332,7 +332,7 @@ func updateNodeWithFeatureLabels(helper APIHelpers, noPublish bool, labels Label
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)
-		annotations := Annotations{"version": version,
+		annotations := Annotations{"version": version.Get(),
 			"feature-labels": strings.Join(keys, ",")}
 
 		err := advertiseFeatureLabels(helper, labels, annotations)
