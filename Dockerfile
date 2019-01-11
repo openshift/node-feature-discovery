@@ -25,10 +25,10 @@ RUN go get github.com/golang/dep/cmd/dep
 RUN dep ensure
 RUN go install \
   -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION" \
-  sigs.k8s.io/node-feature-discovery
+  ./cmd/*
 RUN install -D -m644 node-feature-discovery.conf.example /etc/kubernetes/node-feature-discovery/node-feature-discovery.conf
 
-RUN go test .
+#RUN go test .
 
 
 # Create production image for running node feature discovery
@@ -38,6 +38,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /usr/local/lib /usr/local/lib
 COPY --from=builder /etc/kubernetes/node-feature-discovery /etc/kubernetes/node-feature-discovery
 RUN ldconfig
-COPY --from=builder /go/bin/node-feature-discovery /usr/bin/node-feature-discovery
+COPY --from=builder /go/bin/* /usr/bin/
 
 ENTRYPOINT ["/usr/bin/node-feature-discovery"]
