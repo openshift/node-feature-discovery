@@ -1,3 +1,19 @@
+/*
+Copyright 2019 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -5,19 +21,14 @@ import (
 	"io/ioutil"
 	"os"
 	"regexp"
-	"strings"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/vektra/errors"
-	api "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sclient "k8s.io/client-go/kubernetes"
 	"sigs.k8s.io/node-feature-discovery/source"
 	"sigs.k8s.io/node-feature-discovery/source/fake"
 	"sigs.k8s.io/node-feature-discovery/source/panic_fake"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
 )
 
 func TestDiscoveryWithMockSources(t *testing.T) {
@@ -27,8 +38,6 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 		fakeFeatureNames := []string{"testfeature1", "testfeature2", "testfeature3"}
 		fakeFeatures := source.Features{}
 		fakeFeatureLabels := Labels{}
-		fakeAnnotations := Annotations{"version": version.Get(),
-			"feature-labels": "testSource-testfeature1,testSource-testfeature2,testSource-testfeature3"}
 		fakeFeatureLabelNames := make([]string, 0, len(fakeFeatureNames))
 		for _, f := range fakeFeatureNames {
 			fakeFeatures[f] = true
@@ -36,7 +45,6 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 			fakeFeatureLabels[labelName] = "true"
 			fakeFeatureLabelNames = append(fakeFeatureLabelNames, labelName)
 		}
-		fakeAnnotations["feature-labels"] = strings.Join(fakeFeatureLabelNames, ",")
 		fakeFeatureSource := source.FeatureSource(mockFeatureSource)
 
 		Convey("When I successfully get the labels from the mock source", func() {
@@ -64,78 +72,6 @@ func TestDiscoveryWithMockSources(t *testing.T) {
 				So(err, ShouldEqual, expectedError)
 			})
 		})
-
-		mockAPIHelper := new(MockAPIHelpers)
-		testHelper := APIHelpers(mockAPIHelper)
-		mockNode := &api.Node{}
-		var mockClient *k8sclient.Clientset
-
-		Convey("When I successfully update the node with feature labels", func() {
-			mockAPIHelper.On("GetClient").Return(mockClient, nil)
-			mockAPIHelper.On("GetNode", mockClient).Return(mockNode, nil).Once()
-			mockAPIHelper.On("AddLabels", mockNode, fakeFeatureLabels).Return().Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, labelNs).Return().Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/nfd").Return().Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/node-feature-discovery").Return().Once()
-			mockAPIHelper.On("AddAnnotations", mockNode, fakeAnnotations).Return().Once()
-			mockAPIHelper.On("UpdateNode", mockClient, mockNode).Return(nil).Once()
-			noPublish := false
-			err := updateNodeWithFeatureLabels(testHelper, noPublish, fakeFeatureLabels)
-
-			Convey("Error is nil", func() {
-				So(err, ShouldBeNil)
-			})
-		})
-
-		Convey("When I fail to update the node with feature labels", func() {
-			expectedError := errors.New("fake error")
-			mockAPIHelper.On("GetClient").Return(nil, expectedError)
-			noPublish := false
-			err := updateNodeWithFeatureLabels(testHelper, noPublish, fakeFeatureLabels)
-
-			Convey("Error is produced", func() {
-				So(err, ShouldEqual, expectedError)
-			})
-		})
-
-		Convey("When I fail to get a mock client while advertising feature labels", func() {
-			expectedError := errors.New("fake error")
-			mockAPIHelper.On("GetClient").Return(nil, expectedError)
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
-
-			Convey("Error is produced", func() {
-				So(err, ShouldEqual, expectedError)
-			})
-		})
-
-		Convey("When I fail to get a mock node while advertising feature labels", func() {
-			expectedError := errors.New("fake error")
-			mockAPIHelper.On("GetClient").Return(mockClient, nil)
-			mockAPIHelper.On("GetNode", mockClient).Return(nil, expectedError).Once()
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
-
-			Convey("Error is produced", func() {
-				So(err, ShouldEqual, expectedError)
-			})
-		})
-
-		Convey("When I fail to update a mock node while advertising feature labels", func() {
-			expectedError := errors.New("fake error")
-			mockAPIHelper.On("GetClient").Return(mockClient, nil)
-			mockAPIHelper.On("GetNode", mockClient).Return(mockNode, nil).Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, labelNs).Return().Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/nfd").Return().Once()
-			mockAPIHelper.On("RemoveLabelsWithPrefix", mockNode, "node.alpha.kubernetes-incubator.io/node-feature-discovery").Return().Once()
-			mockAPIHelper.On("AddLabels", mockNode, fakeFeatureLabels).Return().Once()
-			mockAPIHelper.On("AddAnnotations", mockNode, fakeAnnotations).Return().Once()
-			mockAPIHelper.On("UpdateNode", mockClient, mockNode).Return(expectedError).Once()
-			err := advertiseFeatureLabels(testHelper, fakeFeatureLabels, fakeAnnotations)
-
-			Convey("Error is produced", func() {
-				So(err, ShouldEqual, expectedError)
-			})
-		})
-
 	})
 }
 
@@ -318,69 +254,6 @@ func TestCreateFeatureLabels(t *testing.T) {
 				So(labels, ShouldNotContainKey, "fake-fakefeature2")
 				So(labels, ShouldNotContainKey, "fake-fakefeature3")
 			})
-		})
-	})
-}
-
-func TestAddLabels(t *testing.T) {
-	Convey("When adding labels", t, func() {
-		helper := k8sHelpers{}
-		labels := Labels{}
-		n := &api.Node{
-			ObjectMeta: meta_v1.ObjectMeta{
-				Labels: map[string]string{},
-			},
-		}
-
-		Convey("If no labels are passed", func() {
-			helper.AddLabels(n, labels)
-
-			Convey("None should be added", func() {
-				So(len(n.Labels), ShouldEqual, 0)
-			})
-		})
-
-		Convey("They should be added to the node.Labels", func() {
-			test1 := "test1"
-			labels[test1] = "true"
-			helper.AddLabels(n, labels)
-			So(n.Labels, ShouldContainKey, labelNs+test1)
-		})
-	})
-}
-
-func TestRemoveLabelsWithPrefix(t *testing.T) {
-	Convey("When removing labels", t, func() {
-		helper := k8sHelpers{}
-		n := &api.Node{
-			ObjectMeta: meta_v1.ObjectMeta{
-				Labels: map[string]string{
-					"single":     "123",
-					"multiple_A": "a",
-					"multiple_B": "b",
-				},
-			},
-		}
-
-		Convey("a unique label should be removed", func() {
-			helper.RemoveLabelsWithPrefix(n, "single")
-			So(len(n.Labels), ShouldEqual, 2)
-			So(n.Labels, ShouldNotContainKey, "single")
-		})
-
-		Convey("a non-unique search string should remove all matching keys", func() {
-			helper.RemoveLabelsWithPrefix(n, "multiple")
-			So(len(n.Labels), ShouldEqual, 1)
-			So(n.Labels, ShouldNotContainKey, "multiple_A")
-			So(n.Labels, ShouldNotContainKey, "multiple_B")
-		})
-
-		Convey("a search string with no matches should not alter labels", func() {
-			helper.RemoveLabelsWithPrefix(n, "unique")
-			So(n.Labels, ShouldContainKey, "single")
-			So(n.Labels, ShouldContainKey, "multiple_A")
-			So(n.Labels, ShouldContainKey, "multiple_B")
-			So(len(n.Labels), ShouldEqual, 3)
 		})
 	})
 }
