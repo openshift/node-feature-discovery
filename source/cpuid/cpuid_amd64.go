@@ -14,28 +14,19 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package selinux
+package cpuid
 
 import (
-	"fmt"
-	"io/ioutil"
-
+	"github.com/klauspost/cpuid"
 	"sigs.k8s.io/node-feature-discovery/source"
 )
 
-type Source struct{}
-
-func (s Source) Name() string { return "selinux" }
-
+// Discover returns feature names for all the supported CPU features.
 func (s Source) Discover() (source.Features, error) {
+	// Get the cpu features as strings
 	features := source.Features{}
-	status, err := ioutil.ReadFile("/host-sys/fs/selinux/enforce")
-	if err != nil {
-		return nil, fmt.Errorf("Failed to detect the status of selinux, please check if the system supports selinux and make sure /sys on the host is mounted into the container: %s", err.Error())
-	}
-	if status[0] == byte('1') {
-		// selinux is enabled.
-		features["enabled"] = true
+	for _, f := range cpuid.CPU.Features.Strings() {
+		features[f] = true
 	}
 	return features, nil
 }

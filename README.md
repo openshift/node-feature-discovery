@@ -52,7 +52,7 @@ node-feature-discovery.
                               will override settings read from the config file.
                               [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
-                              [Default: cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,selinux,storage]
+                              [Default: cpu,cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,storage,system]
   --no-publish                Do not publish discovered features to the
                               cluster-local Kubernetes API server.
   --label-whitelist=<pattern> Regular expression to filter label names to
@@ -75,6 +75,7 @@ for up-to-date information about the required volume mounts.
 
 The current set of feature sources are the following:
 
+- CPU
 - [CPUID][cpuid] for x86/Arm64 CPU details
 - IOMMU
 - Kernel
@@ -83,8 +84,8 @@ The current set of feature sources are the following:
 - Network
 - Pstate ([Intel P-State driver][intel-pstate])
 - RDT ([Intel Resource Director Technology][intel-rdt])
-- Selinux
 - Storage
+- System
 
 ### Feature labels
 
@@ -109,17 +110,17 @@ the only label value published for features is the string `"true"`._
 
 ```json
 {
+  "feature.node.kubernetes.io/cpu-<feature-name>": "true",
   "feature.node.kubernetes.io/cpuid-<feature-name>": "true",
   "feature.node.kubernetes.io/iommu-<feature-name>": "true",
-  "feature.node.kubernetes.io/kernel-config.<option-name>": "true",
-  "feature.node.kubernetes.io/kernel-version.<version component>": "<version number>",
+  "feature.node.kubernetes.io/kernel-<feature name>": "<feature value>",
   "feature.node.kubernetes.io/memory-<feature-name>": "true",
   "feature.node.kubernetes.io/network-<feature-name>": "true",
   "feature.node.kubernetes.io/pci-<device label>.present": "true",
   "feature.node.kubernetes.io/pstate-<feature-name>": "true",
   "feature.node.kubernetes.io/rdt-<feature-name>": "true",
-  "feature.node.kubernetes.io/selinux-<feature-name>": "true",
   "feature.node.kubernetes.io/storage-<feature-name>": "true",
+  "feature.node.kubernetes.io/system-<feature name>": "<feature value>",
   "feature.node.kubernetes.io/<hook name>-<feature name>": "<feature value>"
 }
 ```
@@ -130,6 +131,17 @@ _Note: Consecutive runs of node-feature-discovery will update the labels on a
 given node. If features are not discovered on a consecutive run, the corresponding
 label will be removed. This includes any restrictions placed on the consecutive run,
 such as restricting discovered features with the --label-whitelist option._
+
+### CPU Features
+
+The CPU feature source differs from the CPUID feature source in that it
+discovers CPU related features that are actually enabled, whereas CPUID only
+reports *supported* CPU capabilities (i.e. a capability might be supported but
+not enabled) as reported by the `cpuid` instruction.
+
+| Feature name            | Description                                        |
+| ----------------------- | -------------------------------------------------- |
+| hardware_multithreading | Hardware multithreading, such as Intel HTT, enabled (number of locical CPUs is greater than physical CPUs)
 
 ### X86 CPUID Features (Partial List)
 
@@ -170,6 +182,7 @@ such as restricting discovered features with the --label-whitelist option._
 | Feature | Attribute           | Description                                  |
 | ------- | ------------------- | -------------------------------------------- |
 | config  | &lt;option name&gt; | Kernel config option is enabled (set 'y' or 'm').<br> Default options are `NO_HZ`, `NO_HZ_IDLE`, `NO_HZ_FULL` and `PREEMPT`
+| selinux | enabled             | Selinux is enabled on the node
 | version | full                | Full kernel version as reported by `/proc/sys/kernel/osrelease` (e.g. '4.5.6-7-g123abcde')
 | <br>    | major               | First component of the kernel version (e.g. '4')
 | <br>    | minor               | Second component of the kernel version (e.g. '5')
@@ -278,17 +291,18 @@ for more information on NFD config.
 | RDTL2CA        | Intel L2 Cache Allocation Technology
 | RDTMBA         | Intel Memory Bandwidth Allocation (MBA) Technology
 
-### Selinux Features
-
-| Feature name       | Description                                                                         |
-| :--------------:   | :---------------------------------------------------------------------------------: |
-| selinux            | selinux is enabled on the node
-
 ### Storage Features
 
 | Feature name       | Description                                                                         |
 | :--------------:   | :---------------------------------------------------------------------------------: |
 | nonrotationaldisk  | Non-rotational disk, like SSD, is present in the node
+
+### System Features
+
+| Feature     | Attribute  | Description                                       |
+| ----------- | ---------- | --------------------------------------------------|
+| os_release  | ID         | Operating system identifier
+| <br>        | VERSION_ID | Operating system version identifier
 
 ## Getting started
 ### System requirements
