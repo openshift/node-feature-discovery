@@ -16,23 +16,8 @@ limitations under the License.
 
 package cpuid
 
-import (
-	"github.com/klauspost/cpuid"
-	"github.com/kubernetes-incubator/node-feature-discovery/source"
-)
-
 // Source implements FeatureSource.
 type Source struct{}
 
 // Name returns an identifier string for this feature source.
 func (s Source) Name() string { return "cpuid" }
-
-// Discover returns feature names for all the supported CPU features.
-func (s Source) Discover() (source.Features, error) {
-	// Get the cpu features as strings
-	features := source.Features{}
-	for _, f := range cpuid.CPU.Features.Strings() {
-		features[f] = true
-	}
-	return features, nil
-}

@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2017-2018 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,32 +14,22 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package iommu
+package kernel
 
 import (
 	"fmt"
 	"io/ioutil"
-
-	"sigs.k8s.io/node-feature-discovery/source"
 )
 
-// Implement FeatureSource interface
-type Source struct{}
-
-func (s Source) Name() string { return "iommu" }
-
-func (s Source) Discover() (source.Features, error) {
-	features := source.Features{}
-
-	// Check if any iommu devices are available
-	devices, err := ioutil.ReadDir("/sys/class/iommu/")
+// Detect if selinux has been enabled in the kernel
+func SelinuxEnabled() (bool, error) {
+	status, err := ioutil.ReadFile("/host-sys/fs/selinux/enforce")
 	if err != nil {
-		return nil, fmt.Errorf("Failed to check for IOMMU support: %v", err)
+		return false, fmt.Errorf("Failed to detect the status of selinux, please check if the system supports selinux and make sure /sys on the host is mounted into the container: %s", err.Error())
 	}
-
-	if len(devices) > 0 {
-		features["enabled"] = true
+	if status[0] == byte('1') {
+		// selinux is enabled.
+		return true, nil
 	}
-
-	return features, nil
+	return false, nil
 }

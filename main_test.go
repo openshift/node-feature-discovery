@@ -9,14 +9,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kubernetes-incubator/node-feature-discovery/source"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/fake"
-	"github.com/kubernetes-incubator/node-feature-discovery/source/panic_fake"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/vektra/errors"
 	api "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sclient "k8s.io/client-go/kubernetes"
+	"sigs.k8s.io/node-feature-discovery/source"
+	"sigs.k8s.io/node-feature-discovery/source/fake"
+	"sigs.k8s.io/node-feature-discovery/source/panic_fake"
 )
 
 func TestDiscoveryWithMockSources(t *testing.T) {
@@ -152,7 +152,7 @@ func TestArgsParse(t *testing.T) {
 				So(args.sleepInterval, ShouldEqual, 60*time.Second)
 				So(args.noPublish, ShouldBeTrue)
 				So(args.oneshot, ShouldBeTrue)
-				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
+				So(args.sources, ShouldResemble, []string{"cpu", "cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "storage", "system"})
 				So(len(args.labelWhiteList), ShouldEqual, 0)
 			})
 		})
@@ -174,7 +174,7 @@ func TestArgsParse(t *testing.T) {
 
 			Convey("args.labelWhiteList is set to appropriate value and args.sources is set to default value", func() {
 				So(args.noPublish, ShouldBeFalse)
-				So(args.sources, ShouldResemble, []string{"cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "selinux", "storage"})
+				So(args.sources, ShouldResemble, []string{"cpu", "cpuid", "iommu", "kernel", "local", "memory", "network", "pci", "pstate", "rdt", "storage", "system"})
 				So(args.labelWhiteList, ShouldResemble, ".*rdt.*")
 			})
 		})
@@ -205,6 +205,9 @@ func TestConfigParse(t *testing.T) {
 		defer os.Remove(f.Name())
 		So(err, ShouldBeNil)
 		f.WriteString(`sources:
+  kernel:
+    configOpts:
+      - "DMI"
   pci:
     deviceClassWhitelist:
       - "ff"`)
@@ -215,6 +218,7 @@ func TestConfigParse(t *testing.T) {
 
 			Convey("Should return error", func() {
 				So(err, ShouldBeNil)
+				So(config.Sources.Kernel.ConfigOpts, ShouldResemble, []string{"DMI"})
 				So(config.Sources.Pci.DeviceClassWhitelist, ShouldResemble, []string{"ff"})
 			})
 		})
