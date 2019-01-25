@@ -1,3 +1,19 @@
+/*
+Copyright 2019 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
 package main
 
 import (
@@ -6,16 +22,15 @@ import (
 	"log"
 	"os"
 	"regexp"
-	"sort"
 	"strings"
 	"time"
 
 	"github.com/docopt/docopt-go"
 	"github.com/ghodss/yaml"
-	api "k8s.io/api/core/v1"
-	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	k8sclient "k8s.io/client-go/kubernetes"
-	restclient "k8s.io/client-go/rest"
+	"golang.org/x/net/context"
+	"google.golang.org/grpc"
+	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
+	"sigs.k8s.io/node-feature-discovery/pkg/version"
 	"sigs.k8s.io/node-feature-discovery/source"
 	"sigs.k8s.io/node-feature-discovery/source/cpu"
 	"sigs.k8s.io/node-feature-discovery/source/cpuid"
@@ -34,21 +49,14 @@ import (
 )
 
 const (
-	// ProgramName is the canonical name of this discovery program.
-	ProgramName = "node-feature-discovery"
-
-	// Namespace is the prefix for all published labels.
-	labelNs = "feature.node.kubernetes.io/"
-
-	// Namespace is the prefix for all published labels.
-	annotationNs = "nfd.node.kubernetes.io/"
+	// ProgramName is the canonical name of this program
+	ProgramName = "nfd-slave"
 
 	// NodeNameEnv is the environment variable that contains this node's name.
 	NodeNameEnv = "NODE_NAME"
 )
 
 var (
-	version            = "" // Must not be const, set using ldflags at build time
 	validFeatureNameRe = regexp.MustCompile(`^([-.\w]*)?[A-Za-z0-9]$`)
 )
 
@@ -74,34 +82,6 @@ type Labels map[string]string
 // Annotations are used for NFD-related node metadata
 type Annotations map[string]string
 
-// APIHelpers represents a set of API helpers for Kubernetes
-type APIHelpers interface {
-	// GetClient returns a client
-	GetClient() (*k8sclient.Clientset, error)
-
-	// GetNode returns the Kubernetes node on which this container is running.
-	GetNode(*k8sclient.Clientset) (*api.Node, error)
-
-	// RemoveLabelsWithPrefix removes labels from the supplied node that contain the
-	// search string provided. In order to publish the changes, the node must
-	// subsequently be updated via the API server using the client library.
-	RemoveLabelsWithPrefix(*api.Node, string)
-
-	// RemoveLabels removes NFD labels from a node object
-	RemoveLabels(*api.Node, []string)
-
-	// AddLabels adds new NFD labels to the node object.
-	// In order to publish the labels, the node must be subsequently updated via the
-	// API server using the client library.
-	AddLabels(*api.Node, Labels)
-
-	// Add annotations
-	AddAnnotations(*api.Node, Annotations)
-
-	// UpdateNode updates the node via the API server using a client.
-	UpdateNode(*k8sclient.Clientset, *api.Node) error
-}
-
 // Command line arguments
 type Args struct {
 	labelWhiteList string
@@ -109,16 +89,17 @@ type Args struct {
 	noPublish      bool
 	options        string
 	oneshot        bool
+	server         string
 	sleepInterval  time.Duration
 	sources        []string
 }
 
 func main() {
 	// Assert that the version is known
-	if version == "" {
-		stderrLogger.Fatalf("main.version not set! Set -ldflags \"-X main.version `git describe --tags --dirty --always`\" during build or run.")
+	if version.Get() == "undefined" {
+		stderrLogger.Fatalf("version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
-	stdoutLogger.Printf("Node Feature Discovery %s", version)
+	stdoutLogger.Printf("Node Feature Discovery Worker %s", version.Get())
 
 	// Parse command-line arguments.
 	args := argsParse(nil)
@@ -135,16 +116,25 @@ func main() {
 		stderrLogger.Fatalf("error occurred while configuring parameters: %s", err.Error())
 	}
 
-	helper := APIHelpers(k8sHelpers{})
+	// Connect to NFD server
+	opts := []grpc.DialOption{grpc.WithInsecure()}
+	conn, err := grpc.Dial(args.server, opts...)
+	if err != nil {
+		stderrLogger.Fatalf("failed to connect: %v", err)
+	}
+	defer conn.Close()
+	client := pb.NewLabelerClient(conn)
 
 	for {
 		// Get the set of feature labels.
 		labels := createFeatureLabels(enabledSources, labelWhiteList)
 
 		// Update the node with the feature labels.
-		err = updateNodeWithFeatureLabels(helper, args.noPublish, labels)
-		if err != nil {
-			stderrLogger.Fatalf("error occurred while updating node with feature labels: %s", err.Error())
+		if !args.noPublish {
+			err := advertiseFeatureLabels(client, labels)
+			if err != nil {
+				stderrLogger.Fatalf("failed to advertise labels: %s", err.Error())
+			}
 		}
 
 		if args.oneshot {
@@ -154,6 +144,7 @@ func main() {
 		if args.sleepInterval > 0 {
 			time.Sleep(args.sleepInterval)
 		} else {
+			conn.Close()
 			// Sleep forever
 			select {}
 		}
@@ -168,7 +159,7 @@ func argsParse(argv []string) (args Args) {
   Usage:
   %s [--no-publish] [--sources=<sources>] [--label-whitelist=<pattern>]
      [--oneshot | --sleep-interval=<seconds>] [--config=<path>]
-     [--options=<config>]
+     [--options=<config>] [--server=<server>]
   %s -h | --help
   %s --version
 
@@ -182,6 +173,8 @@ func argsParse(argv []string) (args Args) {
                               config file (i.e. json or yaml). These options
                               will override settings read from the config file.
                               [Default: ]
+  --server=<server>           NFD server address to connecto to.
+                              [Default: localhost:8080]
   --sources=<sources>         Comma separated list of feature sources.
                               [Default: cpu,cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,storage,system]
   --no-publish                Do not publish discovered features to the
@@ -199,13 +192,14 @@ func argsParse(argv []string) (args Args) {
 	)
 
 	arguments, _ := docopt.Parse(usage, argv, true,
-		fmt.Sprintf("%s %s", ProgramName, version), false)
+		fmt.Sprintf("%s %s", ProgramName, version.Get()), false)
 
 	// Parse argument values as usable types.
 	var err error
 	args.configFile = arguments["--config"].(string)
 	args.noPublish = arguments["--no-publish"].(bool)
 	args.options = arguments["--options"].(string)
+	args.server = arguments["--server"].(string)
 	args.sources = strings.Split(arguments["--sources"].(string), ",")
 	args.labelWhiteList = arguments["--label-whitelist"].(string)
 	args.oneshot = arguments["--oneshot"].(bool)
@@ -322,28 +316,6 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 	return labels
 }
 
-// updateNodeWithFeatureLabels updates the node with the feature labels, unless
-// disabled via --no-publish flag.
-func updateNodeWithFeatureLabels(helper APIHelpers, noPublish bool, labels Labels) error {
-	if !noPublish {
-		// Advertise NFD version and label names as annotations
-		keys := make([]string, 0, len(labels))
-		for k, _ := range labels {
-			keys = append(keys, k)
-		}
-		sort.Strings(keys)
-		annotations := Annotations{"version": version,
-			"feature-labels": strings.Join(keys, ",")}
-
-		err := advertiseFeatureLabels(helper, labels, annotations)
-		if err != nil {
-			stderrLogger.Printf("failed to advertise labels: %s", err.Error())
-			return err
-		}
-	}
-	return nil
-}
-
 // getFeatureLabels returns node labels for features discovered by the
 // supplied source.
 func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
@@ -378,114 +350,23 @@ func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
 }
 
 // advertiseFeatureLabels advertises the feature labels to a Kubernetes node
-// via the API server.
-func advertiseFeatureLabels(helper APIHelpers, labels Labels, annotations Annotations) error {
-	cli, err := helper.GetClient()
-	if err != nil {
-		stderrLogger.Printf("can't get kubernetes client: %s", err.Error())
-		return err
-	}
+// via the NFD server.
+func advertiseFeatureLabels(client pb.LabelerClient, labels Labels) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	// Get the current node.
-	node, err := helper.GetNode(cli)
-	if err != nil {
-		stderrLogger.Printf("failed to get node: %s", err.Error())
-		return err
-	}
-
-	// Remove old labels
-	if l, ok := node.Annotations[annotationNs+"feature-labels"]; ok {
-		oldLabels := strings.Split(l, ",")
-		helper.RemoveLabels(node, oldLabels)
-	}
-
-	// Also, remove all labels with the old prefix, and the old version label
-	helper.RemoveLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/nfd")
-	helper.RemoveLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/node-feature-discovery")
-
-	// Add labels to the node object.
-	helper.AddLabels(node, labels)
-
-	// Add annotations
-	helper.AddAnnotations(node, annotations)
-
-	// Send the updated node to the apiserver.
-	err = helper.UpdateNode(cli, node)
-	if err != nil {
-		stderrLogger.Printf("can't update node: %s", err.Error())
-		return err
-	}
-
-	return nil
-}
-
-// Implements main.APIHelpers
-type k8sHelpers struct{}
-
-func (h k8sHelpers) GetClient() (*k8sclient.Clientset, error) {
-	// Set up an in-cluster K8S client.
-	config, err := restclient.InClusterConfig()
-	if err != nil {
-		return nil, err
-	}
-	clientset, err := k8sclient.NewForConfig(config)
-	if err != nil {
-		return nil, err
-	}
-	return clientset, nil
-}
-
-func (h k8sHelpers) GetNode(cli *k8sclient.Clientset) (*api.Node, error) {
-	// Get the pod name and pod namespace from the env variables
 	nodeName := os.Getenv(NodeNameEnv)
 	stdoutLogger.Printf("%s: %s", NodeNameEnv, nodeName)
 
-	// Get the node object using node name
-	node, err := cli.Core().Nodes().Get(nodeName, meta_v1.GetOptions{})
+	labelReq := pb.SetLabelsRequest{Labels: labels,
+		NfdVersion: version.Get(),
+		NodeName:   nodeName}
+	rsp, err := client.SetLabels(ctx, &labelReq)
 	if err != nil {
-		stderrLogger.Printf("can't get node: %s", err.Error())
-		return nil, err
-	}
-
-	return node, nil
-}
-
-// RemoveLabelsWithPrefix searches through all labels on Node n and removes
-// any where the key contain the search string.
-func (h k8sHelpers) RemoveLabelsWithPrefix(n *api.Node, search string) {
-	for k := range n.Labels {
-		if strings.Contains(k, search) {
-			delete(n.Labels, k)
-		}
-	}
-}
-
-// RemoveLabels removes given NFD labels
-func (h k8sHelpers) RemoveLabels(n *api.Node, labelNames []string) {
-	for _, l := range labelNames {
-		delete(n.Labels, labelNs+l)
-	}
-}
-
-func (h k8sHelpers) AddLabels(n *api.Node, labels Labels) {
-	for k, v := range labels {
-		n.Labels[labelNs+k] = v
-	}
-}
-
-// Add Annotations to the Node object
-func (h k8sHelpers) AddAnnotations(n *api.Node, annotations Annotations) {
-	for k, v := range annotations {
-		n.Annotations[annotationNs+k] = v
-	}
-}
-
-func (h k8sHelpers) UpdateNode(c *k8sclient.Clientset, n *api.Node) error {
-	// Send the updated node to the apiserver.
-	_, err := c.Core().Nodes().Update(n)
-	if err != nil {
+		stderrLogger.Printf("failed to set node labels: %v", err)
 		return err
 	}
+	log.Printf("RESPONSE: %s", rsp)
 
 	return nil
 }

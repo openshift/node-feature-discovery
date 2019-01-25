@@ -14,3 +14,7 @@ all: image
 # QUAY_REGISTRY_USER=<my-username> make docker -e.
 image:
 	$(IMAGE_BUILD_CMD) -t $(QUAY_DOMAIN_NAME)/$(QUAY_REGISTRY_USER)/$(DOCKER_IMAGE_NAME):$(VERSION) ./
+
+mock:
+	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
+	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
