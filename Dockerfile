@@ -5,9 +5,7 @@ ADD . /go/src/sigs.k8s.io/node-feature-discovery
 WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
 
 ENV CMT_CAT_VERSION="v1.2.0"
-ENV NFD_VERSION="v4.0"
-
-ARG NFD_VERSION
+ENV NFD_VERSION="v4.1"
 
 RUN case $(uname -m) in \
         arm64) \
@@ -34,6 +32,6 @@ COPY --from=builder /usr/local/bin /usr/local/bin
 COPY --from=builder /usr/local/lib /usr/local/lib
 COPY --from=builder /etc/kubernetes/node-feature-discovery /etc/kubernetes/node-feature-discovery
 RUN ldconfig
-COPY --from=builder /go/bin/* /usr/bin/
+COPY --from=builder /go/bin/nfd-* /usr/bin/
 
 ENTRYPOINT ["/usr/bin/node-feature-discovery"]
