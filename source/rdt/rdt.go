@@ -17,9 +17,6 @@ limitations under the License.
 package rdt
 
 import (
-	"os/exec"
-
-	"github.com/golang/glog"
 	"sigs.k8s.io/node-feature-discovery/source"
 )
 
@@ -33,52 +30,43 @@ func (s Source) Name() string { return "rdt" }
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 
-	cmd := exec.Command("bash", "-c", "mon-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT monitoring was not detected: %v", err)
-	} else {
-		// RDT monitoring detected.
-		features["RDTMON"] = true
+	// Read cpuid information
+	leaf07h := Cpuid(0x7, 0)
+	leaf0fh := Cpuid(0xf, 0)
+	leaf10h := Cpuid(0x10, 0)
+	leaf07h_1 := Cpuid(0xf, 0x1)
+
+	// Detect RDT monitoring capabilities
+	if leaf07h.Ebx&(1<<12) != 0 {
+		if leaf0fh.Edx&(1<<1) != 0 {
+			// Monitoring is supported
+			features["RDTMON"] = true
+
+			// Cache Monitoring Technology (L3 occupancy monitoring)
+			if leaf07h_1.Edx&(1<<0) != 0 {
+				features["RDTCMT"] = true
+			}
+			// Memore Bandwidth Monitoring (L3 local&total bandwidth monitoring)
+			if leaf07h_1.Edx&(3<<1) == (3 << 1) {
+				features["RDTMBM"] = true
+			}
+		}
 	}
 
-	cmd = exec.Command("bash", "-c", "mon-cmt-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT CMT monitoring was not detected: %v", err)
-	} else {
-		// RDT CMT monitoring detected.
-		features["RDTCMT"] = true
-	}
-
-	cmd = exec.Command("bash", "-c", "mon-mbm-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT MBM monitoring was not detected: %v", err)
-	} else {
-		// RDT MBM monitoring detected.
-		features["RDTMBM"] = true
-	}
-
-	cmd = exec.Command("bash", "-c", "l3-alloc-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT L3 allocation was not detected: %v", err)
-	} else {
-		// RDT L3 cache allocation detected.
-		features["RDTL3CA"] = true
-	}
-
-	cmd = exec.Command("bash", "-c", "l2-alloc-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT L2 allocation was not detected: %v", err)
-	} else {
-		// RDT L2 cache allocation detected.
-		features["RDTL2CA"] = true
-	}
-
-	cmd = exec.Command("bash", "-c", "mem-bandwidth-alloc-discovery")
-	if err := cmd.Run(); err != nil {
-		glog.Errorf("support for RDT Memory bandwidth allocation was not detected: %v", err)
-	} else {
-		// RDT Memory bandwidth allocation detected.
-		features["RDTMBA"] = true
+	// Detect RDT allocation capabilities
+	if leaf07h.Ebx&(1<<15) != 0 {
+		// L3 Cache Allocation
+		if leaf10h.Ebx&(1<<1) != 0 {
+			features["RDTL3CA"] = true
+		}
+		// L2 Cache Allocation
+		if leaf10h.Ebx&(1<<2) != 0 {
+			features["RDTL2CA"] = true
+		}
+		// Memory Bandwidth Allocation
+		if leaf10h.Ebx&(1<<3) != 0 {
+			features["RDTMBA"] = true
+		}
 	}
 
 	return features, nil

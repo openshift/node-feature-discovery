@@ -6,7 +6,7 @@ QUAY_DOMAIN_NAME := quay.io
 QUAY_REGISTRY_USER := zvonkok
 DOCKER_IMAGE_NAME := node-feature-discovery
 
-VERSION := v4.0
+VERSION := v4.1
 
 all: image
 
