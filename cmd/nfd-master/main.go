@@ -102,8 +102,9 @@ func main() {
 	}
 
 	serverOpts := []grpc.ServerOption{}
-	// Use TLS if --cert-file or --key-file is defined
-	if args.caFile != "" || args.certFile != "" || args.keyFile != "" {
+	// Enable mutual TLS authentication if --cert-file, --key-file or --ca-file
+	// is defined
+	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
 		// Load cert for authenticating this server
 		cert, err := tls.LoadX509KeyPair(args.certFile, args.keyFile)
 		if err != nil {
@@ -183,12 +184,15 @@ func argsParse(argv []string) (args Args) {
 	}
 
 	// Check TLS related args
-	if args.certFile != "" || args.keyFile != "" {
+	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
 		if args.certFile == "" {
 			stderrLogger.Fatalf("ERROR: --cert-file needs to be specified alongside --key-file and --ca-file")
 		}
 		if args.keyFile == "" {
 			stderrLogger.Fatalf("ERROR: --key-file needs to be specified alongside --cert-file and --ca-file")
+		}
+		if args.caFile == "" {
+			stderrLogger.Fatalf("ERROR: --ca-file needs to be specified alongside --cert-file and --key-file")
 		}
 	}
 	return args
