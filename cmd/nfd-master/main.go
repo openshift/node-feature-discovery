@@ -73,6 +73,7 @@ type Args struct {
 	labelWhiteList *regexp.Regexp
 	noPublish      bool
 	port           int
+	verifyNodeName bool
 }
 
 func main() {
@@ -142,6 +143,7 @@ func argsParse(argv []string) (args Args) {
   Usage:
   %s [--no-publish] [--label-whitelist=<pattern>] [--port=<port>]
      [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
+     [--verify-node-name]
   %s -h | --help
   %s --version
 
@@ -156,6 +158,9 @@ func argsParse(argv []string) (args Args) {
                               [Default: ]
   --key-file=<path>           Private key matching --cert-file
                               [Default: ]
+  --verify-node-name		  Verify worker node name against CN from the TLS
+                              certificate. Only has effect when TLS authentication
+                              has been enabled.
   --no-publish                Do not publish feature labels
   --label-whitelist=<pattern> Regular expression to filter label names to
                               publish to the Kubernetes API server. [Default: ]`,
@@ -182,6 +187,7 @@ func argsParse(argv []string) (args Args) {
 	if err != nil {
 		stderrLogger.Fatalf("error parsing whitelist regex (%s): %s", arguments["--label-whitelist"], err)
 	}
+	args.verifyNodeName = arguments["--verify-node-name"].(bool)
 
 	// Check TLS related args
 	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
@@ -239,24 +245,25 @@ type labelerServer struct {
 
 // Service SetLabels
 func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.SetLabelsReply, error) {
-	// Client authorization.
-	// Check that the node name matches the CN from the TLS cert
-	client, ok := peer.FromContext(c)
-	if !ok {
-		return &pb.SetLabelsReply{}, fmt.Errorf("failed to get peer (client)")
+	if s.args.verifyNodeName {
+		// Client authorization.
+		// Check that the node name matches the CN from the TLS cert
+		client, ok := peer.FromContext(c)
+		if !ok {
+			return &pb.SetLabelsReply{}, fmt.Errorf("failed to get peer (client)")
+		}
+		tlsAuth, ok := client.AuthInfo.(credentials.TLSInfo)
+		if !ok {
+			return &pb.SetLabelsReply{}, fmt.Errorf("incorrect client credentials")
+		}
+		if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
+			return &pb.SetLabelsReply{}, fmt.Errorf("client certificate verification failed")
+		}
+		cn := tlsAuth.State.VerifiedChains[0][0].Subject.CommonName
+		if cn != r.NodeName {
+			return &pb.SetLabelsReply{}, fmt.Errorf("request authorization failed: cert valid for '%s', requested node name '%s'", cn, r.NodeName)
+		}
 	}
-	tlsAuth, ok := client.AuthInfo.(credentials.TLSInfo)
-	if !ok {
-		return &pb.SetLabelsReply{}, fmt.Errorf("incorrect client credentials")
-	}
-	if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
-		return &pb.SetLabelsReply{}, fmt.Errorf("client certificate verification failed")
-	}
-	cn := tlsAuth.State.VerifiedChains[0][0].Subject.CommonName
-	if cn != r.NodeName {
-		return &pb.SetLabelsReply{}, fmt.Errorf("request authorization failed: cert valid for '%s', requested node name '%s'", cn, r.NodeName)
-	}
-
 	stdoutLogger.Printf("REQUEST Node: %s NFD-version: %s Labels: %s", r.NodeName, r.NfdVersion, r.Labels)
 
 	if !s.args.noPublish {
