@@ -17,7 +17,10 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
 	"os"
@@ -26,9 +29,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/docopt/docopt-go"
+	docopt "github.com/docopt/docopt-go"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/peer"
 	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
 	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
 	"sigs.k8s.io/node-feature-discovery/pkg/version"
@@ -62,9 +67,13 @@ type Annotations map[string]string
 
 // Command line arguments
 type Args struct {
+	caFile         string
+	certFile       string
+	keyFile        string
 	labelWhiteList *regexp.Regexp
 	noPublish      bool
 	port           int
+	verifyNodeName bool
 }
 
 func main() {
@@ -92,8 +101,37 @@ func main() {
 	if err != nil {
 		stderrLogger.Fatalf("failed to listen: %v", err)
 	}
-	grpcServer := grpc.NewServer()
+
+	serverOpts := []grpc.ServerOption{}
+	// Enable mutual TLS authentication if --cert-file, --key-file or --ca-file
+	// is defined
+	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
+		// Load cert for authenticating this server
+		cert, err := tls.LoadX509KeyPair(args.certFile, args.keyFile)
+		if err != nil {
+			stderrLogger.Fatalf("failed to load server certificate: %v", err)
+		}
+		// Load CA cert for client cert verification
+		caCert, err := ioutil.ReadFile(args.caFile)
+		if err != nil {
+			stderrLogger.Fatalf("failed to read root certificate file: %v", err)
+		}
+		caPool := x509.NewCertPool()
+		if ok := caPool.AppendCertsFromPEM(caCert); !ok {
+			stderrLogger.Fatalf("failed to add certificate from '%s'", args.caFile)
+		}
+		// Create TLS config
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			ClientCAs:    caPool,
+			//ClientAuth:   tls.NoClientCert,
+			ClientAuth: tls.RequireAndVerifyClientCert,
+		}
+		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
+	}
+	grpcServer := grpc.NewServer(serverOpts...)
 	pb.RegisterLabelerServer(grpcServer, &labelerServer{args: args, apiHelper: helper})
+	stdoutLogger.Printf("gRPC server serving on port: %d", args.port)
 	grpcServer.Serve(lis)
 }
 
@@ -104,6 +142,8 @@ func argsParse(argv []string) (args Args) {
 
   Usage:
   %s [--no-publish] [--label-whitelist=<pattern>] [--port=<port>]
+     [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
+     [--verify-node-name]
   %s -h | --help
   %s --version
 
@@ -112,6 +152,15 @@ func argsParse(argv []string) (args Args) {
   --version                   Output version and exit.
   --port=<port>               Port on which to listen for connections.
                               [Default: 8080]
+  --ca-file=<path>            Root certificate for verifying connections
+                              [Default: ]
+  --cert-file=<path>          Certificate used for authenticating connections
+                              [Default: ]
+  --key-file=<path>           Private key matching --cert-file
+                              [Default: ]
+  --verify-node-name		  Verify worker node name against CN from the TLS
+                              certificate. Only has effect when TLS authentication
+                              has been enabled.
   --no-publish                Do not publish feature labels
   --label-whitelist=<pattern> Regular expression to filter label names to
                               publish to the Kubernetes API server. [Default: ]`,
@@ -126,6 +175,9 @@ func argsParse(argv []string) (args Args) {
 
 	// Parse argument values as usable types.
 	var err error
+	args.caFile = arguments["--ca-file"].(string)
+	args.certFile = arguments["--cert-file"].(string)
+	args.keyFile = arguments["--key-file"].(string)
 	args.noPublish = arguments["--no-publish"].(bool)
 	args.port, err = strconv.Atoi(arguments["--port"].(string))
 	if err != nil {
@@ -135,7 +187,20 @@ func argsParse(argv []string) (args Args) {
 	if err != nil {
 		stderrLogger.Fatalf("error parsing whitelist regex (%s): %s", arguments["--label-whitelist"], err)
 	}
+	args.verifyNodeName = arguments["--verify-node-name"].(bool)
 
+	// Check TLS related args
+	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
+		if args.certFile == "" {
+			stderrLogger.Fatalf("ERROR: --cert-file needs to be specified alongside --key-file and --ca-file")
+		}
+		if args.keyFile == "" {
+			stderrLogger.Fatalf("ERROR: --key-file needs to be specified alongside --cert-file and --ca-file")
+		}
+		if args.caFile == "" {
+			stderrLogger.Fatalf("ERROR: --ca-file needs to be specified alongside --cert-file and --key-file")
+		}
+	}
 	return args
 }
 
@@ -180,7 +245,27 @@ type labelerServer struct {
 
 // Service SetLabels
 func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.SetLabelsReply, error) {
+	if s.args.verifyNodeName {
+		// Client authorization.
+		// Check that the node name matches the CN from the TLS cert
+		client, ok := peer.FromContext(c)
+		if !ok {
+			return &pb.SetLabelsReply{}, fmt.Errorf("failed to get peer (client)")
+		}
+		tlsAuth, ok := client.AuthInfo.(credentials.TLSInfo)
+		if !ok {
+			return &pb.SetLabelsReply{}, fmt.Errorf("incorrect client credentials")
+		}
+		if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
+			return &pb.SetLabelsReply{}, fmt.Errorf("client certificate verification failed")
+		}
+		cn := tlsAuth.State.VerifiedChains[0][0].Subject.CommonName
+		if cn != r.NodeName {
+			return &pb.SetLabelsReply{}, fmt.Errorf("request authorization failed: cert valid for '%s', requested node name '%s'", cn, r.NodeName)
+		}
+	}
 	stdoutLogger.Printf("REQUEST Node: %s NFD-version: %s Labels: %s", r.NodeName, r.NfdVersion, r.Labels)
+
 	if !s.args.noPublish {
 		// Advertise NFD worker version and label names as annotations
 		keys := make([]string, 0, len(r.Labels))

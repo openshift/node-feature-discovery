@@ -17,6 +17,8 @@ limitations under the License.
 package main
 
 import (
+	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -25,10 +27,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docopt/docopt-go"
+	docopt "github.com/docopt/docopt-go"
 	"github.com/ghodss/yaml"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
 	"sigs.k8s.io/node-feature-discovery/pkg/version"
 	"sigs.k8s.io/node-feature-discovery/source"
@@ -50,7 +53,7 @@ import (
 
 const (
 	// ProgramName is the canonical name of this program
-	ProgramName = "nfd-slave"
+	ProgramName = "nfd-worker"
 
 	// NodeNameEnv is the environment variable that contains this node's name.
 	NodeNameEnv = "NODE_NAME"
@@ -84,14 +87,18 @@ type Annotations map[string]string
 
 // Command line arguments
 type Args struct {
-	labelWhiteList string
-	configFile     string
-	noPublish      bool
-	options        string
-	oneshot        bool
-	server         string
-	sleepInterval  time.Duration
-	sources        []string
+	labelWhiteList     string
+	caFile             string
+	certFile           string
+	keyFile            string
+	configFile         string
+	noPublish          bool
+	options            string
+	oneshot            bool
+	server             string
+	serverNameOverride string
+	sleepInterval      time.Duration
+	sources            []string
 }
 
 func main() {
@@ -117,8 +124,33 @@ func main() {
 	}
 
 	// Connect to NFD server
-	opts := []grpc.DialOption{grpc.WithInsecure()}
-	conn, err := grpc.Dial(args.server, opts...)
+	dialOpts := []grpc.DialOption{}
+	if args.caFile != "" || args.certFile != "" || args.keyFile != "" {
+		// Load client cert for client authentication
+		cert, err := tls.LoadX509KeyPair(args.certFile, args.keyFile)
+		if err != nil {
+			stderrLogger.Fatalf("failed to load client certificate: %v", err)
+		}
+		// Load CA cert for server cert verification
+		caCert, err := ioutil.ReadFile(args.caFile)
+		if err != nil {
+			stderrLogger.Fatalf("failed to read root certificate file: %v", err)
+		}
+		caPool := x509.NewCertPool()
+		if ok := caPool.AppendCertsFromPEM(caCert); !ok {
+			stderrLogger.Fatalf("failed to add certificate from '%s'", args.caFile)
+		}
+		// Create TLS config
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      caPool,
+			ServerName:   args.serverNameOverride,
+		}
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
+	} else {
+		dialOpts = append(dialOpts, grpc.WithInsecure())
+	}
+	conn, err := grpc.Dial(args.server, dialOpts...)
 	if err != nil {
 		stderrLogger.Fatalf("failed to connect: %v", err)
 	}
@@ -159,7 +191,8 @@ func argsParse(argv []string) (args Args) {
   Usage:
   %s [--no-publish] [--sources=<sources>] [--label-whitelist=<pattern>]
      [--oneshot | --sleep-interval=<seconds>] [--config=<path>]
-     [--options=<config>] [--server=<server>]
+     [--options=<config>] [--server=<server>] [--server-name-override=<name>]
+     [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
   %s -h | --help
   %s --version
 
@@ -167,14 +200,23 @@ func argsParse(argv []string) (args Args) {
   -h --help                   Show this screen.
   --version                   Output version and exit.
   --config=<path>             Config file to use.
-                              [Default: /etc/kubernetes/node-feature-discovery/node-feature-discovery.conf]
+                              [Default: /etc/kubernetes/node-feature-discovery/nfd-worker.conf]
   --options=<config>          Specify config options from command line. Config
                               options are specified in the same format as in the
                               config file (i.e. json or yaml). These options
                               will override settings read from the config file.
                               [Default: ]
+  --ca-file=<path>            Root certificate for verifying connections
+                              [Default: ]
+  --cert-file=<path>          Certificate used for authenticating connections
+                              [Default: ]
+  --key-file=<path>           Private key matching --cert-file
+                              [Default: ]
   --server=<server>           NFD server address to connecto to.
                               [Default: localhost:8080]
+  --server-name-override=<name> Name (CN) expect from server certificate, useful
+                              in testing
+                              [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
                               [Default: cpu,cpuid,iommu,kernel,local,memory,network,pci,pstate,rdt,storage,system]
   --no-publish                Do not publish discovered features to the
@@ -196,10 +238,14 @@ func argsParse(argv []string) (args Args) {
 
 	// Parse argument values as usable types.
 	var err error
+	args.caFile = arguments["--ca-file"].(string)
+	args.certFile = arguments["--cert-file"].(string)
 	args.configFile = arguments["--config"].(string)
+	args.keyFile = arguments["--key-file"].(string)
 	args.noPublish = arguments["--no-publish"].(bool)
 	args.options = arguments["--options"].(string)
 	args.server = arguments["--server"].(string)
+	args.serverNameOverride = arguments["--server-name-override"].(string)
 	args.sources = strings.Split(arguments["--sources"].(string), ",")
 	args.labelWhiteList = arguments["--label-whitelist"].(string)
 	args.oneshot = arguments["--oneshot"].(bool)
@@ -214,6 +260,18 @@ func argsParse(argv []string) (args Args) {
 		args.sleepInterval = time.Second
 	}
 
+	// Check TLS related args
+	if args.certFile != "" || args.keyFile != "" || args.caFile != "" {
+		if args.certFile == "" {
+			stderrLogger.Fatalf("ERROR: --cert-file needs to be specified alongside --key-file and --ca-file")
+		}
+		if args.keyFile == "" {
+			stderrLogger.Fatalf("ERROR: --key-file needs to be specified alongside --cert-file and --ca-file")
+		}
+		if args.caFile == "" {
+			stderrLogger.Fatalf("ERROR: --ca-file needs to be specified alongside --cert-file and --key-file")
+		}
+	}
 	return args
 }
 

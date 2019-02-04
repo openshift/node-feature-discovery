@@ -21,7 +21,7 @@ RUN case $(uname -m) in \
 RUN go install \
   -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION" \
   ./cmd/*
-RUN install -D -m644 node-feature-discovery.conf.example /etc/kubernetes/node-feature-discovery/node-feature-discovery.conf
+RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
 RUN go test ./cmd/... ./test/unit/...
 
@@ -33,5 +33,3 @@ COPY --from=builder /usr/local/lib /usr/local/lib
 COPY --from=builder /etc/kubernetes/node-feature-discovery /etc/kubernetes/node-feature-discovery
 RUN ldconfig
 COPY --from=builder /go/bin/nfd-* /usr/bin/
-
-ENTRYPOINT ["/usr/bin/node-feature-discovery"]
