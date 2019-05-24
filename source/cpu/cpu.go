@@ -17,12 +17,67 @@ limitations under the License.
 package cpu
 
 import (
-	"fmt"
 	"io/ioutil"
+	"log"
 	"path"
 
 	"sigs.k8s.io/node-feature-discovery/source"
 )
+
+const (
+	cpuDevicesBaseDir = "/sys/bus/cpu/devices"
+)
+
+// Configuration file options
+type cpuidConfig struct {
+	AttributeBlacklist []string `json:"attributeBlacklist,omitempty"`
+	AttributeWhitelist []string `json:"attributeWhitelist,omitempty"`
+}
+
+// NFDConfig is the type holding configuration of the cpuid feature source
+type NFDConfig struct {
+	Cpuid cpuidConfig `json:"cpuid,omitempty"`
+}
+
+// Config contains the configuration of the cpuid source
+var Config = NFDConfig{
+	cpuidConfig{
+		AttributeBlacklist: []string{
+			"BMI1",
+			"BMI2",
+			"CLMUL",
+			"CMOV",
+			"CX16",
+			"ERMS",
+			"F16C",
+			"HTT",
+			"LZCNT",
+			"MMX",
+			"MMXEXT",
+			"NX",
+			"POPCNT",
+			"RDRAND",
+			"RDSEED",
+			"RDTSCP",
+			"SGX",
+			"SSE",
+			"SSE2",
+			"SSE3",
+			"SSE4.1",
+			"SSE4.2",
+			"SSSE3",
+		},
+		AttributeWhitelist: []string{},
+	},
+}
+
+// Filter for cpuid labels
+type keyFilter struct {
+	keys      map[string]struct{}
+	whitelist bool
+}
+
+var cpuidFilter *keyFilter
 
 // Implement FeatureSource interface
 type Source struct{}
@@ -32,27 +87,62 @@ func (s Source) Name() string { return "cpu" }
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 
+	if cpuidFilter == nil {
+		initCpuidFilter()
+	}
+	log.Printf("CONF: %s", Config)
+
 	// Check if hyper-threading seems to be enabled
 	found, err := haveThreadSiblings()
 	if err != nil {
-		return nil, fmt.Errorf("Failed to detect hyper-threading: %v", err)
+		log.Printf("ERROR: failed to detect hyper-threading: %v", err)
 	} else if found {
 		features["hardware_multithreading"] = true
 	}
+
+	// Check SST-BF
+	found, err = discoverSSTBF()
+	if err != nil {
+		log.Printf("ERROR: failed to detect SST-BF: %v", err)
+	} else if found {
+		features["power.sst_bf.enabled"] = true
+	}
+
+	// Detect CPUID
+	cpuidFlags := getCpuidFlags()
+	for _, f := range cpuidFlags {
+		if cpuidFilter.unmask(f) {
+			features["cpuid."+f] = true
+		}
+	}
+
+	// Detect turbo boost
+	turbo, err := turboEnabled()
+	if err != nil {
+		log.Printf("ERROR: %v", err)
+	} else if turbo {
+		features["pstate.turbo"] = true
+	}
+
+	// Detect RDT features
+	rdt := discoverRDT()
+	for _, f := range rdt {
+		features["rdt."+f] = true
+	}
+
 	return features, nil
 }
 
 // Check if any (online) CPUs have thread siblings
 func haveThreadSiblings() (bool, error) {
-	const baseDir = "/sys/bus/cpu/devices"
-	files, err := ioutil.ReadDir(baseDir)
+	files, err := ioutil.ReadDir(cpuDevicesBaseDir)
 	if err != nil {
 		return false, err
 	}
 
 	for _, file := range files {
 		// Try to read siblings from topology
-		siblings, err := ioutil.ReadFile(path.Join(baseDir, file.Name(), "topology/thread_siblings_list"))
+		siblings, err := ioutil.ReadFile(path.Join(cpuDevicesBaseDir, file.Name(), "topology/thread_siblings_list"))
 		if err != nil {
 			return false, err
 		}
@@ -65,4 +155,33 @@ func haveThreadSiblings() (bool, error) {
 	}
 	// No siblings were found
 	return false, nil
+}
+
+func initCpuidFilter() {
+	newFilter := keyFilter{keys: map[string]struct{}{}}
+	if len(Config.Cpuid.AttributeWhitelist) > 0 {
+		for _, k := range Config.Cpuid.AttributeWhitelist {
+			newFilter.keys[k] = struct{}{}
+		}
+		newFilter.whitelist = true
+	} else {
+		for _, k := range Config.Cpuid.AttributeBlacklist {
+			newFilter.keys[k] = struct{}{}
+		}
+		newFilter.whitelist = false
+	}
+	cpuidFilter = &newFilter
+}
+
+func (f keyFilter) unmask(k string) bool {
+	if f.whitelist {
+		if _, ok := f.keys[k]; ok {
+			return true
+		}
+	} else {
+		if _, ok := f.keys[k]; !ok {
+			return true
+		}
+	}
+	return false
 }
