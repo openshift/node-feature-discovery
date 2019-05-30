@@ -6,7 +6,7 @@ GO_FMT := gofmt
 
 IMAGE_BUILD_CMD := podman build 
 
-VERSION := v4.2
+VERSION := v0.4.0
 
 IMAGE_REGISTRY := quay.io/zvonkok
 IMAGE_NAME := node-feature-discovery
