@@ -523,6 +523,34 @@
   version = "v0.1.0"
 
 [[projects]]
+  branch = "master"
+  digest = "1:4b47023528928b8850a06e49cf44f2563c939dd33c5db80ca8b8cd58418d3999"
+  name = "sigs.k8s.io/node-feature-discovery"
+  packages = [
+    "pkg/apihelper",
+    "pkg/cpuid",
+    "pkg/labeler",
+    "pkg/nfd-master",
+    "pkg/nfd-worker",
+    "pkg/version",
+    "source",
+    "source/cpu",
+    "source/fake",
+    "source/iommu",
+    "source/kernel",
+    "source/local",
+    "source/memory",
+    "source/network",
+    "source/panic_fake",
+    "source/pci",
+    "source/storage",
+    "source/system",
+    "test/data",
+  ]
+  pruneopts = "UT"
+  revision = "c9d84ea9f0fcc0d7c54cbdaaba6009e724d702a3"
+
+[[projects]]
   digest = "1:7719608fe0b52a4ece56c2dde37bedd95b938677d1ab0f84b8a7852e4c59f849"
   name = "sigs.k8s.io/yaml"
   packages = ["."]
@@ -550,6 +578,25 @@
     "k8s.io/apimachinery/pkg/util/validation",
     "k8s.io/client-go/kubernetes",
     "k8s.io/client-go/rest",
+    "sigs.k8s.io/node-feature-discovery/pkg/apihelper",
+    "sigs.k8s.io/node-feature-discovery/pkg/cpuid",
+    "sigs.k8s.io/node-feature-discovery/pkg/labeler",
+    "sigs.k8s.io/node-feature-discovery/pkg/nfd-master",
+    "sigs.k8s.io/node-feature-discovery/pkg/nfd-worker",
+    "sigs.k8s.io/node-feature-discovery/pkg/version",
+    "sigs.k8s.io/node-feature-discovery/source",
+    "sigs.k8s.io/node-feature-discovery/source/cpu",
+    "sigs.k8s.io/node-feature-discovery/source/fake",
+    "sigs.k8s.io/node-feature-discovery/source/iommu",
+    "sigs.k8s.io/node-feature-discovery/source/kernel",
+    "sigs.k8s.io/node-feature-discovery/source/local",
+    "sigs.k8s.io/node-feature-discovery/source/memory",
+    "sigs.k8s.io/node-feature-discovery/source/network",
+    "sigs.k8s.io/node-feature-discovery/source/panic_fake",
+    "sigs.k8s.io/node-feature-discovery/source/pci",
+    "sigs.k8s.io/node-feature-discovery/source/storage",
+    "sigs.k8s.io/node-feature-discovery/source/system",
+    "sigs.k8s.io/node-feature-discovery/test/data",
   ]
   solver-name = "gps-cdcl"
   solver-version = 1

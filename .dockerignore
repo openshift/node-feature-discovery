@@ -2,4 +2,3 @@ demo/
 .dockerignore
 .git*
 node-feature-discovery-job.yaml
-vendor/
