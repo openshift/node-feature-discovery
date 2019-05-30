@@ -4,13 +4,11 @@
 GO_CMD := go
 GO_FMT := gofmt
 
-IMAGE_BUILD_CMD := docker build
-IMAGE_BUILD_EXTRA_OPTS :=
-IMAGE_PUSH_CMD := docker push
+IMAGE_BUILD_CMD := podman build 
 
-VERSION := $(shell git describe --tags --dirty --always)
+VERSION := v4.2
 
-IMAGE_REGISTRY := quay.io/kubernetes_incubator
+IMAGE_REGISTRY := quay.io/zvonkok
 IMAGE_NAME := node-feature-discovery
 IMAGE_TAG_NAME := $(VERSION)
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
@@ -25,24 +23,8 @@ yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
 
 all: image
 
-image: yamls
-	$(IMAGE_BUILD_CMD) --build-arg NFD_VERSION=$(VERSION) \
-		--build-arg HOSTMOUNT_PREFIX=$(HOSTMOUNT_PREFIX) \
-		-t $(IMAGE_TAG) \
-		$(IMAGE_BUILD_EXTRA_OPTS) ./
-
-yamls: $(yaml_instances)
-
-%.yaml: %.yaml.template .FORCE
-	@echo "$@: namespace: ${K8S_NAMESPACE}"
-	@echo "$@: image: ${IMAGE_TAG}"
-	@sed -E \
-	     -e s',^(\s*)name: node-feature-discovery # NFD namespace,\1name: ${K8S_NAMESPACE},' \
-	     -e s',^(\s*)image:.+$$,\1image: ${IMAGE_TAG},' \
-	     -e s',^(\s*)namespace:.+$$,\1namespace: ${K8S_NAMESPACE},' \
-	     -e s',^(\s*)mountPath: "/host-,\1mountPath: "${HOSTMOUNT_PREFIX},' \
-	     $< > $@
-
+image:
+	$(IMAGE_BUILD_CMD) -t $(IMAGE_TAG) ./
 mock:
 	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
 	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
