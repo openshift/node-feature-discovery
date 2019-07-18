@@ -10,6 +10,8 @@ IMAGE_TAG_NAME := $(VERSION)
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 
+GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+
 
 all: image
 
@@ -22,3 +24,18 @@ mock:
 
 test:
 	go test ./cmd/... ./pkg/...
+
+	
+verify:	verify-gofmt
+
+verify-gofmt:
+ifeq (, $(GOFMT_CHECK))
+	@echo "verify-gofmt: OK"
+else
+	@echo "verify-gofmt: ERROR: gofmt failed on the following files:"
+	@echo "$(GOFMT_CHECK)"
+	@echo ""
+	@echo "For details, run: gofmt -d -s $(GOFMT_CHECK)"
+	@echo ""
+	@exit 1
+endif
