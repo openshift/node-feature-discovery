@@ -270,7 +270,7 @@ func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*p
 	if !s.args.NoPublish {
 		// Advertise NFD worker version and label names as annotations
 		keys := make([]string, 0, len(labels))
-		for k, _ := range labels {
+		for k := range labels {
 			keys = append(keys, k)
 		}
 		sort.Strings(keys)

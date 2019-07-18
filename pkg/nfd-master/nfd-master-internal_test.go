@@ -53,7 +53,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 		fakeFeatureLabels := map[string]string{"source-feature.1": "val1", "source-feature.2": "val2", "source-feature.3": "val3"}
 		fakeAnnotations := map[string]string{"version": version.Get()}
 		fakeFeatureLabelNames := make([]string, 0, len(fakeFeatureLabels))
-		for k, _ := range fakeFeatureLabels {
+		for k := range fakeFeatureLabels {
 			fakeFeatureLabelNames = append(fakeFeatureLabelNames, k)
 		}
 		sort.Strings(fakeFeatureLabelNames)
