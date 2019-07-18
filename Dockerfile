@@ -10,8 +10,6 @@ RUN go install \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
-RUN make test
-
 FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
 
 # Use more verbose logging of gRPC
