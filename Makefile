@@ -44,10 +44,10 @@ ci-lint:
 	golangci-lint run --timeout 5m0s
 
 test:
-	@echo ${GOPATH}
+	go env
 	go test -x -v ./cmd/... ./pkg/... 
 
-	
+
 verify:	verify-gofmt
 
 verify-gofmt:
