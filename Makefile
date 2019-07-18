@@ -23,7 +23,8 @@ mock:
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
 test:
-	go test ./cmd/... ./pkg/...
+	go test -i ./cmd/... ./pkg/... 
+	go test ./cmd/... ./pkg/... 
 
 	
 verify:	verify-gofmt
