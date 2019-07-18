@@ -23,6 +23,7 @@ mock:
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
 test:
+	@echo $GOPATH
 	go test -x -v ./cmd/... ./pkg/... 
 
 	
