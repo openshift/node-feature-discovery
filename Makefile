@@ -44,6 +44,7 @@ ci-lint:
 	golangci-lint run --timeout 5m0s
 
 test:
+	@echo $GOPATH
 	go test -x -v ./cmd/... ./pkg/... 
 
 	
