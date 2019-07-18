@@ -23,10 +23,10 @@ mock:
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
 test:
-	@echo ${GOPATH}
+	go env
 	go test -x -v ./cmd/... ./pkg/... 
 
-	
+
 verify:	verify-gofmt
 
 verify-gofmt:
