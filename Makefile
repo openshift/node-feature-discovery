@@ -23,7 +23,9 @@ mock:
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
 test:
-	go env
+	go version
+	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/)
+
 	go test -x -v ./cmd/... ./pkg/... 
 
 
