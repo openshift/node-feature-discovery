@@ -44,7 +44,8 @@ ci-lint:
 	golangci-lint run --timeout 5m0s
 
 test:
-	go test ./cmd/... ./pkg/...
+	go test -i ./cmd/... ./pkg/... 
+	go test ./cmd/... ./pkg/... 
 
 	
 verify:	verify-gofmt
