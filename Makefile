@@ -18,8 +18,8 @@ HOSTMOUNT_PREFIX := /host-
 KUBECONFIG :=
 E2E_TEST_CONFIG :=
 
-yaml_templates := $(wildcard *.yaml.template)
-yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
+GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+
 
 all: image
 
@@ -44,10 +44,19 @@ ci-lint:
 	golangci-lint run --timeout 5m0s
 
 test:
-	$(GO_CMD) test ./cmd/... ./pkg/...
+	go test ./cmd/... ./pkg/...
 
-e2e-test:
-	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG)
+	
+verify:	verify-gofmt
 
-push:
-	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
+verify-gofmt:
+ifeq (, $(GOFMT_CHECK))
+	@echo "verify-gofmt: OK"
+else
+	@echo "verify-gofmt: ERROR: gofmt failed on the following files:"
+	@echo "$(GOFMT_CHECK)"
+	@echo ""
+	@echo "For details, run: gofmt -d -s $(GOFMT_CHECK)"
+	@echo ""
+	@exit 1
+endif
