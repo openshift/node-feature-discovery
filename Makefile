@@ -24,7 +24,7 @@ mock:
 
 test:
 	go version
-	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/)
+	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/*/)
 
 	go test -x -v ./cmd/... ./pkg/... 
 
