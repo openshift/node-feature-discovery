@@ -305,10 +305,11 @@ func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*p
 	labels, extendedResources := filterFeatureLabels(r.Labels, s.args.ExtraLabelNs, s.args.LabelWhiteList, s.args.ResourceLabels)
 
 	if !s.args.NoPublish {
-		// Advertise NFD worker version, label names and extended resources as annotations
-		labelKeys := make([]string, 0, len(labels))
+		// Advertise NFD worker version and label names as annotations
+		keys := make([]string, 0, len(labels))
 		for k := range labels {
-			labelKeys = append(labelKeys, k)
+			keys = append(keys, k)
+
 		}
 		sort.Strings(labelKeys)
 
