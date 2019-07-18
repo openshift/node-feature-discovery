@@ -44,7 +44,9 @@ ci-lint:
 	golangci-lint run --timeout 5m0s
 
 test:
-	go env
+	go version
+	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/)
+
 	go test -x -v ./cmd/... ./pkg/... 
 
 
