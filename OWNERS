@@ -1,13 +1,6 @@
-# See the OWNERS file documentation:
-#  https://github.com/kubernetes/community/blob/master/contributors/guide/owners.md
-#
-
 approvers:
-  - balajismaniam
-  - ConnorDoyle
-  - flyingcougar
-  - marquiz
-reviewers:
-  - Ethyling
-  - kad
   - zvonkok
+reviewers:
+  - zvonkok
+  - cep235
+
