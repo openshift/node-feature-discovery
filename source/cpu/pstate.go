@@ -24,12 +24,12 @@ import (
 	"sigs.k8s.io/node-feature-discovery/source"
 )
 
-// Discover p-state related features such as turbo boost.
-func detectPstate() (map[string]string, error) {
+// Discover returns feature names for p-state related features such as turbo boost.
+func turboEnabled() (bool, error) {
 	// On other platforms, the frequency boost mechanism is software-based.
 	// So skip pstate detection on other architectures.
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "386" {
-		return nil, nil
+		return false, nil
 	}
 
 	// Only looking for turbo boost for now...
