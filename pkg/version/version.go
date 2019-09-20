@@ -19,7 +19,7 @@ package version
 const undefinedVersion string = "undefined"
 
 // Must not be const, supposed to be set using ldflags at build time
-var version = undefinedVersion
+var version = "v0.4.0"
 
 // Get returns the version as a string
 func Get() string {
