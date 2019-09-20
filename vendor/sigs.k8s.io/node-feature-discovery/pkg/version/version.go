@@ -17,7 +17,7 @@ limitations under the License.
 package version
 
 // Must not be const, supposed to be set using ldflags at build time
-var version = "undefined"
+var version = "v0.4.0"
 
 func Get() string {
 	return version
