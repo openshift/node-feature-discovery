@@ -20,11 +20,13 @@ E2E_TEST_CONFIG :=
 
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 
-
 all: image
 
 image:
 	$(IMAGE_BUILD_CMD) -t $(IMAGE_TAG) ./
+
+image-push:
+		podman push $(IMAGE_TAG) 
 mock:
 	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
 	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
@@ -48,7 +50,6 @@ test:
 	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/*/)
 
 	go test -x -v ./cmd/... ./pkg/... 
-
 
 verify:	verify-gofmt
 
