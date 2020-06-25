@@ -309,7 +309,6 @@ func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*p
 		keys := make([]string, 0, len(labels))
 		for k := range labels {
 			keys = append(keys, k)
-
 		}
 		sort.Strings(labelKeys)
 

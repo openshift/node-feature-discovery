@@ -21,7 +21,6 @@ RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discov
 
 RUN make test
 
-
 # Create production image for running node feature discovery
 FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
 
@@ -30,4 +29,3 @@ ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
 
 COPY --from=builder /etc/kubernetes/node-feature-discovery /etc/kubernetes/node-feature-discovery
 COPY --from=builder /go/bin/nfd-* /usr/bin/
-
