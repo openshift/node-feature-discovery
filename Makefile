@@ -6,9 +6,9 @@ GO_FMT := gofmt
 
 IMAGE_BUILD_CMD := podman build 
 
-VERSION := v0.4.0
+VERSION := v0.6.0
 
-IMAGE_REGISTRY := quay.io/zvonkok
+IMAGE_REGISTRY := quay.io/openshift-psap
 IMAGE_NAME := node-feature-discovery
 IMAGE_TAG_NAME := $(VERSION)
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
