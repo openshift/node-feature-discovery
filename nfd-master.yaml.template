@@ -1,8 +1,13 @@
 apiVersion: v1
+kind: Namespace
+metadata:
+  name: node-feature-discovery # NFD namespace
+---
+apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: nfd-master
-  namespace: default
+  namespace: node-feature-discovery
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
@@ -13,6 +18,9 @@ rules:
   - ""
   resources:
   - nodes
+# when using command line flag --resource-labels to create extended resources
+# you will need to uncomment "- nodes/status"
+# - nodes/status
   verbs:
   - get
   - patch
@@ -29,15 +37,17 @@ roleRef:
 subjects:
 - kind: ServiceAccount
   name: nfd-master
-  namespace: default
+  namespace: node-feature-discovery
 ---
 apiVersion: apps/v1
-kind: DaemonSet
+kind: Deployment
 metadata:
   labels:
     app: nfd-master
   name: nfd-master
+  namespace: node-feature-discovery
 spec:
+  replicas: 1
   selector:
     matchLabels:
       app: nfd-master
@@ -47,8 +57,15 @@ spec:
         app: nfd-master
     spec:
       serviceAccount: nfd-master
-      nodeSelector:
-        node-role.kubernetes.io/master: ""
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 1
+              preference:
+                matchExpressions:
+                  - key: "node-role.kubernetes.io/master"
+                    operator: In
+                    values: [""]
       tolerations:
         - key: "node-role.kubernetes.io/master"
           operator: "Equal"
@@ -60,7 +77,7 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          image: quay.io/kubernetes_incubator/node-feature-discovery:v0.4.0
+          image: quay.io/kubernetes_incubator/node-feature-discovery:v0.6.0
           name: nfd-master
           command:
             - "nfd-master"
@@ -94,6 +111,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: nfd-master
+  namespace: node-feature-discovery
 spec:
   selector:
     app: nfd-master

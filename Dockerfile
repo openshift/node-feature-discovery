@@ -1,12 +1,20 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.13 AS builder
 
-ADD . /go/src/sigs.k8s.io/node-feature-discovery
+# Get (cache) deps in a separate layer
+COPY go.mod go.sum /go/node-feature-discovery/
 
-WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
+WORKDIR /go/node-feature-discovery
 
+RUN go mod download
+
+# Do actual build
+COPY . /go/node-feature-discovery
+
+ARG NFD_VERSION
+ARG HOSTMOUNT_PREFIX
 
 RUN go install \
-  -ldflags "-X sigs.k8s.io/node-feature-discovery/pkg/version.version=v0.4.0" \
+  -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 

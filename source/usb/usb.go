@@ -1,5 +1,5 @@
 /*
-Copyright 2018 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package pci
+package usb
 
 import (
 	"fmt"
@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"sigs.k8s.io/node-feature-discovery/source"
-	pciutils "sigs.k8s.io/node-feature-discovery/source/internal"
+	usbutils "sigs.k8s.io/node-feature-discovery/source/internal"
 )
 
 type Config struct {
@@ -33,8 +33,11 @@ type Config struct {
 // newDefaultConfig returns a new config with pre-populated defaults
 func newDefaultConfig() *Config {
 	return &Config{
-		DeviceClassWhitelist: []string{"03", "0b40", "12"},
-		DeviceLabelFields:    []string{"class", "vendor"},
+		// Whitelist specific USB classes: https://www.usb.org/defined-class-codes
+		// By default these include classes where different accelerators are typically mapped:
+		// Video (0e), Miscellaneous (ef), Application Specific (fe), and Vendor Specific (ff).
+		DeviceClassWhitelist: []string{"0e", "ef", "fe", "ff"},
+		DeviceLabelFields:    []string{"class", "vendor", "device"},
 	}
 }
 
@@ -44,7 +47,7 @@ type Source struct {
 }
 
 // Return name of the feature source
-func (s Source) Name() string { return "pci" }
+func (s Source) Name() string { return "usb" }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
@@ -73,7 +76,7 @@ func (s Source) Discover() (source.Features, error) {
 		configLabelFields[field] = true
 	}
 
-	for _, attr := range pciutils.DefaultPciDevAttrs {
+	for _, attr := range usbutils.DefaultUsbDevAttrs {
 		if _, ok := configLabelFields[attr]; ok {
 			deviceLabelFields = append(deviceLabelFields, attr)
 			delete(configLabelFields, attr)
@@ -88,22 +91,18 @@ func (s Source) Discover() (source.Features, error) {
 	}
 	if len(deviceLabelFields) == 0 {
 		log.Printf("WARNING: no valid fields in deviceLabelFields defined, using the defaults")
-		deviceLabelFields = []string{"class", "vendor"}
+		deviceLabelFields = []string{"vendor", "device"}
 	}
 
-	// Read extraDevAttrs + configured or default labels. Attributes
-	// set to 'true' are considered must-have.
+	// Read configured or default labels. Attributes set to 'true' are considered must-have.
 	deviceAttrs := map[string]bool{}
-	for _, label := range pciutils.ExtraPciDevAttrs {
-		deviceAttrs[label] = false
-	}
 	for _, label := range deviceLabelFields {
 		deviceAttrs[label] = true
 	}
 
-	devs, err := pciutils.DetectPci(deviceAttrs)
+	devs, err := usbutils.DetectUsb(deviceAttrs)
 	if err != nil {
-		return nil, fmt.Errorf("Failed to detect PCI devices: %s", err.Error())
+		return nil, fmt.Errorf("Failed to detect USB devices: %s", err.Error())
 	}
 
 	// Iterate over all device classes
@@ -119,10 +118,6 @@ func (s Source) Discover() (source.Features, error) {
 						}
 					}
 					features[devLabel+".present"] = true
-
-					if _, ok := dev["sriov_totalvfs"]; ok {
-						features[devLabel+".sriov.capable"] = true
-					}
 				}
 			}
 		}

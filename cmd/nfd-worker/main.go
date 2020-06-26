@@ -34,8 +34,8 @@ const (
 
 func main() {
 	// Assert that the version is known
-	if version.Get() == "undefined" {
-		log.Fatalf("version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+	if version.Undefined() {
+		log.Printf("WARNING: version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Parse command-line arguments.
@@ -91,11 +91,14 @@ func argsParse(argv []string) (worker.Args, error) {
                               in testing
                               [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
-                              [Default: cpu,iommu,kernel,local,memory,network,pci,storage,system]
+                              [Default: cpu,custom,iommu,kernel,local,memory,network,pci,storage,system,usb]
   --no-publish                Do not publish discovered features to the
                               cluster-local Kubernetes API server.
   --label-whitelist=<pattern> Regular expression to filter label names to
-                              publish to the Kubernetes API server. [Default: ]
+                              publish to the Kubernetes API server.
+                              NB: the label namespace is omitted i.e. the filter
+                              is only applied to the name part after '/'.
+                              [Default: ]
   --oneshot                   Label once and exit.
   --sleep-interval=<seconds>  Time to sleep between re-labeling. Non-positive
                               value implies no re-labeling (i.e. infinite
@@ -106,8 +109,8 @@ func argsParse(argv []string) (worker.Args, error) {
 		ProgramName,
 	)
 
-	arguments, _ := docopt.Parse(usage, argv, true,
-		fmt.Sprintf("%s %s", ProgramName, version.Get()), false)
+	arguments, _ := docopt.ParseArgs(usage, argv,
+		fmt.Sprintf("%s %s", ProgramName, version.Get()))
 
 	// Parse argument values as usable types.
 	var err error

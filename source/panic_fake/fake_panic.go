@@ -14,7 +14,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package panic_fake
+package panicfake
 
 import "sigs.k8s.io/node-feature-discovery/source"
 
@@ -23,6 +23,15 @@ type Source struct{}
 
 // Name returns an identifier string for this feature source.
 func (s Source) Name() string { return "panic_fake" }
+
+// NewConfig method of the FeatureSource interface
+func (s *Source) NewConfig() source.Config { return nil }
+
+// GetConfig method of the FeatureSource interface
+func (s *Source) GetConfig() source.Config { return nil }
+
+// SetConfig method of the FeatureSource interface
+func (s *Source) SetConfig(source.Config) {}
 
 // Discover calls panic().
 func (s Source) Discover() (source.Features, error) {

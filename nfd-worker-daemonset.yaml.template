@@ -4,6 +4,7 @@ metadata:
   labels:
     app: nfd-worker
   name: nfd-worker
+  namespace: node-feature-discovery
 spec:
   selector:
     matchLabels:
@@ -13,7 +14,6 @@ spec:
       labels:
         app: nfd-worker
     spec:
-      hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       containers:
         - env:
@@ -21,7 +21,7 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          image: quay.io/kubernetes_incubator/node-feature-discovery:v0.4.0
+          image: quay.io/kubernetes_incubator/node-feature-discovery:v0.6.0
           name: nfd-worker
           command:
             - "nfd-worker"

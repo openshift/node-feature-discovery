@@ -36,6 +36,15 @@ type Source struct{}
 
 func (s Source) Name() string { return "system" }
 
+// NewConfig method of the FeatureSource interface
+func (s *Source) NewConfig() source.Config { return nil }
+
+// GetConfig method of the FeatureSource interface
+func (s *Source) GetConfig() source.Config { return nil }
+
+// SetConfig method of the FeatureSource interface
+func (s *Source) SetConfig(source.Config) {}
+
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 
@@ -51,7 +60,9 @@ func (s Source) Discover() (source.Features, error) {
 				if key == "VERSION_ID" {
 					versionComponents := splitVersion(value)
 					for subKey, subValue := range versionComponents {
-						features[feature+"."+subKey] = subValue
+						if subValue != "" {
+							features[feature+"."+subKey] = subValue
+						}
 					}
 				}
 			}
@@ -64,7 +75,7 @@ func (s Source) Discover() (source.Features, error) {
 func parseOSRelease() (map[string]string, error) {
 	release := map[string]string{}
 
-	f, err := os.Open("/host-etc/os-release")
+	f, err := os.Open(source.EtcDir.Path("os-release"))
 	if err != nil {
 		return nil, err
 	}

@@ -28,11 +28,20 @@ type Source struct{}
 
 func (s Source) Name() string { return "iommu" }
 
+// NewConfig method of the FeatureSource interface
+func (s *Source) NewConfig() source.Config { return nil }
+
+// GetConfig method of the FeatureSource interface
+func (s *Source) GetConfig() source.Config { return nil }
+
+// SetConfig method of the FeatureSource interface
+func (s *Source) SetConfig(source.Config) {}
+
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 
 	// Check if any iommu devices are available
-	devices, err := ioutil.ReadDir("/sys/class/iommu/")
+	devices, err := ioutil.ReadDir(source.SysfsDir.Path("class/iommu/"))
 	if err != nil {
 		return nil, fmt.Errorf("Failed to check for IOMMU support: %v", err)
 	}

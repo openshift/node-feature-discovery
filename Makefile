@@ -1,44 +1,71 @@
-.PHONY: all test
+.PHONY: all test yamls
+.FORCE:
 
-IMAGE_BUILD_CMD := podman build 
+GO_CMD := go
+GO_FMT := gofmt
 
-VERSION := v0.4.0
+IMAGE_BUILD_CMD := podman build
+IMAGE_BUILD_EXTRA_OPTS :=
+IMAGE_PUSH_CMD := podman push
 
-IMAGE_REGISTRY := quay.io/zvonkok
+VERSION := $(shell git describe --tags --dirty --always)
+
+IMAGE_REGISTRY := quay.io/openshift-psap
 IMAGE_NAME := node-feature-discovery
 IMAGE_TAG_NAME := $(VERSION)
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
+K8S_NAMESPACE := kube-system
+HOSTMOUNT_PREFIX := /host-
+KUBECONFIG :=
+E2E_TEST_CONFIG :=
 
-GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
-
+yaml_templates := $(wildcard *.yaml.template)
+yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
 
 all: image
 
-image:
-	$(IMAGE_BUILD_CMD) -t $(IMAGE_TAG) ./
+image: yamls
+	$(IMAGE_BUILD_CMD) --build-arg NFD_VERSION=$(VERSION) \
+		--build-arg HOSTMOUNT_PREFIX=$(HOSTMOUNT_PREFIX) \
+		-t $(IMAGE_TAG) \
+		$(IMAGE_BUILD_EXTRA_OPTS) ./
+
+image-push:
+	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
+
+yamls: $(yaml_instances)
+
+%.yaml: %.yaml.template .FORCE
+	@echo "$@: namespace: ${K8S_NAMESPACE}"
+	@echo "$@: image: ${IMAGE_TAG}"
+	@sed -E \
+	     -e s',^(\s*)name: node-feature-discovery # NFD namespace,\1name: ${K8S_NAMESPACE},' \
+	     -e s',^(\s*)image:.+$$,\1image: ${IMAGE_TAG},' \
+	     -e s',^(\s*)namespace:.+$$,\1namespace: ${K8S_NAMESPACE},' \
+	     -e s',^(\s*)mountPath: "/host-,\1mountPath: "${HOSTMOUNT_PREFIX},' \
+	     $< > $@
+
 mock:
 	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
 	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
+gofmt:
+	@$(GO_FMT) -w -l $$(find . -name '*.go')
+
+gofmt-verify:
+	@out=`$(GO_FMT) -l -d $$(find . -name '*.go')`; \
+	if [ -n "$$out" ]; then \
+	    echo "$$out"; \
+	    exit 1; \
+	fi
+
+ci-lint:
+	golangci-lint run --timeout 5m0s
+
 test:
-	go version
-	@echo $(shell ls /go/src/github.com/openshift/node-feature-discovery/vendor/*/)
+	$(GO_CMD) test ./cmd/... ./pkg/...
 
-	go test -x -v ./cmd/... ./pkg/... 
-
-
-verify:	verify-gofmt
-
-verify-gofmt:
-ifeq (, $(GOFMT_CHECK))
-	@echo "verify-gofmt: OK"
-else
-	@echo "verify-gofmt: ERROR: gofmt failed on the following files:"
-	@echo "$(GOFMT_CHECK)"
-	@echo ""
-	@echo "For details, run: gofmt -d -s $(GOFMT_CHECK)"
-	@echo ""
-	@exit 1
-endif
+e2e-test:
+	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG)

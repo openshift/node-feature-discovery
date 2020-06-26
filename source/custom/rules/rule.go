@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,19 +14,9 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package version
+package rules
 
-const undefinedVersion string = "undefined"
-
-// Must not be const, supposed to be set using ldflags at build time
-var version = undefinedVersion
-
-// Get returns the version as a string
-func Get() string {
-	return version
-}
-
-// Undefined returns if version is at it's default value
-func Undefined() bool {
-	return version == undefinedVersion
+type Rule interface {
+	// Match on rule
+	Match() (bool, error)
 }
