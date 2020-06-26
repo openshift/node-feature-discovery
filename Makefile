@@ -4,6 +4,7 @@
 GO_CMD := go
 GO_FMT := gofmt
 GO111MODULE=on
+GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
 
 IMAGE_BUILD_CMD := podman build
 IMAGE_BUILD_EXTRA_OPTS :=
@@ -59,11 +60,16 @@ mock:
 verify:	verify-gofmt
 
 verify-gofmt:
-	@out=`$(GO_FMT) -l -d $$(find . -name '*.go')`; \
-	if [ -n "$$out" ]; then \
-	    echo "$$out"; \
-	    exit 1; \
-	fi
+ifeq (, $(GOFMT_CHECK))
+	@echo "verify-gofmt: OK"
+else
+	@echo "verify-gofmt: ERROR: gofmt failed on the following files:"
+	@echo "$(GOFMT_CHECK)"
+	@echo ""
+	@echo "For details, run: gofmt -d -s $(GOFMT_CHECK)"
+	@echo ""
+	@exit 1
+endif
 
 gofmt:
 	@$(GO_FMT) -w -l $$(find . -name '*.go')
