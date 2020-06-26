@@ -1,7 +1,7 @@
 .PHONY: all test yamls
 .FORCE:
 
-GO_CMD := go
+GO_CMD := GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
 GO_FMT := gofmt
 GO111MODULE=on
 GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
@@ -29,7 +29,7 @@ yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
 all: build
 
 build:
-	GOOS=linux $(GO_CMD) build -o $(BIN) -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" ./cmd/*
+	$(GO_CMD) build -o $(BIN) -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" ./cmd/*
 
 local-image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg NFD_VERSION=$(VERSION) \
