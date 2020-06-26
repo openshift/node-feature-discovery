@@ -10,6 +10,7 @@ IMAGE_PUSH_CMD := podman push
 
 VERSION := $(shell git describe --tags --dirty --always)
 
+BIN := node-feature-discovery
 IMAGE_REGISTRY := quay.io/openshift-psap
 IMAGE_NAME := node-feature-discovery
 IMAGE_TAG_NAME := $(VERSION)
@@ -23,15 +24,18 @@ E2E_TEST_CONFIG :=
 yaml_templates := $(wildcard *.yaml.template)
 yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
 
-all: image
+all: build
 
-image: yamls
+build:
+	GOOS=linux $(GO_CMD) build -o $(BIN) -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" ./cmd/*
+
+local-image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg NFD_VERSION=$(VERSION) \
 		--build-arg HOSTMOUNT_PREFIX=$(HOSTMOUNT_PREFIX) \
 		-t $(IMAGE_TAG) \
 		$(IMAGE_BUILD_EXTRA_OPTS) ./
 
-image-push:
+local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
 
 yamls: $(yaml_instances)
@@ -51,15 +55,17 @@ mock:
 	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
 	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
 
-gofmt:
-	@$(GO_FMT) -w -l $$(find . -name '*.go')
+verify:	verify-gofmt
 
-gofmt-verify:
+verify-gofmt:
 	@out=`$(GO_FMT) -l -d $$(find . -name '*.go')`; \
 	if [ -n "$$out" ]; then \
 	    echo "$$out"; \
 	    exit 1; \
 	fi
+
+gofmt:
+	@$(GO_FMT) -w -l $$(find . -name '*.go')
 
 ci-lint:
 	golangci-lint run --timeout 5m0s
@@ -67,5 +73,11 @@ ci-lint:
 test:
 	$(GO_CMD) test ./cmd/... ./pkg/...
 
-e2e-test:
+test-e2e:
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG)
+
+clean:
+		go clean
+		rm -f $(BIN)
+
+.PHONY: all build verify verify-gofmt clean local-image local-image-push test-e2e
