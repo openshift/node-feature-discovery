@@ -3,6 +3,7 @@
 
 GO_CMD := go
 GO_FMT := gofmt
+GO111MODULE=on
 
 IMAGE_BUILD_CMD := podman build
 IMAGE_BUILD_EXTRA_OPTS :=
