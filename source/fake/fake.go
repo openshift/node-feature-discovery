@@ -16,7 +16,7 @@ limitations under the License.
 
 package fake
 
-import "sigs.k8s.io/node-feature-discovery/source"
+import "openshift/node-feature-discovery/source"
 
 // Source implements FeatureSource.
 type Source struct{}

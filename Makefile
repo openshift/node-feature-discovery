@@ -29,7 +29,7 @@ yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
 all: build
 
 build:
-	$(GO_CMD) build -o $(BIN) -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$NFD_VERSION -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" ./cmd/*
+	$(GO_CMD) build -o $(BIN) -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$NFD_VERSION -X openshift/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" ./cmd/*
 
 local-image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg NFD_VERSION=$(VERSION) \

@@ -22,9 +22,10 @@ import (
 	"strings"
 	"time"
 
+	worker "openshift/node-feature-discovery/pkg/nfd-worker"
+	"openshift/node-feature-discovery/pkg/version"
+
 	"github.com/docopt/docopt-go"
-	worker "sigs.k8s.io/node-feature-discovery/pkg/nfd-worker"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -35,7 +36,7 @@ const (
 func main() {
 	// Assert that the version is known
 	if version.Undefined() {
-		log.Printf("WARNING: version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		log.Printf("WARNING: version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Parse command-line arguments.

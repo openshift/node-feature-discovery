@@ -24,7 +24,7 @@ import (
 	"strconv"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Linux net iface flags (we only specify the first few)

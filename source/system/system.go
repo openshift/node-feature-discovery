@@ -23,7 +23,7 @@ import (
 	"regexp"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 var osReleaseFields = [...]string{

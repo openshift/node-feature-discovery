@@ -17,7 +17,7 @@ limitations under the License.
 package custom
 
 import (
-	"sigs.k8s.io/node-feature-discovery/source/custom/rules"
+	"openshift/node-feature-discovery/source/custom/rules"
 )
 
 // getStaticFeatures returns statically configured custom features to discover

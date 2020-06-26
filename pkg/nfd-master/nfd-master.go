@@ -30,14 +30,15 @@ import (
 	"strings"
 	"time"
 
+	"openshift/node-feature-discovery/pkg/apihelper"
+	pb "openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/pkg/version"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/peer"
 	api "k8s.io/api/core/v1"
-	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
-	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
 )
 
 const (

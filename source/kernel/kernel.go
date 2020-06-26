@@ -25,8 +25,9 @@ import (
 	"regexp"
 	"strings"
 
+	"openshift/node-feature-discovery/source"
+
 	"k8s.io/apimachinery/pkg/util/validation"
-	"sigs.k8s.io/node-feature-discovery/source"
 )
 
 // Configuration file options

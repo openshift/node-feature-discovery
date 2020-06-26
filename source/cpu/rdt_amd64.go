@@ -19,7 +19,7 @@ limitations under the License.
 package cpu
 
 import (
-	"sigs.k8s.io/node-feature-discovery/pkg/cpuid"
+	"openshift/node-feature-discovery/pkg/cpuid"
 )
 
 const (

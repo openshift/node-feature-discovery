@@ -18,7 +18,7 @@ package rules
 
 import (
 	"fmt"
-	usbutils "sigs.k8s.io/node-feature-discovery/source/internal"
+	usbutils "openshift/node-feature-discovery/source/internal"
 )
 
 // Rule that matches on the following USB device attributes: <class, vendor, device>

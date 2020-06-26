@@ -24,16 +24,17 @@ import (
 	"strings"
 	"testing"
 
+	"openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/cpu"
+	"openshift/node-feature-discovery/source/fake"
+	"openshift/node-feature-discovery/source/kernel"
+	panicfake "openshift/node-feature-discovery/source/panic_fake"
+	"openshift/node-feature-discovery/source/pci"
+
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
 	"github.com/vektra/errors"
-	"sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/cpu"
-	"sigs.k8s.io/node-feature-discovery/source/fake"
-	"sigs.k8s.io/node-feature-discovery/source/kernel"
-	"sigs.k8s.io/node-feature-discovery/source/panic_fake"
-	"sigs.k8s.io/node-feature-discovery/source/pci"
 )
 
 const fakeFeatureSourceName string = "testSource"

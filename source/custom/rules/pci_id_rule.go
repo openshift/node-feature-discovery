@@ -18,7 +18,7 @@ package rules
 
 import (
 	"fmt"
-	pciutils "sigs.k8s.io/node-feature-discovery/source/internal"
+	pciutils "openshift/node-feature-discovery/source/internal"
 )
 
 // Rule that matches on the following PCI device attributes: <class, vendor, device>

@@ -20,8 +20,8 @@ import (
 	"fmt"
 	"log"
 
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/custom/rules"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/custom/rules"
 )
 
 // Custom Features Configurations

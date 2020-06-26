@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Detect if selinux has been enabled in the kernel

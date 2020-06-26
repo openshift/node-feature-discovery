@@ -21,7 +21,7 @@ import (
 	"io/ioutil"
 	"runtime"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Discover p-state related features such as turbo boost.

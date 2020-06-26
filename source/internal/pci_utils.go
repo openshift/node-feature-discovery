@@ -23,7 +23,7 @@ import (
 	"path"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 type PciDeviceInfo map[string]string

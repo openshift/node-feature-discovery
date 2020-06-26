@@ -21,8 +21,8 @@ import (
 	"log"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
-	usbutils "sigs.k8s.io/node-feature-discovery/source/internal"
+	"openshift/node-feature-discovery/source"
+	usbutils "openshift/node-feature-discovery/source/internal"
 )
 
 type Config struct {
