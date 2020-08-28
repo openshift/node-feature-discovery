@@ -14,7 +14,7 @@ ARG VERSION
 ARG HOSTMOUNT_PREFIX
 
 RUN go install \
-  -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$NFD_VERSION -X openshift/node-feature-discovery/source.pathPrefix=$HOSTMOUNT_PREFIX" \
+  -ldflags "-X sigs.k8s.io/node-feature-discovery/pkg/version.version=v0.4.0" \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
