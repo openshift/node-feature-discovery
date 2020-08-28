@@ -30,8 +30,14 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          image: quay.io/kubernetes_incubator/node-feature-discovery:v0.6.0
+          image: k8s.gcr.io/nfd/node-feature-discovery:v0.6.0
           name: nfd-worker
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
           command:
             - "nfd-worker"
           args:
