@@ -1,4 +1,4 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
+FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-4.6 AS builder
 
 ADD . /go/src/sigs.k8s.io/node-feature-discovery
 
@@ -10,7 +10,7 @@ RUN go install \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
-FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
+FROM registry.svc.ci.openshift.org/ocp/4.6:base
 
 # Use more verbose logging of gRPC
 ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
