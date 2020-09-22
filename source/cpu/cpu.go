@@ -19,13 +19,8 @@ package cpu
 import (
 	"io/ioutil"
 	"log"
-	"path"
 
-	"sigs.k8s.io/node-feature-discovery/source"
-)
-
-const (
-	cpuDevicesBaseDir = "/sys/bus/cpu/devices"
+	"openshift/node-feature-discovery/source"
 )
 
 // Configuration file options
@@ -34,41 +29,43 @@ type cpuidConfig struct {
 	AttributeWhitelist []string `json:"attributeWhitelist,omitempty"`
 }
 
-// NFDConfig is the type holding configuration of the cpuid feature source
-type NFDConfig struct {
+type Config struct {
 	Cpuid cpuidConfig `json:"cpuid,omitempty"`
 }
 
-// Config contains the configuration of the cpuid source
-var Config = NFDConfig{
-	cpuidConfig{
-		AttributeBlacklist: []string{
-			"BMI1",
-			"BMI2",
-			"CLMUL",
-			"CMOV",
-			"CX16",
-			"ERMS",
-			"F16C",
-			"HTT",
-			"LZCNT",
-			"MMX",
-			"MMXEXT",
-			"NX",
-			"POPCNT",
-			"RDRAND",
-			"RDSEED",
-			"RDTSCP",
-			"SGX",
-			"SSE",
-			"SSE2",
-			"SSE3",
-			"SSE4.1",
-			"SSE4.2",
-			"SSSE3",
+// newDefaultConfig returns a new config with pre-populated defaults
+func newDefaultConfig() *Config {
+	return &Config{
+		cpuidConfig{
+			AttributeBlacklist: []string{
+				"BMI1",
+				"BMI2",
+				"CLMUL",
+				"CMOV",
+				"CX16",
+				"ERMS",
+				"F16C",
+				"HTT",
+				"LZCNT",
+				"MMX",
+				"MMXEXT",
+				"NX",
+				"POPCNT",
+				"RDRAND",
+				"RDSEED",
+				"RDTSCP",
+				"SGX",
+				"SGXLC",
+				"SSE",
+				"SSE2",
+				"SSE3",
+				"SSE4.1",
+				"SSE4.2",
+				"SSSE3",
+			},
+			AttributeWhitelist: []string{},
 		},
-		AttributeWhitelist: []string{},
-	},
+	}
 }
 
 // Filter for cpuid labels
@@ -77,20 +74,33 @@ type keyFilter struct {
 	whitelist bool
 }
 
-var cpuidFilter *keyFilter
-
 // Implement FeatureSource interface
-type Source struct{}
+type Source struct {
+	config      *Config
+	cpuidFilter *keyFilter
+}
 
 func (s Source) Name() string { return "cpu" }
 
-func (s Source) Discover() (source.Features, error) {
-	features := source.Features{}
+// NewConfig method of the FeatureSource interface
+func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
 
-	if cpuidFilter == nil {
-		initCpuidFilter()
+// GetConfig method of the FeatureSource interface
+func (s *Source) GetConfig() source.Config { return s.config }
+
+// SetConfig method of the FeatureSource interface
+func (s *Source) SetConfig(conf source.Config) {
+	switch v := conf.(type) {
+	case *Config:
+		s.config = v
+		s.initCpuidFilter()
+	default:
+		log.Printf("PANIC: invalid config type: %T", conf)
 	}
-	log.Printf("CONF: %s", Config)
+}
+
+func (s *Source) Discover() (source.Features, error) {
+	features := source.Features{}
 
 	// Check if hyper-threading seems to be enabled
 	found, err := haveThreadSiblings()
@@ -111,17 +121,19 @@ func (s Source) Discover() (source.Features, error) {
 	// Detect CPUID
 	cpuidFlags := getCpuidFlags()
 	for _, f := range cpuidFlags {
-		if cpuidFilter.unmask(f) {
+		if s.cpuidFilter.unmask(f) {
 			features["cpuid."+f] = true
 		}
 	}
 
-	// Detect turbo boost
-	turbo, err := turboEnabled()
+	// Detect pstate features
+	pstate, err := detectPstate()
 	if err != nil {
 		log.Printf("ERROR: %v", err)
-	} else if turbo {
-		features["pstate.turbo"] = true
+	} else {
+		for k, v := range pstate {
+			features["pstate."+k] = v
+		}
 	}
 
 	// Detect RDT features
@@ -135,14 +147,15 @@ func (s Source) Discover() (source.Features, error) {
 
 // Check if any (online) CPUs have thread siblings
 func haveThreadSiblings() (bool, error) {
-	files, err := ioutil.ReadDir(cpuDevicesBaseDir)
+
+	files, err := ioutil.ReadDir(source.SysfsDir.Path("bus/cpu/devices"))
 	if err != nil {
 		return false, err
 	}
 
 	for _, file := range files {
 		// Try to read siblings from topology
-		siblings, err := ioutil.ReadFile(path.Join(cpuDevicesBaseDir, file.Name(), "topology/thread_siblings_list"))
+		siblings, err := ioutil.ReadFile(source.SysfsDir.Path("bus/cpu/devices", file.Name(), "topology/thread_siblings_list"))
 		if err != nil {
 			return false, err
 		}
@@ -157,20 +170,20 @@ func haveThreadSiblings() (bool, error) {
 	return false, nil
 }
 
-func initCpuidFilter() {
+func (s *Source) initCpuidFilter() {
 	newFilter := keyFilter{keys: map[string]struct{}{}}
-	if len(Config.Cpuid.AttributeWhitelist) > 0 {
-		for _, k := range Config.Cpuid.AttributeWhitelist {
+	if len(s.config.Cpuid.AttributeWhitelist) > 0 {
+		for _, k := range s.config.Cpuid.AttributeWhitelist {
 			newFilter.keys[k] = struct{}{}
 		}
 		newFilter.whitelist = true
 	} else {
-		for _, k := range Config.Cpuid.AttributeBlacklist {
+		for _, k := range s.config.Cpuid.AttributeBlacklist {
 			newFilter.keys[k] = struct{}{}
 		}
 		newFilter.whitelist = false
 	}
-	cpuidFilter = &newFilter
+	s.cpuidFilter = &newFilter
 }
 
 func (f keyFilter) unmask(k string) bool {

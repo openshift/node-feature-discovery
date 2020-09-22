@@ -23,10 +23,11 @@ import (
 	"testing"
 	"time"
 
+	nfdmaster "openshift/node-feature-discovery/pkg/nfd-master"
+	w "openshift/node-feature-discovery/pkg/nfd-worker"
+	"openshift/node-feature-discovery/test/data"
+
 	. "github.com/smartystreets/goconvey/convey"
-	nfdmaster "sigs.k8s.io/node-feature-discovery/pkg/nfd-master"
-	w "sigs.k8s.io/node-feature-discovery/pkg/nfd-worker"
-	"sigs.k8s.io/node-feature-discovery/test/data"
 )
 
 type testContext struct {

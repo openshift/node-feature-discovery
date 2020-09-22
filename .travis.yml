@@ -1,7 +1,0 @@
-language: minimal
-
-services:
-    - docker
-
-script:
-    - docker build -t quay.io/kubernetes_incubator/node-feature-discovery .

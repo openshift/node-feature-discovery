@@ -18,51 +18,62 @@ package pci
 
 import (
 	"fmt"
-	"io/ioutil"
 	"log"
-	"path"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
+	pciutils "openshift/node-feature-discovery/source/internal"
 )
 
-type pciDeviceInfo map[string]string
-
-type NFDConfig struct {
+type Config struct {
 	DeviceClassWhitelist []string `json:"deviceClassWhitelist,omitempty"`
 	DeviceLabelFields    []string `json:"deviceLabelFields,omitempty"`
 }
 
-var Config = NFDConfig{
-	DeviceClassWhitelist: []string{"03", "0b40", "12"},
-	DeviceLabelFields:    []string{"class", "vendor"},
+// newDefaultConfig returns a new config with pre-populated defaults
+func newDefaultConfig() *Config {
+	return &Config{
+		DeviceClassWhitelist: []string{"03", "0b40", "12"},
+		DeviceLabelFields:    []string{"class", "vendor"},
+	}
 }
 
-var devLabelAttrs = []string{"class", "vendor", "device", "subsystem_vendor", "subsystem_device"}
-
 // Implement FeatureSource interface
-type Source struct{}
+type Source struct {
+	config *Config
+}
 
 // Return name of the feature source
 func (s Source) Name() string { return "pci" }
+
+// NewConfig method of the FeatureSource interface
+func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
+
+// GetConfig method of the FeatureSource interface
+func (s *Source) GetConfig() source.Config { return s.config }
+
+// SetConfig method of the FeatureSource interface
+func (s *Source) SetConfig(conf source.Config) {
+	switch v := conf.(type) {
+	case *Config:
+		s.config = v
+	default:
+		log.Printf("PANIC: invalid config type: %T", conf)
+	}
+}
 
 // Discover features
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 
-	devs, err := detectPci()
-	if err != nil {
-		return nil, fmt.Errorf("Failed to detect PCI devices: %s", err.Error())
-	}
-
 	// Construct a device label format, a sorted list of valid attributes
 	deviceLabelFields := []string{}
 	configLabelFields := map[string]bool{}
-	for _, field := range Config.DeviceLabelFields {
+	for _, field := range s.config.DeviceLabelFields {
 		configLabelFields[field] = true
 	}
 
-	for _, attr := range devLabelAttrs {
+	for _, attr := range pciutils.DefaultPciDevAttrs {
 		if _, ok := configLabelFields[attr]; ok {
 			deviceLabelFields = append(deviceLabelFields, attr)
 			delete(configLabelFields, attr)
@@ -80,9 +91,24 @@ func (s Source) Discover() (source.Features, error) {
 		deviceLabelFields = []string{"class", "vendor"}
 	}
 
+	// Read extraDevAttrs + configured or default labels. Attributes
+	// set to 'true' are considered must-have.
+	deviceAttrs := map[string]bool{}
+	for _, label := range pciutils.ExtraPciDevAttrs {
+		deviceAttrs[label] = false
+	}
+	for _, label := range deviceLabelFields {
+		deviceAttrs[label] = true
+	}
+
+	devs, err := pciutils.DetectPci(deviceAttrs)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to detect PCI devices: %s", err.Error())
+	}
+
 	// Iterate over all device classes
 	for class, classDevs := range devs {
-		for _, white := range Config.DeviceClassWhitelist {
+		for _, white := range s.config.DeviceClassWhitelist {
 			if strings.HasPrefix(class, strings.ToLower(white)) {
 				for _, dev := range classDevs {
 					devLabel := ""
@@ -92,57 +118,14 @@ func (s Source) Discover() (source.Features, error) {
 							devLabel += "_"
 						}
 					}
-					devLabel += ".present"
-					features[devLabel] = true
+					features[devLabel+".present"] = true
+
+					if _, ok := dev["sriov_totalvfs"]; ok {
+						features[devLabel+".sriov.capable"] = true
+					}
 				}
 			}
 		}
 	}
-
 	return features, nil
-}
-
-// Read information of one PCI device
-func readDevInfo(devPath string) (pciDeviceInfo, error) {
-	info := pciDeviceInfo{}
-
-	for _, attr := range devLabelAttrs {
-		data, err := ioutil.ReadFile(path.Join(devPath, attr))
-		if err != nil {
-			return info, fmt.Errorf("Failed to read device %s: %s", attr, err)
-		}
-		// Strip whitespace and '0x' prefix
-		info[attr] = strings.TrimSpace(strings.TrimPrefix(string(data), "0x"))
-
-		if attr == "class" && len(info[attr]) > 4 {
-			// Take four first characters, so that the programming
-			// interface identifier gets stripped from the raw class code
-			info[attr] = info[attr][0:4]
-		}
-	}
-	return info, nil
-}
-
-// List available PCI devices
-func detectPci() (map[string][]pciDeviceInfo, error) {
-	const basePath = "/sys/bus/pci/devices/"
-	devInfo := make(map[string][]pciDeviceInfo)
-
-	devices, err := ioutil.ReadDir(basePath)
-	if err != nil {
-		return nil, err
-	}
-
-	// Iterate over devices
-	for _, device := range devices {
-		info, err := readDevInfo(path.Join(basePath, device.Name()))
-		if err != nil {
-			log.Print(err)
-			continue
-		}
-		class := info["class"]
-		devInfo[class] = append(devInfo[class], info)
-	}
-
-	return devInfo, nil
 }

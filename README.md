@@ -8,6 +8,7 @@
 - [Feature discovery](#feature-discovery)
   - [Feature sources](#feature-sources)
   - [Feature labels](#feature-labels)
+- [Extended resources (experimental)](#extended-resources-experimental)
 - [Getting started](#getting-started)
   - [System requirements](#system-requirements)
   - [Usage](#usage)
@@ -53,7 +54,7 @@ nfd-master.
   Usage:
   nfd-master [--no-publish] [--label-whitelist=<pattern>] [--port=<port>]
      [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
-     [--verify-node-name] [--extra-label-ns=<list>]
+     [--verify-node-name] [--extra-label-ns=<list>] [--resource-labels=<list>]
   nfd-master -h | --help
   nfd-master --version
 
@@ -73,8 +74,13 @@ nfd-master.
                                   has been enabled.
   --no-publish                    Do not publish feature labels
   --label-whitelist=<pattern>     Regular expression to filter label names to
-                                  publish to the Kubernetes API server. [Default: ]
+                                  publish to the Kubernetes API server.
+                                  NB: the label namespace is omitted i.e. the filter
+                                  is only applied to the name part after '/'.
+                                  [Default: ]
   --extra-label-ns=<list>         Comma separated list of allowed extra label namespaces
+                                  [Default: ]
+  --resource-labels=<list>        Comma separated list of labels to be exposed as extended resources.
                                   [Default: ]
 ```
 
@@ -126,11 +132,14 @@ nfd-worker.
                               in testing
                               [Default: ]
   --sources=<sources>         Comma separated list of feature sources.
-                              [Default: cpu,iommu,kernel,local,memory,network,pci,storage,system]
+                              [Default: cpu,custom,iommu,kernel,local,memory,network,pci,storage,system,usb]
   --no-publish                Do not publish discovered features to the
                               cluster-local Kubernetes API server.
   --label-whitelist=<pattern> Regular expression to filter label names to
-                              publish to the Kubernetes API server. [Default: ]
+                              publish to the Kubernetes API server.
+                              NB: the label namespace is omitted i.e. the filter
+                              is only applied to the name part after '/'.
+                              [Default: ]
   --oneshot                   Label once and exit.
   --sleep-interval=<seconds>  Time to sleep between re-labeling. Non-positive
                               value implies no re-labeling (i.e. infinite
@@ -150,6 +159,7 @@ for up-to-date information about the required volume mounts.
 The current set of feature sources are the following:
 
 - CPU
+- Custom
 - IOMMU
 - Kernel
 - Memory
@@ -157,6 +167,7 @@ The current set of feature sources are the following:
 - PCI
 - Storage
 - System
+- USB
 - Local (hooks for user-specific features)
 
 ### Feature labels
@@ -181,6 +192,7 @@ feature logically has sub-hierarchy, e.g. `sriov.capable` and
 ```json
 {
   "feature.node.kubernetes.io/cpu-<feature-name>": "true",
+  "feature.node.kubernetes.io/custom-<feature-name>": "true",
   "feature.node.kubernetes.io/iommu-<feature-name>": "true",
   "feature.node.kubernetes.io/kernel-<feature name>": "<feature value>",
   "feature.node.kubernetes.io/memory-<feature-name>": "true",
@@ -188,6 +200,7 @@ feature logically has sub-hierarchy, e.g. `sriov.capable` and
   "feature.node.kubernetes.io/pci-<device label>.present": "true",
   "feature.node.kubernetes.io/storage-<feature-name>": "true",
   "feature.node.kubernetes.io/system-<feature name>": "<feature value>",
+  "feature.node.kubernetes.io/usb-<device label>.present": "<feature value>",
   "feature.node.kubernetes.io/<file name>-<feature name>": "<feature value>"
 }
 ```
@@ -204,9 +217,9 @@ such as restricting discovered features with the --label-whitelist option._
 | Feature name            | Attribute          | Description                   |
 | ----------------------- | ------------------ | ----------------------------- |
 | cpuid                   | &lt;cpuid flag&gt; | CPU capability is supported
-| hardware_multithreading | <br>               | Hardware multithreading, such as Intel HTT, enabled (number of locical CPUs is greater than physical CPUs)
+| hardware_multithreading | <br>               | Hardware multithreading, such as Intel HTT, enabled (number of logical CPUs is greater than physical CPUs)
 | power                   | sst_bf.enabled     | Intel SST-BF ([Intel Speed Select Technology][intel-sst] - Base frequency) enabled
-| [pstate][intel-pstate]  | turbo              | Turbo frequencies are enabled in Intel pstate driver
+| [pstate][intel-pstate]  | turbo              | Set to 'true' if turbo frequencies are enabled in Intel pstate driver, set to 'false' if they have been disabled.
 | [rdt][intel-rdt]        | RDTMON             | Intel RDT Monitoring Technology
 | <br>                    | RDTCMT             | Intel Cache Monitoring (CMT)
 | <br>                    | RDTMBM             | Intel Memory Bandwidth Monitoring (MBM)
@@ -237,6 +250,23 @@ capability might be supported but not enabled.
 | AVX       | Advanced Vector Extensions (AVX)
 | AVX2      | Advanced Vector Extensions 2 (AVX2)
 
+#### Arm CPUID Attribute (Partial List)
+
+| Attribute | Description                                                      |
+| --------- | ---------------------------------------------------------------- |
+| IDIVA     | Integer divide instructions available in ARM mode
+| IDIVT     | Integer divide instructions available in Thumb mode
+| THUMB     | Thumb instructions
+| FASTMUL   | Fast multiplication
+| VFP       | Vector floating point instruction extension (VFP)
+| VFPv3     | Vector floating point extension v3
+| VFPv4     | Vector floating point extension v4
+| VFPD32    | VFP with 32 D-registers
+| HALF      | Half-word loads and stores
+| EDSP      | DSP extensions
+| NEON      | NEON SIMD instructions
+| LPAE      | Large Physical Address Extensions
+
 #### Arm64 CPUID Attribute (Partial List)
 
 | Attribute | Description                                                      |
@@ -250,6 +280,156 @@ capability might be supported but not enabled.
 | PMULL     | Optional Cryptographic and CRC32 Instructions
 | JSCVT     | Perform Conversion to Match Javascript
 | DCPOP     | Persistent Memory Support
+
+### Custom Features
+The Custom feature source allows the user to define features based on a mix of predefined rules.
+A rule is provided input witch affects its process of matching for a defined feature.
+
+To aid in making Custom Features clearer, we define a general and a per rule nomenclature, keeping things as
+consistent as possible.
+
+#### General Nomenclature & Definitions
+```
+Rule        :Represents a matching logic that is used to match on a feature.
+Rule Input  :The input a Rule is provided. This determines how a Rule performs the match operation.
+Matcher     :A composition of Rules, each Matcher may be composed of at most one instance of each Rule.
+```
+
+#### Custom Features Format (using the Nomenclature defined above)
+```yaml
+- name: <feature name>
+  matchOn:
+  - <Rule-1>: <Rule-1 Input>
+    [<Rule-2>: <Rule-2 Input>]
+  - <Matcher-2>
+  - ...
+  - ...
+  - <Matcher-N>
+- <custom feature 2>
+- ...
+- ...
+- <custom feature M>
+```
+
+#### Matching process
+Specifying Rules to match on a feature is done by providing a list of Matchers.
+Each Matcher contains one or more Rules.
+
+Logical _OR_ is performed between Matchers and logical _AND_ is performed between Rules
+of a given Matcher.
+
+#### Rules
+##### PciId Rule
+###### Nomenclature
+```
+Attribute   :A PCI attribute.
+Element     :An identifier of the PCI attribute.
+```
+
+The PciId Rule allows matching the PCI devices in the system on the following Attributes: `class`,`vendor` and
+`device`. A list of Elements is provided for each Attribute.
+
+###### Format
+```yaml
+pciId :
+  class: [<class id>, ...]
+  vendor: [<vendor id>,  ...]
+  device: [<device id>, ...]
+```
+
+Matching is done by performing a logical _OR_ between Elements of an Attribute and logical _AND_ between the specified Attributes for
+each PCI device in the system.
+At least one Attribute must be specified. Missing attributes will not partake in the matching process.
+
+##### UsbId Rule
+###### Nomenclature
+```
+Attribute   :A USB attribute.
+Element     :An identifier of the USB attribute.
+```
+
+The UsbId Rule allows matching the USB devices in the system on the following Attributes: `class`,`vendor` and
+`device`. A list of Elements is provided for each Attribute.
+
+###### Format
+```yaml
+usbId :
+  class: [<class id>, ...]
+  vendor: [<vendor id>,  ...]
+  device: [<device id>, ...]
+```
+
+Matching is done by performing a logical _OR_ between Elements of an Attribute and logical _AND_ between the specified Attributes for
+each USB device in the system.
+At least one Attribute must be specified. Missing attributes will not partake in the matching process.
+
+##### LoadedKMod Rule
+###### Nomenclature
+```
+Element     :A kernel module
+```
+
+The LoadedKMod Rule allows matching the loaded kernel modules in the system against a provided list of Elements.
+
+###### Format
+```yaml
+loadedKMod : [<kernel module>, ...]
+```
+ Matching is done by performing logical _AND_ for each provided Element, i.e the Rule will match if all provided Elements (kernel modules) are loaded
+ in the system.
+
+#### Example
+```yaml
+custom:
+  - name: "my.kernel.feature"
+    matchOn:
+      - loadedKMod: ["kmod1", "kmod2"]
+  - name: "my.pci.feature"
+    matchOn:
+      - pciId:
+          vendor: ["15b3"]
+          device: ["1014", "1017"]
+  - name: "my.usb.feature"
+    matchOn:
+      - usbId:
+          vendor: ["1d6b"]
+          device: ["0003"]
+  - name: "my.combined.feature"
+    matchOn:
+      - loadedKMod : ["vendor_kmod1", "vendor_kmod2"]
+        pciId:
+          vendor: ["15b3"]
+          device: ["1014", "1017"] 
+  - name: "my.accumulated.feature"
+    matchOn:
+      - loadedKMod : ["some_kmod1", "some_kmod2"]
+      - pciId:
+          vendor: ["15b3"]
+          device: ["1014", "1017"]
+```
+
+__In the example above:__
+- A node would contain the label: `feature.node.kubernetes.io/custom-my.kernel.feature=true`
+if the node has `kmod1` _AND_ `kmod2` kernel modules loaded. 
+- A node would contain the label: `feature.node.kubernetes.io/custom-my.pci.feature=true`
+if the node contains a PCI device with a PCI vendor ID of `15b3` _AND_ PCI device ID of `1014` _OR_ `1017`.
+- A node would contain the label: `feature.node.kubernetes.io/custom-my.usb.feature=true`
+if the node contains a USB device with a USB vendor ID of `1d6b` _AND_ USB device ID of `0003`.
+- A node would contain the label: `feature.node.kubernetes.io/custom-my.combined.feature=true`
+if `vendor_kmod1` _AND_ `vendor_kmod2` kernel modules are loaded __AND__ the node contains a PCI device
+with a PCI vendor ID of `15b3` _AND_ PCI device ID of `1014` _or_ `1017`.
+- A node would contain the label: `feature.node.kubernetes.io/custom-my.accumulated.feature=true`
+if `some_kmod1` _AND_ `some_kmod2` kernel modules are loaded __OR__ the node contains a PCI device
+with a PCI vendor ID of `15b3` _AND_ PCI device ID of `1014` _OR_ `1017`.
+
+#### Statically defined features
+Some feature labels which are common and generic are defined statically in the `custom` feature source.
+A user may add additional Matchers to these feature labels by defining them in the `nfd-worker` configuration file.
+
+| Feature | Attribute | Description |
+| ------- | --------- | -----------|
+| rdma  | capable | The node has an RDMA capable Network adapter |
+| rdma | enabled | The node has the needed RDMA modules loaded to run RDMA traffic |
 
 ### IOMMU Features
 
@@ -278,6 +458,7 @@ See [configuration options](#configuration-options) for more information.
 | ------- | --------- | ------------------------------------------------------ |
 | numa    | <br>      | Multiple memory nodes i.e. NUMA architecture detected
 | nv      | present   | NVDIMM device(s) are present
+| nv      | dax       | NVDIMM region(s) configured in DAX mode are present
 
 ### Network Features
 
@@ -288,9 +469,10 @@ See [configuration options](#configuration-options) for more information.
 
 ### PCI Features
 
-| Feature              | Attribute | Description                               |
-| -------------------- | --------- | ----------------------------------------- |
-| &lt;device label&gt; | present   | PCI device is detected
+| Feature              | Attribute     | Description                               |
+| -------------------- | ------------- | ----------------------------------------- |
+| &lt;device label&gt; | present       | PCI device is detected
+| &lt;device label&gt; | sriov.capable | [Single Root Input/Output Virtualization][sriov] (SR-IOV) enabled PCI device present
 
 `<device label>` is composed of raw PCI IDs, separated by underscores.
 The set of fields used in `<device label>` is configurable, valid fields being
@@ -304,6 +486,21 @@ feature.node.kubernetes.io/pci-1200_8086.present=true
 Also  the set of PCI device classes that the feature source detects is
 configurable. By default, device classes (0x)03, (0x)0b40 and (0x)12, i.e.
 GPUs, co-processors and accelerator cards are detected.
+
+### USB Features
+
+| Feature              | Attribute     | Description                               |
+| -------------------- | ------------- | ----------------------------------------- |
+| &lt;device label&gt; | present       | USB device is detected
+
+`<device label>` is composed of raw USB IDs, separated by underscores.
+The set of fields used in `<device label>` is configurable, valid fields being
+`class`, `vendor`, and `device`.
+Defaults are `class`, `vendor` and `device`. An example label using the default
+label fields:
+```
+feature.node.kubernetes.io/usb-fe_1a6e_089a.present=true
+```
 
 See [configuration options](#configuration-options)
 for more information on NFD config.
@@ -334,8 +531,11 @@ feature sources.
 
 The *local* feature source gets its labels by two different ways:
 * It tries to execute files found under `/etc/kubernetes/node-feature-discovery/source.d/`
-directory. The hook files must be executable. When executed, the hooks are
-supposed to print all discovered features in `stdout`, one per line.
+directory. The hook files must be executable and they are supposed to print all
+discovered features in `stdout`, one per line. With ELF binaries static
+linking is recommended as the selection of system libraries available in the
+NFD release image is very limited. Other runtimes currently supported by the
+NFD stock image are bash and perl.
 * It reads files found under `/etc/kubernetes/node-feature-discovery/features.d/`
 directory. The file content is expected to be similar to the hook output (described above).
 
@@ -367,7 +567,20 @@ label `my.namespace.org/my-label=value`, your hook output or file must contains
 `stderr` output of the hooks is propagated to NFD log so it can be used for
 debugging and logging.
 
-**A hook example:**<br/>
+#### Injecting Labels from Other Pods
+
+One use case for the hooks and/or feature files is detecting features in other
+Pods outside NFD, e.g. in Kubernetes device plugins. It is possible to mount
+the `source.d` and/or `features.d` directories common with the NFD Pod and
+deploy the custom hooks/features there. NFD will periodically scan the
+directories and run any hooks and read any feature files it finds. The
+[example nfd-worker deployment template](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/nfd-worker-daemonset.yaml.template#L69)
+contains `hostPath` mounts for `sources.d` and `features.d` directories. By
+using the same mounts in the secondary Pod (e.g. device plugin) you have
+created a shared area for delivering hooks and feature files to NFD.
+
+
+#### A Hook Example
 User has a shell script
 `/etc/kubernetes/node-feature-discovery/source.d/my-source` which has the
 following `stdout` output:
@@ -387,7 +600,7 @@ feature.node.kubernetes.io/override_source-OVERRIDE_VALUE=123
 override.namespace/value=456
 ```
 
-**A file example:**<br/>
+#### A File Example
 User has a file
 `/etc/kubernetes/node-feature-discovery/features.d/my-source` which contains the
 following lines:
@@ -417,17 +630,54 @@ example `/etc/kubernetes/node-feature-discovery/source.d/conf/`.
 directory. It is the user's responsibility to review the hooks for e.g.
 possible security implications.
 
+**NOTE!** Be careful when creating and/or updating hook or feature files while
+NFD is running. In order to avoid race conditions you should write into a
+temporary file (outside the `source.d` and `features.d` directories), and,
+atomically create/update the original file by doing a filesystem move
+operation.
+
+## Extended resources (experimental)
+
+This feature is experimental and by no means a replacement for the usage of
+device plugins.
+
+Labels which have integer values, can be promoted to Kubernetes extended
+resources by listing them to the master `--resource-labels` command line flag.
+These labels won't then show in the node label section, they will appear only
+as extended resources.
+
+An example use-case for the extended resources could be based on a hook which
+creates a label for the node SGX EPC memory section size. By giving the name of
+that label in the `--resource-labels` flag, that value will then turn into an
+extended resource of the node, allowing PODs to request that resource and the
+Kubernetes scheduler to schedule such PODs to only those nodes which have a
+sufficient capacity of said resource left.
+
+Similar to labels, the default namespace `feature.node.kubernetes.io` is
+automatically prefixed to the extended resource, if the promoted label doesn't
+have a namespace.
+
+Example usage of the command line arguments, using a new namespace:
+`nfd-master --resource-labels=my_source-my.feature,sgx.some.ns/epc --extra-label-ns=sgx.some.ns`
+
+The above would result in following extended resources provided that related
+labels exist:
+```
+  sgx.some.ns/epc: <label value>
+  feature.node.kubernetes.io/my_source-my.feature: <label value>
+```
+
 ## Getting started
 
 For a stable version with ready-built images see the
-[latest released version](https://github.com/kubernetes-sigs/node-feature-discovery/tree/v0.4.0) ([release notes](https://github.com/kubernetes-sigs/node-feature-discovery/releases/latest)).
+[latest released version](https://github.com/kubernetes-sigs/node-feature-discovery/tree/v0.6.0) ([release notes](https://github.com/kubernetes-sigs/node-feature-discovery/releases/latest)).
 
 If you want to use the latest development version (master branch) you need to
 [build your own custom image](#building-from-source).
 
 ### System requirements
 
-1. Linux (x86_64/Arm64)
+1. Linux (x86_64/Arm64/Arm)
 1. [kubectl][kubectl-setup] (properly set up and configured to work with your
    Kubernetes cluster)
 1. [Docker][docker-down] (only required to build and push docker images)
@@ -436,16 +686,27 @@ If you want to use the latest development version (master branch) you need to
 
 #### nfd-master
 
-Nfd-master runs as a DaemonSet, by default in the master node(s) only. You can
-use the template spec provided to deploy nfd-master. If deploying a custom
-image, you need to update the template to use the correct image (for the latest
-released version, omit the `sed` part):
+Nfd-master runs as a deployment (with a replica count of 1), by default
+it prefers running on the cluster's master nodes but will run on worker
+nodes if no master nodes are found.
+
+For High Availability, you should simply increase the replica count of
+the deployment object. You should also look into adding [inter-pod](https://kubernetes.io/docs/concepts/configuration/assign-pod-node/#affinity-and-anti-affinity)
+affinity to prevent masters from running on the same node.
+However note that inter-pod affinity is costly and is not recommended
+in bigger clusters.
+
+You can use the template spec provided to deploy nfd-master, or
+use `nfd-master.yaml` generated by `Makefile`. The latter includes
+`image:` and `namespace:` definitions that match the latest built
+image. Example:
 ```
-sed -E s',^(\s*)image:.+$,\1image: <YOUR_IMAGE_REPO>:<YOUR_IMAGE_TAG>,' nfd-master.yaml.template > nfd-master.yaml
+make IMAGE_TAG=<IMAGE_TAG>
+docker push <IMAGE_TAG>
 kubectl create -f nfd-master.yaml
 ```
 Nfd-master listens for connections from nfd-worker(s) and connects to the
-Kubernetes API server to adds node labels advertised by them.
+Kubernetes API server to add node labels advertised by them.
 
 If you have RBAC authorization enabled (as is the default e.g. with clusters
 initialized with kubeadm) you need to configure the appropriate ClusterRoles,
@@ -456,26 +717,31 @@ labels. The provided template will configure these for you.
 #### nfd-worker
 
 Nfd-worker is preferably run as a Kubernetes DaemonSet. There is an
-example spec that can be used as a template, or, as is when just trying out the
-service. Similarly to nfd-master above, if using a custom-built image you need
-to update the template with the correct image (for the latest release, omit the
-`sed` part):
+example spec (`nfd-worker-daemonset.yaml.template`) that can be used
+as a template, or, as is when just trying out the service. Similarly
+to nfd-master above, the `Makefile` also generates
+`nfd-worker-daemonset.yaml` from the template that you can use to
+deploy the latest image. Example:
 ```
-sed -E s',^(\s*)image:.+$,\1image: <YOUR_IMAGE_REPO>:<YOUR_IMAGE_TAG>,' nfd-worker-daemonset.yaml.template > nfd-worker-daemonset.yaml
+make IMAGE_TAG=<IMAGE_TAG>
+docker push <IMAGE_TAG>
 kubectl create -f nfd-worker-daemonset.yaml
 ```
 
 Nfd-worker connects to the nfd-master service to advertise hardware features.
 
 When run as a daemonset, nodes are re-labeled at an interval specified using
-the `--sleep-interval` option. In the [template](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/nfd-worker-daemonset.yaml.template#L26) the default interval is set to 60s
-which is also the default when no `--sleep-interval` is specified.
+the `--sleep-interval` option. In the
+[template](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/nfd-worker-daemonset.yaml.template#L26)
+the default interval is set to 60s which is also the default when no
+`--sleep-interval` is specified. Also, the configuration file is re-read on
+each iteration providing a simple mechanism of run-time reconfiguration.
 
 Feature discovery can alternatively be configured as a one-shot job. There is
 an example script in this repo that demonstrates how to deploy the job in the cluster.
 
 ```
-./label-nodes.sh [<YOUR_IMAGE_REPO>:<YOUR_IMAGE_TAG>]
+./label-nodes.sh [<IMAGE_TAG>]
 ```
 
 The label-nodes.sh script tries to launch as many jobs as there are Ready nodes.
@@ -525,11 +791,16 @@ each nfd-worker requires a individual node-specific TLS certificate.
 
 Nfd-worker supports a configuration file. The default location is
 `/etc/kubernetes/node-feature-discovery/nfd-worker.conf`, but,
-this can be changed by specifying the`--config` command line flag. The file is
-read inside the container, and thus, Volumes and VolumeMounts are needed to
-make your configuration available for NFD. The preferred method is to use a
-ConfigMap.
-For example, create a config map using the example config as a template:
+this can be changed by specifying the`--config` command line flag.
+Configuration file is re-read on each labeling pass (determined by
+`--sleep-interval`) which makes run-time re-configuration of nfd-worker
+possible.
+
+Worker configuration file is read inside the container, and thus, Volumes and
+VolumeMounts are needed to make your configuration available for NFD. The
+preferred method is to use a ConfigMap which provides easy deployment and
+re-configurability.  For example, create a config map using the example config
+as a template:
 ```
 cp nfd-worker.conf.example nfd-worker.conf
 vim nfd-worker.conf  # edit the configuration
@@ -592,28 +863,35 @@ make
 Optional, this example with Docker.
 
 ```
-docker push <image registry>/<image-name>:<version>
+docker push <IMAGE_TAG>
 ```
 
 **Change the job spec to use your custom image (optional):**
 
 To use your published image from the step above instead of the
-`quay.io/kubernetes_incubator/node-feature-discovery` image, edit `image`
+`k8s.gcr.io/nfd/node-feature-discovery` image, edit `image`
 attribute in the spec template(s) to the new location
-(`<quay-domain-name>/<registry-user>/<image-name>[:<version>]`).
+(`<registry-name>/<image-name>[:<version>]`).
 
 ### Customizing the Build
 There are several Makefile variables that control the build process and the
 name of the resulting container image.
 
-| Variable        | Description                          | Default value
-| --------------  | ------------------------------------ | ------------------- |
-| IMAGE_BUILD_CMD | Command to build the image           | docker build
-| IMAGE_REGISTRY  | Container image registry to use      | quay.io/kubernetes_incubator
-| IMAGE_NAME      | Container image name                 | node-feature-discovery
-| IMAGE_TAG_NAME  | Container image tag name             | &lt;nfd version&gt;
-| IMAGE_REPO      | Container image repository to use    | &lt;IMAGE_REGISTRY&gt;/&lt;IMAGE_NAME&gt;
-| IMAGE_TAG       | Full image:tag to tag the image with | &lt;IMAGE_REPO&gt;/&lt;IMAGE_NAME&gt;
+| Variable                   | Description                                                       | Default value
+| -------------------------- | ----------------------------------------------------------------- | ----------- |
+| HOSTMOUNT_PREFIX           | Prefix of system directories for feature discovery (local builds) | /
+| CONTAINER_HOSTMOUNT_PREFIX | Prefix of system directories for feature discovery (container builds) | &lt;HOSTMOUNT_PREFIX&gt; (*if specified*) /host- (*otherwise*)
+| IMAGE_BUILD_CMD            | Command to build the image                                        | docker build
+| IMAGE_BUILD_EXTRA_OPTS     | Extra options to pass to build command                            | *empty*
+| IMAGE_PUSH_CMD             | Command to push the image to remote registry                      | docker push
+| IMAGE_REGISTRY             | Container image registry to use                                   | k8s.gcr.io/nfd
+| IMAGE_NAME                 | Container image name                                              | node-feature-discovery
+| IMAGE_TAG_NAME             | Container image tag name                                          | &lt;nfd version&gt;
+| IMAGE_REPO                 | Container image repository to use                                 | &lt;IMAGE_REGISTRY&gt;/&lt;IMAGE_NAME&gt;
+| IMAGE_TAG                  | Full image:tag to tag the image with                              | &lt;IMAGE_REPO&gt;/&lt;IMAGE_NAME&gt;
+| K8S_NAMESPACE              | nfd-master and nfd-worker namespace                               | kube-system
+| KUBECONFIG                 | Kubeconfig for running e2e-tests                                  | *empty*
+| E2E_TEST_CONFIG            | Parameterization file of e2e-tests (see [example](test/e2e/e2e-test-config.exapmle.yaml)) | *empty*
 
 For example, to use a custom registry:
 ```
@@ -623,6 +901,21 @@ make IMAGE_REGISTRY=<my custom registry uri>
 Or to specify a build tool different from Docker:
 ```
 make IMAGE_BUILD_CMD="buildah bud"
+```
+
+### Testing
+
+Unit tests are automatically run as part of the container image build. You can
+also run them manually in the source code tree by simply running:
+```
+make test
+```
+
+End-to-end tests are built on top of the e2e test framework of Kubernetes, and,
+they required a cluster to run them on. For running the tests on your test
+cluster you need to specify the kubeconfig to be used:
+```
+make e2e-test KUBECONFIG=$HOME/.kube/config
 ```
 
 ## Targeting Nodes with Specific Features
@@ -646,6 +939,19 @@ spec:
 ```
 
 For more details on targeting nodes, see [node selection][node-sel].
+
+## Node Annotations
+
+NFD annotates nodes it is running on:
+
+| Annotation                                | Description
+| ----------------------------------------- | -----------
+| nfd.node.kubernetes.io/master.version     | Version of the nfd-master instance running on the node. Informative use only.
+| nfd.node.kubernetes.io/worker.version     | Version of the nfd-worker instance running on the node. Informative use only.
+| nfd.node.kubernetes.io/feature-labels     | Comma-separated list of node labels managed by NFD. NFD uses this internally so must not be edited by users.
+| nfd.node.kubernetes.io/extended-resources | Comma-separated list of node extended resources managed by NFD. NFD uses this internally so must not be edited by users.
+
+Unapplicable annotations are not created, i.e. for example master.version is only created on nodes running nfd-master.
 
 ## References
 
@@ -672,7 +978,7 @@ This is open source software released under the [Apache 2.0 License](LICENSE).
 
 ## Demo
 
-A demo on the benefits of using node feature discovery can be found in [demo](demo/). 
+A demo on the benefits of using node feature discovery can be found in [demo](demo/).
 
 <!-- Links -->
 [cpuid]: http://man7.org/linux/man-pages/man4/cpuid.4.html

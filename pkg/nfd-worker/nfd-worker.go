@@ -19,6 +19,7 @@ package nfdworker
 import (
 	"crypto/tls"
 	"crypto/x509"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -27,28 +28,30 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ghodss/yaml"
+	pb "openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/pkg/version"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/cpu"
+	"openshift/node-feature-discovery/source/custom"
+	"openshift/node-feature-discovery/source/fake"
+	"openshift/node-feature-discovery/source/iommu"
+	"openshift/node-feature-discovery/source/kernel"
+	"openshift/node-feature-discovery/source/local"
+	"openshift/node-feature-discovery/source/memory"
+	"openshift/node-feature-discovery/source/network"
+	panicfake "openshift/node-feature-discovery/source/panic_fake"
+	"openshift/node-feature-discovery/source/pci"
+	"openshift/node-feature-discovery/source/storage"
+	"openshift/node-feature-discovery/source/system"
+	"openshift/node-feature-discovery/source/usb"
+
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"k8s.io/apimachinery/pkg/util/validation"
-	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/cpu"
-	"sigs.k8s.io/node-feature-discovery/source/fake"
-	"sigs.k8s.io/node-feature-discovery/source/iommu"
-	"sigs.k8s.io/node-feature-discovery/source/kernel"
-	"sigs.k8s.io/node-feature-discovery/source/local"
-	"sigs.k8s.io/node-feature-discovery/source/memory"
-	"sigs.k8s.io/node-feature-discovery/source/network"
-	"sigs.k8s.io/node-feature-discovery/source/panic_fake"
-	"sigs.k8s.io/node-feature-discovery/source/pci"
-	"sigs.k8s.io/node-feature-discovery/source/storage"
-	"sigs.k8s.io/node-feature-discovery/source/system"
+	"sigs.k8s.io/yaml"
 )
 
-// package loggers
 var (
 	stdoutLogger = log.New(os.Stdout, "", log.LstdFlags)
 	stderrLogger = log.New(os.Stderr, "", log.LstdFlags)
@@ -57,14 +60,10 @@ var (
 
 // Global config
 type NFDConfig struct {
-	Sources struct {
-		Cpu    *cpu.NFDConfig    `json:"cpu,omitempty"`
-		Kernel *kernel.NFDConfig `json:"kernel,omitempty"`
-		Pci    *pci.NFDConfig    `json:"pci,omitempty"`
-	} `json:"sources,omitempty"`
+	Sources sourcesConfig
 }
 
-var config = NFDConfig{}
+type sourcesConfig map[string]source.Config
 
 // Labels are a Kubernetes representation of discovered features.
 type Labels map[string]string
@@ -90,12 +89,21 @@ type NfdWorker interface {
 }
 
 type nfdWorker struct {
-	args Args
+	args           Args
+	clientConn     *grpc.ClientConn
+	client         pb.LabelerClient
+	config         NFDConfig
+	sources        []source.FeatureSource
+	labelWhiteList *regexp.Regexp
 }
 
 // Create new NfdWorker instance.
-func NewNfdWorker(args Args) (*nfdWorker, error) {
-	nfd := &nfdWorker{args: args}
+func NewNfdWorker(args Args) (NfdWorker, error) {
+	nfd := &nfdWorker{
+		args:    args,
+		sources: []source.FeatureSource{},
+	}
+
 	if args.SleepInterval > 0 && args.SleepInterval < time.Second {
 		stderrLogger.Printf("WARNING: too short sleep-intervall specified (%s), forcing to 1s", args.SleepInterval.String())
 		args.SleepInterval = time.Second
@@ -114,6 +122,44 @@ func NewNfdWorker(args Args) (*nfdWorker, error) {
 		}
 	}
 
+	// Figure out active sources
+	allSources := []source.FeatureSource{
+		&cpu.Source{},
+		&fake.Source{},
+		&iommu.Source{},
+		&kernel.Source{},
+		&memory.Source{},
+		&network.Source{},
+		&panicfake.Source{},
+		&pci.Source{},
+		&storage.Source{},
+		&system.Source{},
+		&usb.Source{},
+		&custom.Source{},
+		// local needs to be the last source so that it is able to override
+		// labels from other sources
+		&local.Source{},
+	}
+
+	sourceWhiteList := map[string]struct{}{}
+	for _, s := range args.Sources {
+		sourceWhiteList[strings.TrimSpace(s)] = struct{}{}
+	}
+
+	nfd.sources = []source.FeatureSource{}
+	for _, s := range allSources {
+		if _, enabled := sourceWhiteList[s.Name()]; enabled {
+			nfd.sources = append(nfd.sources, s)
+		}
+	}
+
+	// Compile labelWhiteList regex
+	var err error
+	nfd.labelWhiteList, err = regexp.Compile(args.LabelWhiteList)
+	if err != nil {
+		return nfd, fmt.Errorf("error parsing label whitelist regex (%s): %s", args.LabelWhiteList, err)
+	}
+
 	return nfd, nil
 }
 
@@ -123,20 +169,59 @@ func (w *nfdWorker) Run() error {
 	stdoutLogger.Printf("Node Feature Discovery Worker %s", version.Get())
 	stdoutLogger.Printf("NodeName: '%s'", nodeName)
 
-	// Parse config
-	err := configParse(w.args.ConfigFile, w.args.Options)
+	// Connect to NFD master
+	err := w.connect()
 	if err != nil {
-		stderrLogger.Print(err)
+		return fmt.Errorf("failed to connect: %v", err)
+	}
+	defer w.disconnect()
+
+	for {
+		// Parse and apply configuration
+		w.configure(w.args.ConfigFile, w.args.Options)
+
+		// Get the set of feature labels.
+		labels := createFeatureLabels(w.sources, w.labelWhiteList)
+
+		// Update the node with the feature labels.
+		if w.client != nil {
+			err := advertiseFeatureLabels(w.client, labels)
+			if err != nil {
+				return fmt.Errorf("failed to advertise labels: %s", err.Error())
+			}
+		}
+
+		if w.args.Oneshot {
+			break
+		}
+
+		if w.args.SleepInterval > 0 {
+			time.Sleep(w.args.SleepInterval)
+		} else {
+			w.disconnect()
+			// Sleep forever
+			select {}
+		}
+	}
+	return nil
+}
+
+// connect creates a client connection to the NFD master
+func (w *nfdWorker) connect() error {
+	// Return a dummy connection in case of dry-run
+	if w.args.NoPublish {
+		return nil
 	}
 
-	// Configure the parameters for feature discovery.
-	enabledSources, labelWhiteList, err := configureParameters(w.args.Sources, w.args.LabelWhiteList)
-	if err != nil {
-		return fmt.Errorf("error occurred while configuring parameters: %s", err.Error())
+	// Check that if a connection already exists
+	if w.clientConn != nil {
+		return fmt.Errorf("client connection already exists")
 	}
 
-	// Connect to NFD server
-	dialOpts := []grpc.DialOption{}
+	// Dial and create a client
+	dialCtx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	dialOpts := []grpc.DialOption{grpc.WithBlock()}
 	if w.args.CaFile != "" || w.args.CertFile != "" || w.args.KeyFile != "" {
 		// Load client cert for client authentication
 		cert, err := tls.LoadX509KeyPair(w.args.CertFile, w.args.KeyFile)
@@ -162,107 +247,58 @@ func (w *nfdWorker) Run() error {
 	} else {
 		dialOpts = append(dialOpts, grpc.WithInsecure())
 	}
-	conn, err := grpc.Dial(w.args.Server, dialOpts...)
+	conn, err := grpc.DialContext(dialCtx, w.args.Server, dialOpts...)
 	if err != nil {
-		return fmt.Errorf("failed to connect: %v", err)
+		return err
 	}
-	defer conn.Close()
-	client := pb.NewLabelerClient(conn)
+	w.clientConn = conn
+	w.client = pb.NewLabelerClient(conn)
 
-	for {
-		// Get the set of feature labels.
-		labels := createFeatureLabels(enabledSources, labelWhiteList)
-
-		// Update the node with the feature labels.
-		if !w.args.NoPublish {
-			err := advertiseFeatureLabels(client, labels)
-			if err != nil {
-				return fmt.Errorf("failed to advertise labels: %s", err.Error())
-			}
-		}
-
-		if w.args.Oneshot {
-			break
-		}
-
-		if w.args.SleepInterval > 0 {
-			time.Sleep(w.args.SleepInterval)
-		} else {
-			conn.Close()
-			// Sleep forever
-			select {}
-		}
-	}
 	return nil
+}
+
+// disconnect closes the connection to NFD master
+func (w *nfdWorker) disconnect() {
+	if w.clientConn != nil {
+		w.clientConn.Close()
+	}
+	w.clientConn = nil
+	w.client = nil
 }
 
 // Parse configuration options
-func configParse(filepath string, overrides string) error {
-	config.Sources.Cpu = &cpu.Config
-	config.Sources.Kernel = &kernel.Config
-	config.Sources.Pci = &pci.Config
+func (w *nfdWorker) configure(filepath string, overrides string) {
+	// Create a new default config
+	c := NFDConfig{Sources: make(map[string]source.Config, len(w.sources))}
+	for _, s := range w.sources {
+		c.Sources[s.Name()] = s.NewConfig()
+	}
 
+	// Try to read and parse config file
 	data, err := ioutil.ReadFile(filepath)
 	if err != nil {
-		return fmt.Errorf("Failed to read config file: %s", err)
-	}
-
-	// Read config file
-	err = yaml.Unmarshal(data, &config)
-	if err != nil {
-		return fmt.Errorf("Failed to parse config file: %s", err)
-	}
-
-	// Parse config overrides
-	err = yaml.Unmarshal([]byte(overrides), &config)
-	if err != nil {
-		return fmt.Errorf("Failed to parse --options: %s", err)
-	}
-
-	return nil
-}
-
-// configureParameters returns all the variables required to perform feature
-// discovery based on command line arguments.
-func configureParameters(sourcesWhiteList []string, labelWhiteListStr string) (enabledSources []source.FeatureSource, labelWhiteList *regexp.Regexp, err error) {
-	// A map for lookup
-	sourcesWhiteListMap := map[string]struct{}{}
-	for _, s := range sourcesWhiteList {
-		sourcesWhiteListMap[strings.TrimSpace(s)] = struct{}{}
-	}
-
-	// Configure feature sources.
-	allSources := []source.FeatureSource{
-		cpu.Source{},
-		fake.Source{},
-		iommu.Source{},
-		kernel.Source{},
-		memory.Source{},
-		network.Source{},
-		panic_fake.Source{},
-		pci.Source{},
-		storage.Source{},
-		system.Source{},
-		// local needs to be the last source so that it is able to override
-		// labels from other sources
-		local.Source{},
-	}
-
-	enabledSources = []source.FeatureSource{}
-	for _, s := range allSources {
-		if _, enabled := sourcesWhiteListMap[s.Name()]; enabled {
-			enabledSources = append(enabledSources, s)
+		stderrLogger.Printf("Failed to read config file: %s", err)
+	} else {
+		err = yaml.Unmarshal(data, &c)
+		if err != nil {
+			stderrLogger.Printf("Failed to parse config file: %s", err)
+		} else {
+			stdoutLogger.Printf("Configuration successfully loaded from %q", filepath)
 		}
 	}
 
-	// Compile labelWhiteList regex
-	labelWhiteList, err = regexp.Compile(labelWhiteListStr)
+	// Parse config overrides
+	err = yaml.Unmarshal([]byte(overrides), &c)
 	if err != nil {
-		stderrLogger.Printf("error parsing whitelist regex (%s): %s", labelWhiteListStr, err)
-		return nil, nil, err
+		stderrLogger.Printf("Failed to parse --options: %s", err)
 	}
 
-	return enabledSources, labelWhiteList, nil
+	w.config = c
+
+	// (Re-)configure all sources
+	for _, s := range w.sources {
+		s.SetConfig(c.Sources[s.Name()])
+	}
 }
 
 // createFeatureLabels returns the set of feature labels from the enabled
@@ -272,7 +308,7 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 
 	// Do feature discovery from all configured sources.
 	for _, source := range sources {
-		labelsFromSource, err := getFeatureLabels(source)
+		labelsFromSource, err := getFeatureLabels(source, labelWhiteList)
 		if err != nil {
 			stderrLogger.Printf("discovery failed for source [%s]: %s", source.Name(), err.Error())
 			stderrLogger.Printf("continuing ...")
@@ -282,11 +318,6 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 		for name, value := range labelsFromSource {
 			// Log discovered feature.
 			stdoutLogger.Printf("%s = %s", name, value)
-			// Skip if label doesn't match labelWhiteList
-			if !labelWhiteList.Match([]byte(name)) {
-				stderrLogger.Printf("%s does not match the whitelist (%s) and will not be published.", name, labelWhiteList.String())
-				continue
-			}
 			labels[name] = value
 		}
 	}
@@ -295,7 +326,7 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 
 // getFeatureLabels returns node labels for features discovered by the
 // supplied source.
-func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
+func getFeatureLabels(source source.FeatureSource, labelWhiteList *regexp.Regexp) (labels Labels, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stderrLogger.Printf("panic occurred during discovery of source [%s]: %v", source.Name(), r)
@@ -308,24 +339,33 @@ func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
 	if err != nil {
 		return nil, err
 	}
+
+	// Prefix for labels in the default namespace
+	prefix := source.Name() + "-"
+	switch source.(type) {
+	case *local.Source:
+		// Do not prefix labels from the hooks
+		prefix = ""
+	}
+
 	for k, v := range features {
-		// Validate label name
-		prefix := source.Name() + "-"
-		switch source.(type) {
-		case local.Source:
-			// Do not prefix labels from the hooks
-			prefix = ""
+		// Split label name into namespace and name compoents. Use dummy 'ns'
+		// default namespace because there is no function to validate just
+		// the name part
+		split := strings.SplitN(k, "/", 2)
+
+		label := prefix + split[0]
+		nameForValidation := "ns/" + label
+		nameForWhiteListing := label
+
+		if len(split) == 2 {
+			label = k
+			nameForValidation = label
+			nameForWhiteListing = split[1]
 		}
 
-		label := prefix + k
-		// Validate label name. Use dummy namespace 'ns' because there is no
-		// function to validate just the name part
-		labelName := "ns/" + label
-		// Do not use dummy namespace if there is already a namespace
-		if strings.Contains(label, "/") {
-			labelName = label
-		}
-		errs := validation.IsQualifiedName(labelName)
+		// Validate label name.
+		errs := validation.IsQualifiedName(nameForValidation)
 		if len(errs) > 0 {
 			stderrLogger.Printf("Ignoring invalid feature name '%s': %s", label, errs)
 			continue
@@ -336,6 +376,12 @@ func getFeatureLabels(source source.FeatureSource) (labels Labels, err error) {
 		errs = validation.IsValidLabelValue(value)
 		if len(errs) > 0 {
 			stderrLogger.Printf("Ignoring invalid feature value %s=%s: %s", label, value, errs)
+			continue
+		}
+
+		// Skip if label doesn't match labelWhiteList
+		if !labelWhiteList.MatchString(nameForWhiteListing) {
+			stderrLogger.Printf("%q does not match the whitelist (%s) and will not be published.", nameForWhiteListing, labelWhiteList.String())
 			continue
 		}
 
@@ -350,7 +396,7 @@ func advertiseFeatureLabels(client pb.LabelerClient, labels Labels) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	stdoutLogger.Printf("Sendng labeling request nfd-master")
+	stdoutLogger.Printf("Sending labeling request to nfd-master")
 
 	labelReq := pb.SetLabelsRequest{Labels: labels,
 		NfdVersion: version.Get(),
@@ -359,6 +405,30 @@ func advertiseFeatureLabels(client pb.LabelerClient, labels Labels) error {
 	if err != nil {
 		stderrLogger.Printf("failed to set node labels: %v", err)
 		return err
+	}
+
+	return nil
+}
+
+// UnmarshalJSON implements the Unmarshaler interface from "encoding/json"
+func (c *sourcesConfig) UnmarshalJSON(data []byte) error {
+	// First do a raw parse to get the per-source data
+	raw := map[string]json.RawMessage{}
+	err := yaml.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+
+	// Then parse each source-specific data structure
+	// NOTE: we expect 'c' to be pre-populated with correct per-source data
+	//       types. Non-pre-populated keys are ignored.
+	for k, rawv := range raw {
+		if v, ok := (*c)[k]; ok {
+			err := yaml.Unmarshal(rawv, &v)
+			if err != nil {
+				return fmt.Errorf("failed to parse %q source config: %v", k, err)
+			}
+		}
 	}
 
 	return nil

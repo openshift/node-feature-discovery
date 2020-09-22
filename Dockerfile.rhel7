@@ -1,12 +1,12 @@
-FROM registry.svc.ci.openshift.org/openshift/release:golang-1.10 AS builder
+FROM registry.svc.ci.openshift.org/openshift/release:golang-1.14 AS builder
 
-ADD . /go/src/sigs.k8s.io/node-feature-discovery
+ADD . /go/src/openshift/node-feature-discovery
 
-WORKDIR /go/src/sigs.k8s.io/node-feature-discovery
+WORKDIR /go/src/openshift/node-feature-discovery
 
 
 RUN go install \
-  -ldflags "-X sigs.k8s.io/node-feature-discovery/pkg/version.version=v0.4.0" \
+  -ldflags "-X openshift/node-feature-discovery/pkg/version.version=v0.6.0" \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 

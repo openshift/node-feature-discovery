@@ -19,8 +19,9 @@ package nfdmaster_test
 import (
 	"testing"
 
+	m "openshift/node-feature-discovery/pkg/nfd-master"
+
 	. "github.com/smartystreets/goconvey/convey"
-	m "sigs.k8s.io/node-feature-discovery/pkg/nfd-master"
 )
 
 func TestNewNfdMaster(t *testing.T) {

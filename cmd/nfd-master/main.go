@@ -23,9 +23,10 @@ import (
 	"strconv"
 	"strings"
 
+	master "openshift/node-feature-discovery/pkg/nfd-master"
+	"openshift/node-feature-discovery/pkg/version"
+
 	"github.com/docopt/docopt-go"
-	master "sigs.k8s.io/node-feature-discovery/pkg/nfd-master"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -35,8 +36,8 @@ const (
 
 func main() {
 	// Assert that the version is known
-	if version.Get() == "undefined" {
-		log.Fatalf("version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+	if version.Undefined() {
+		log.Print("WARNING: version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Parse command-line arguments.
@@ -65,7 +66,7 @@ func argsParse(argv []string) (master.Args, error) {
   Usage:
   %s [--no-publish] [--label-whitelist=<pattern>] [--port=<port>]
      [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
-     [--verify-node-name] [--extra-label-ns=<list>]
+     [--verify-node-name] [--extra-label-ns=<list>] [--resource-labels=<list>]
   %s -h | --help
   %s --version
 
@@ -85,8 +86,13 @@ func argsParse(argv []string) (master.Args, error) {
                                   has been enabled.
   --no-publish                    Do not publish feature labels
   --label-whitelist=<pattern>     Regular expression to filter label names to
-                                  publish to the Kubernetes API server. [Default: ]
+                                  publish to the Kubernetes API server.
+                                  NB: the label namespace is omitted i.e. the filter
+                                  is only applied to the name part after '/'.
+                                  [Default: ]
   --extra-label-ns=<list>         Comma separated list of allowed extra label namespaces
+                                  [Default: ]
+  --resource-labels=<list>        Comma separated list of labels to be exposed as extended resources.
                                   [Default: ]`,
 		ProgramName,
 		ProgramName,
@@ -94,8 +100,8 @@ func argsParse(argv []string) (master.Args, error) {
 		ProgramName,
 	)
 
-	arguments, _ := docopt.Parse(usage, argv, true,
-		fmt.Sprintf("%s %s", ProgramName, version.Get()), false)
+	arguments, _ := docopt.ParseArgs(usage, argv,
+		fmt.Sprintf("%s %s", ProgramName, version.Get()))
 
 	// Parse argument values as usable types.
 	var err error
@@ -113,6 +119,7 @@ func argsParse(argv []string) (master.Args, error) {
 	}
 	args.VerifyNodeName = arguments["--verify-node-name"].(bool)
 	args.ExtraLabelNs = strings.Split(arguments["--extra-label-ns"].(string), ",")
+	args.ResourceLabels = strings.Split(arguments["--resource-labels"].(string), ",")
 
 	return args, nil
 }

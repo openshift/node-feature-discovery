@@ -20,24 +20,27 @@ import (
 	"fmt"
 	"io/ioutil"
 	"runtime"
+
+	"openshift/node-feature-discovery/source"
 )
 
-// Discover returns feature names for p-state related features such as turbo boost.
-func turboEnabled() (bool, error) {
+// Discover p-state related features such as turbo boost.
+func detectPstate() (map[string]string, error) {
 	// On other platforms, the frequency boost mechanism is software-based.
 	// So skip pstate detection on other architectures.
 	if runtime.GOARCH != "amd64" && runtime.GOARCH != "386" {
-		return false, nil
+		return nil, nil
 	}
 
 	// Only looking for turbo boost for now...
-	bytes, err := ioutil.ReadFile("/sys/devices/system/cpu/intel_pstate/no_turbo")
+	bytes, err := ioutil.ReadFile(source.SysfsDir.Path("devices/system/cpu/intel_pstate/no_turbo"))
 	if err != nil {
-		return false, fmt.Errorf("can't detect whether turbo boost is enabled: %s", err.Error())
+		return nil, fmt.Errorf("can't detect whether turbo boost is enabled: %s", err.Error())
 	}
+	features := map[string]string{"turbo": "false"}
 	if bytes[0] == byte('0') {
-		return true, nil
+		features["turbo"] = "true"
 	}
 
-	return false, nil
+	return features, nil
 }

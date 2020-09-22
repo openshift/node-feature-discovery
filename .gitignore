@@ -1,7 +1,7 @@
 node-feature-discovery-job.json
 demo/helper-scripts/*.pdf
 demo/helper-scripts/*.log
-intel-cmt-cat/
-rdt-discovery/l2-alloc-discovery
-rdt-discovery/l3-alloc-discovery
-rdt-discovery/mon-discovery
+nfd-daemonset-combined.yaml
+nfd-master.yaml
+nfd-worker-daemonset.yaml
+nfd-worker-job.yaml

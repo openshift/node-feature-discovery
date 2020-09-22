@@ -17,8 +17,11 @@ limitations under the License.
 package apihelper
 
 import (
+	"encoding/json"
+
 	api "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	k8sclient "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 )
@@ -42,7 +45,7 @@ func (h K8sHelpers) GetClient() (*k8sclient.Clientset, error) {
 
 func (h K8sHelpers) GetNode(cli *k8sclient.Clientset, nodeName string) (*api.Node, error) {
 	// Get the node object using node name
-	node, err := cli.Core().Nodes().Get(nodeName, meta_v1.GetOptions{})
+	node, err := cli.CoreV1().Nodes().Get(nodeName, meta_v1.GetOptions{})
 	if err != nil {
 		return nil, err
 	}
@@ -52,10 +55,20 @@ func (h K8sHelpers) GetNode(cli *k8sclient.Clientset, nodeName string) (*api.Nod
 
 func (h K8sHelpers) UpdateNode(c *k8sclient.Clientset, n *api.Node) error {
 	// Send the updated node to the apiserver.
-	_, err := c.Core().Nodes().Update(n)
+	_, err := c.CoreV1().Nodes().Update(n)
 	if err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (h K8sHelpers) PatchStatus(c *k8sclient.Clientset, nodeName string, marshalable interface{}) error {
+	// Send the updated node to the apiserver.
+	patch, err := json.Marshal(marshalable)
+	if err == nil {
+		_, err = c.CoreV1().Nodes().Patch(nodeName, types.JSONPatchType, patch, "status")
+	}
+
+	return err
 }
