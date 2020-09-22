@@ -15,7 +15,7 @@ RUN go install \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
-FROM registry.svc.ci.openshift.org/openshift/origin-v4.0:base
+FROM registry.svc.ci.openshift.org/ocp/4.6:base
 
 # Run as unprivileged user
 USER 65534:65534
