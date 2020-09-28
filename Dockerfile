@@ -1,11 +1,6 @@
 FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-openshift-4.6 AS builder
 
-# Get (cache) deps in a separate layer
-COPY go.mod go.sum /go/node-feature-discovery/
-
 WORKDIR /go/node-feature-discovery
-
-RUN go mod download
 
 # Do actual build
 COPY . /go/node-feature-discovery
