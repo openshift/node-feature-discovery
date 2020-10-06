@@ -29,6 +29,7 @@ import (
 var osReleaseFields = [...]string{
 	"ID",
 	"VERSION_ID",
+	"RHEL_VERSION",
 }
 
 // Implement FeatureSource interface
