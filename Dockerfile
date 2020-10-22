@@ -8,7 +8,7 @@ COPY . /go/node-feature-discovery
 ARG VERSION=v0.6.0
 ARG HOSTMOUNT_PREFIX=/host-
 
-RUN make install VERSION=$VERSION HOSTMOUNT_PREFIX=$HOSTMOUNT_PREFIX
+RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
 FROM registry.svc.ci.openshift.org/ocp/4.6:base
