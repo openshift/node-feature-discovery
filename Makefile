@@ -32,7 +32,7 @@ HOSTMOUNT_PREFIX := /
 KUBECONFIG :=
 E2E_TEST_CONFIG :=
 
-LDFLAGS = -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$(VERSION) -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
+LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
 yaml_templates := $(wildcard *.yaml.template)
 yaml_instances := $(patsubst %.yaml.template,%.yaml,$(yaml_templates))
