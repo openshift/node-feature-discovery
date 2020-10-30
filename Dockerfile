@@ -5,9 +5,10 @@ WORKDIR /go/node-feature-discovery
 # Do actual build
 COPY . /go/node-feature-discovery
 
-RUN go install \
-  -ldflags "-X sigs.k8s.io/node-feature-discovery/pkg/version.version=v0.6.0" \
-  ./cmd/*
+ARG VERSION=v0.6.0
+ARG HOSTMOUNT_PREFIX=/host-
+
+RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
 FROM registry.svc.ci.openshift.org/ocp/4.6:base
