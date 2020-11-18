@@ -1,3 +1,4 @@
+# Build node feature discovery
 FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.7 AS builder
 
 WORKDIR /go/node-feature-discovery
