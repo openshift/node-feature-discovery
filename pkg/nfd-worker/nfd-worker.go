@@ -50,8 +50,9 @@ type NFDConfig struct {
 }
 
 type coreConfig struct {
-	NoPublish     bool
-	SleepInterval duration
+	LabelWhiteList regex
+	NoPublish      bool
+	SleepInterval  duration
 }
 
 type sourcesConfig map[string]source.Config
@@ -61,7 +62,6 @@ type Labels map[string]string
 
 // Command line arguments
 type Args struct {
-	LabelWhiteList     string
 	CaFile             string
 	CertFile           string
 	KeyFile            string
@@ -72,8 +72,9 @@ type Args struct {
 	ServerNameOverride string
 	Sources            []string
 	// Deprecated options that should be set via the config file
-	NoPublish     *bool
-	SleepInterval *time.Duration
+	LabelWhiteList *regexp.Regexp
+	NoPublish      *bool
+	SleepInterval  *time.Duration
 }
 
 type NfdWorker interface {
@@ -87,7 +88,10 @@ type nfdWorker struct {
 	configFilePath string
 	config         *NFDConfig
 	sources        []source.FeatureSource
-	labelWhiteList *regexp.Regexp
+}
+
+type regex struct {
+	regexp.Regexp
 }
 
 type duration struct {
@@ -166,13 +170,6 @@ func NewNfdWorker(args Args) (NfdWorker, error) {
 		}
 	}
 
-	// Compile labelWhiteList regex
-	var err error
-	nfd.labelWhiteList, err = regexp.Compile(args.LabelWhiteList)
-	if err != nil {
-		return nfd, fmt.Errorf("error parsing label whitelist regex (%s): %s", args.LabelWhiteList, err)
-	}
-
 	return nfd, nil
 }
 
@@ -213,7 +210,8 @@ func addConfigWatch(path string) (*fsnotify.Watcher, map[string]struct{}, error)
 func newDefaultConfig() *NFDConfig {
 	return &NFDConfig{
 		Core: coreConfig{
-			SleepInterval: duration{60 * time.Second},
+			LabelWhiteList: regex{*regexp.MustCompile("")},
+			SleepInterval:  duration{60 * time.Second},
 		},
 	}
 }
@@ -244,7 +242,7 @@ func (w *nfdWorker) Run() error {
 		select {
 		case <-labelTrigger:
 			// Get the set of feature labels.
-			labels := createFeatureLabels(w.sources, w.labelWhiteList)
+			labels := createFeatureLabels(w.sources, w.config.Core.LabelWhiteList)
 
 			// Update the node with the feature labels.
 			if w.client != nil {
@@ -400,6 +398,9 @@ func (w *nfdWorker) configure(filepath string, overrides string) {
 		stderrLogger.Printf("Failed to parse --options: %s", err)
 	}
 
+	if w.args.LabelWhiteList != nil {
+		c.Core.LabelWhiteList = regex{*w.args.LabelWhiteList}
+	}
 	if w.args.NoPublish != nil {
 		c.Core.NoPublish = *w.args.NoPublish
 	}
@@ -419,7 +420,7 @@ func (w *nfdWorker) configure(filepath string, overrides string) {
 
 // createFeatureLabels returns the set of feature labels from the enabled
 // sources and the whitelist argument.
-func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.Regexp) (labels Labels) {
+func createFeatureLabels(sources []source.FeatureSource, labelWhiteList regex) (labels Labels) {
 	labels = Labels{}
 
 	// Do feature discovery from all configured sources.
@@ -442,7 +443,7 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList *regexp.
 
 // getFeatureLabels returns node labels for features discovered by the
 // supplied source.
-func getFeatureLabels(source source.FeatureSource, labelWhiteList *regexp.Regexp) (labels Labels, err error) {
+func getFeatureLabels(source source.FeatureSource, labelWhiteList regex) (labels Labels, err error) {
 	defer func() {
 		if r := recover(); r != nil {
 			stderrLogger.Printf("panic occurred during discovery of source [%s]: %v", source.Name(), r)
@@ -523,6 +524,25 @@ func advertiseFeatureLabels(client pb.LabelerClient, labels Labels) error {
 		return err
 	}
 
+	return nil
+}
+
+// UnmarshalJSON implements the Unmarshaler interface from "encoding/json"
+func (r *regex) UnmarshalJSON(data []byte) error {
+	var v interface{}
+	if err := json.Unmarshal(data, &v); err != nil {
+		return err
+	}
+	switch val := v.(type) {
+	case string:
+		if rr, err := regexp.Compile(string(val)); err != nil {
+			return err
+		} else {
+			*r = regex{*rr}
+		}
+	default:
+		return fmt.Errorf("invalid regexp %s", data)
+	}
 	return nil
 }
 
