@@ -4,7 +4,6 @@ go 1.15
 
 require (
 	github.com/docopt/docopt-go v0.0.0-20180111231733-ee0de3bc6815
-	github.com/fsnotify/fsnotify v1.4.9
 	github.com/golang/protobuf v1.4.3
 	github.com/klauspost/cpuid v1.3.2-0.20201127150341-242d0b0aa207
 	github.com/onsi/ginkgo v1.11.0
@@ -14,17 +13,12 @@ require (
 	github.com/stretchr/testify v1.4.0
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
 	golang.org/x/net v0.0.0-20201110031124-69a78807bb2b
-	golang.org/x/sync v0.0.0-20201020160332-67f06af15bc9 // indirect
-	golang.org/x/sys v0.0.0-20201116194326-cc9327a14d48 // indirect
-	golang.org/x/text v0.3.4 // indirect
-	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
-	google.golang.org/genproto v0.0.0-20201116205149-79184cff4dfe // indirect
 	google.golang.org/grpc v1.27.1
-	google.golang.org/protobuf v1.25.0 // indirect
 	k8s.io/api v0.19.4
 	k8s.io/apimachinery v0.19.4
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/kubernetes v1.18.6
+	sigs.k8s.io/node-feature-discovery v0.7.0
 	sigs.k8s.io/yaml v1.2.0
 )
 
