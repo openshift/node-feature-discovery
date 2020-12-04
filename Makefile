@@ -1,24 +1,41 @@
-.PHONY: all test yamls
+.PHONY: all test templates yamls
 .FORCE:
 
-GO_CMD := GOOS=linux GO111MODULE=on GOFLAGS=-mod=vendor go
-GO_FMT := gofmt
-GO111MODULE=on
-GOFMT_CHECK=$(shell find . -not \( \( -wholename './.*' -o -wholename '*/vendor/*' \) -prune \) -name '*.go' | sort -u | xargs gofmt -s -l)
+GO_CMD ?= go
+GO_FMT ?= gofmt
 
-IMAGE_BUILD_CMD := podman build
-IMAGE_BUILD_EXTRA_OPTS :=
-IMAGE_PUSH_CMD := podman push
+IMAGE_BUILD_CMD ?= podman build
+IMAGE_BUILD_EXTRA_OPTS ?=
+IMAGE_PUSH_CMD ?= podman push
+CONTAINER_RUN_CMD ?= podman run
+
+# Docker base command for working with html documentation.
+# Use host networking because 'jekyll serve' is stupid enough to use the
+# same site url than the "host" it binds to. Thus, all the links will be
+# broken if we'd bind to 0.0.0.0
+JEKYLL_VERSION := 3.8
+JEKYLL_ENV ?= development
+SITE_BUILD_CMD := $(CONTAINER_RUN_CMD) --rm -i -u "`id -u`:`id -g`" \
+	-e JEKYLL_ENV=$(JEKYLL_ENV) \
+	--volume="$$PWD/docs:/srv/jekyll" \
+	--volume="$$PWD/docs/vendor/bundle:/usr/local/bundle" \
+	--network=host jekyll/jekyll:$(JEKYLL_VERSION)
+SITE_BASEURL ?=
+SITE_DESTDIR ?= _site
+JEKYLL_OPTS := -d '$(SITE_DESTDIR)' $(if $(SITE_BASEURL),-b '$(SITE_BASEURL)',)
 
 VERSION := $(shell git describe --tags --dirty --always)
 
-BIN := node-feature-discovery
-IMAGE_REGISTRY := quay.io/openshift-psap
+IMAGE_REGISTRY ?= quay.io/openshift-psap
+IMAGE_TAG_NAME ?= $(VERSION)
+IMAGE_EXTRA_TAG_NAMES ?=
+
 IMAGE_NAME := node-feature-discovery
-IMAGE_TAG_NAME := $(VERSION)
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
-K8S_NAMESPACE := kube-system
+IMAGE_EXTRA_TAGS := $(foreach tag,$(IMAGE_EXTRA_TAG_NAMES),$(IMAGE_REPO):$(tag))
+
+K8S_NAMESPACE ?= node-feature-discovery
 
 # We use different mount prefix for local and container builds.
 # Take CONTAINER_HOSTMOUNT_PREFIX from HOSTMOUNT_PREFIX if only the latter is specified
@@ -29,8 +46,8 @@ else
 endif
 HOSTMOUNT_PREFIX := /host-
 
-KUBECONFIG :=
-E2E_TEST_CONFIG :=
+KUBECONFIG ?=
+E2E_TEST_CONFIG ?=
 
 LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
@@ -50,6 +67,7 @@ local-image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg VERSION=$(VERSION) \
 		--build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
 		-t $(IMAGE_TAG) \
+		$(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
 		$(IMAGE_BUILD_EXTRA_OPTS) ./
 
 local-image-push:
@@ -65,7 +83,16 @@ yamls: $(yaml_instances)
 	     -e s',^(\s*)image:.+$$,\1image: ${IMAGE_TAG},' \
 	     -e s',^(\s*)namespace:.+$$,\1namespace: ${K8S_NAMESPACE},' \
 	     -e s',^(\s*)mountPath: "/host-,\1mountPath: "${CONTAINER_HOSTMOUNT_PREFIX},' \
+	     -e '/nfd-worker.conf:/r nfd-worker.conf.tmp' \
 	     $< > $@
+
+templates: $(yaml_templates)
+	@# Need to prepend each line in the sample config with spaces in order to
+	@# fit correctly in the configmap spec.
+	@sed s'/^/    /' nfd-worker.conf.example > nfd-worker.conf.tmp
+	@# The quick-n-dirty sed below expects the configmap data to be at the very end of the file
+	@for f in $+; do sed -e '/nfd-worker\.conf/r nfd-worker.conf.tmp' -e '/nfd-worker\.conf/q' -i $$f; done
+	@rm nfd-worker.conf.tmp
 
 mock:
 	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
@@ -95,11 +122,32 @@ ci-lint:
 test:
 	$(GO_CMD) test -x -v ./cmd/... ./pkg/...
 
-test-e2e:
-	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG)
+e2e-test:
+	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
+	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[NFD\]"
 
-clean:
-		go clean
-		rm -f $(BIN)
+push:
+	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
+	for tag in $(IMAGE_EXTRA_TAGS); do $(IMAGE_PUSH_CMD) $$tag; done
+
+poll-image:
+	set -e; \
+	image=$(IMAGE_REPO):$(IMAGE_TAG_NAME); \
+	base_url=`echo $(IMAGE_REPO) | sed -e s'!\([^/]*\)!\1/v2!'`; \
+	errors=`curl -fsS -X GET https://$$base_url/manifests/$(IMAGE_TAG_NAME)|jq .errors`;  \
+	if [ "$$errors" = "null" ]; then \
+	  echo Image $$image found; \
+	else \
+	  echo Image $$image not found; \
+	  exit 1; \
+	fi;
+
+site-build:
+	@mkdir -p docs/vendor/bundle
+	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll build $(JEKYLL_OPTS)"
+
+site-serve:
+	@mkdir -p docs/vendor/bundle
+	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"
 
 .PHONY: all build verify verify-gofmt clean local-image local-image-push test-e2e

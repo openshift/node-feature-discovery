@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2020 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -14,13 +14,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 */
 
-package cpu
+package apihelper
 
 import (
-	"github.com/klauspost/cpuid"
+	"path/filepath"
+	"strings"
 )
 
-// Discover returns feature names for all the supported CPU features.
-func getCpuidFlags() []string {
-	return cpuid.CPU.Features.Strings()
+// JsonPatch is a json marshaling helper used for patching API objects
+type JsonPatch struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value string `json:"value,omitempty"`
+}
+
+// NewJsonPatch returns a new JsonPatch object
+func NewJsonPatch(verb string, path string, key string, value string) JsonPatch {
+	return JsonPatch{verb, filepath.Join(path, strings.ReplaceAll(key, "/", "~1")), value}
 }
