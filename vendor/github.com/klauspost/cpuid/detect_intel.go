@@ -1,6 +1,6 @@
 // Copyright (c) 2015 Klaus Post, released under MIT License. See LICENSE file.
 
-// +build 386,!gccgo amd64,!gccgo
+//+build 386,!gccgo,!noasm amd64,!gccgo,!noasm,!appengine
 
 package cpuid
 
@@ -14,4 +14,23 @@ func initCPU() {
 	cpuidex = asmCpuidex
 	xgetbv = asmXgetbv
 	rdtscpAsm = asmRdtscpAsm
+}
+
+func addInfo(c *CPUInfo) {
+	c.maxFunc = maxFunctionID()
+	c.maxExFunc = maxExtendedFunction()
+	c.BrandName = brandName()
+	c.CacheLine = cacheLine()
+	c.Family, c.Model = familyModel()
+	c.featureSet = support()
+	if c.featureSet != nil {
+		c.Features = c.featureSet[0]
+	}
+	c.SGX = hasSGX(c.featureSet.inSet(SGX), c.featureSet.inSet(SGXLC))
+	c.ThreadsPerCore = threadsPerCore()
+	c.LogicalCores = logicalCores()
+	c.PhysicalCores = physicalCores()
+	c.VendorID, c.VendorString = vendorID()
+	c.Hz = hertz(c.BrandName)
+	c.cacheSize()
 }

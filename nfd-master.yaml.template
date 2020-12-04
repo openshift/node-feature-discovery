@@ -25,6 +25,8 @@ rules:
   - get
   - patch
   - update
+  # List only needed for --prune
+  - list
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -77,7 +79,7 @@ spec:
             valueFrom:
               fieldRef:
                 fieldPath: spec.nodeName
-          image: k8s.gcr.io/nfd/node-feature-discovery:v0.6.0
+          image: registry.ci.openshift.org/origin/4.7:node-feature-discovery
           name: nfd-master
           securityContext:
             allowPrivilegeEscalation: false

@@ -24,6 +24,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strconv"
@@ -43,10 +44,16 @@ import (
 
 const (
 	// Namespace for feature labels
-	LabelNs = "feature.node.kubernetes.io/"
+	LabelNs = "feature.node.kubernetes.io"
 
 	// Namespace for all NFD-related annotations
-	AnnotationNs = "nfd.node.kubernetes.io/"
+	AnnotationNs = "nfd.node.kubernetes.io"
+
+	// NFD Annotations
+	extendedResourceAnnotation = AnnotationNs + "/extended-resources"
+	featureLabelAnnotation     = AnnotationNs + "/feature-labels"
+	masterVersionAnnotation    = AnnotationNs + "/master.version"
+	workerVersionAnnotation    = AnnotationNs + "/worker.version"
 )
 
 // package loggers
@@ -69,11 +76,13 @@ type Annotations map[string]string
 type Args struct {
 	CaFile         string
 	CertFile       string
-	ExtraLabelNs   []string
+	ExtraLabelNs   map[string]struct{}
 	KeyFile        string
+	Kubeconfig     string
 	LabelWhiteList *regexp.Regexp
 	NoPublish      bool
 	Port           int
+	Prune          bool
 	VerifyNodeName bool
 	ResourceLabels []string
 }
@@ -85,24 +94,10 @@ type NfdMaster interface {
 }
 
 type nfdMaster struct {
-	args   Args
-	server *grpc.Server
-	ready  chan bool
-}
-
-// statusOp is a json marshaling helper used for patching node status
-type statusOp struct {
-	Op    string `json:"op"`
-	Path  string `json:"path"`
-	Value string `json:"value,omitempty"`
-}
-
-func createStatusOp(verb string, resource string, path string, value string) statusOp {
-	if !strings.Contains(resource, "/") {
-		resource = LabelNs + resource
-	}
-	res := strings.ReplaceAll(resource, "/", "~1")
-	return statusOp{verb, "/status/" + path + "/" + res, value}
+	args      Args
+	server    *grpc.Server
+	ready     chan bool
+	apihelper apihelper.APIHelpers
 }
 
 // Create new NfdMaster server instance.
@@ -122,6 +117,9 @@ func NewNfdMaster(args Args) (NfdMaster, error) {
 		}
 	}
 
+	// Initialize Kubernetes API helpers
+	nfd.apihelper = apihelper.K8sHelpers{Kubeconfig: args.Kubeconfig}
+
 	return nfd, nil
 }
 
@@ -131,11 +129,12 @@ func (m *nfdMaster) Run() error {
 	stdoutLogger.Printf("Node Feature Discovery Master %s", version.Get())
 	stdoutLogger.Printf("NodeName: '%s'", nodeName)
 
-	// Initialize Kubernetes API helpers
-	helper := apihelper.APIHelpers(apihelper.K8sHelpers{})
+	if m.args.Prune {
+		return m.prune()
+	}
 
 	if !m.args.NoPublish {
-		err := updateMasterNode(helper)
+		err := updateMasterNode(m.apihelper)
 		if err != nil {
 			return fmt.Errorf("failed to update master node: %v", err)
 		}
@@ -177,7 +176,7 @@ func (m *nfdMaster) Run() error {
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
 	}
 	m.server = grpc.NewServer(serverOpts...)
-	pb.RegisterLabelerServer(m.server, &labelerServer{args: m.args, apiHelper: helper})
+	pb.RegisterLabelerServer(m.server, &labelerServer{args: m.args, apiHelper: m.apihelper})
 	stdoutLogger.Printf("gRPC server serving on port: %d", m.args.Port)
 	return m.server.Serve(lis)
 }
@@ -202,6 +201,46 @@ func (m *nfdMaster) WaitForReady(timeout time.Duration) bool {
 	return false
 }
 
+// Prune erases all NFD related properties from the node objects of the cluster.
+func (m *nfdMaster) prune() error {
+	cli, err := m.apihelper.GetClient()
+	if err != nil {
+		return err
+	}
+
+	nodes, err := m.apihelper.GetNodes(cli)
+	if err != nil {
+		return err
+	}
+
+	for _, node := range nodes.Items {
+		stdoutLogger.Printf("pruning node %q...", node.Name)
+
+		// Prune labels and extended resources
+		err := updateNodeFeatures(m.apihelper, node.Name, Labels{}, Annotations{}, ExtendedResources{})
+		if err != nil {
+			return fmt.Errorf("failed to prune labels from node %q: %v", node.Name, err)
+		}
+
+		// Prune annotations
+		node, err := m.apihelper.GetNode(cli, node.Name)
+		if err != nil {
+			return err
+		}
+		for a := range node.Annotations {
+			if strings.HasPrefix(a, AnnotationNs) {
+				delete(node.Annotations, a)
+			}
+		}
+		err = m.apihelper.UpdateNode(cli, node)
+		if err != nil {
+			return fmt.Errorf("failed to prune annotations from node %q: %v", node.Name, err)
+		}
+
+	}
+	return nil
+}
+
 // Advertise NFD master information
 func updateMasterNode(helper apihelper.APIHelpers) error {
 	cli, err := helper.GetClient()
@@ -214,60 +253,62 @@ func updateMasterNode(helper apihelper.APIHelpers) error {
 	}
 
 	// Advertise NFD version as an annotation
-	addAnnotations(node, Annotations{"master.version": version.Get()})
-	err = helper.UpdateNode(cli, node)
+	p := createPatches(nil, node.Annotations, Annotations{masterVersionAnnotation: version.Get()}, "/metadata/annotations")
+	err = helper.PatchNode(cli, node.Name, p)
 	if err != nil {
-		stderrLogger.Printf("can't update node: %s", err.Error())
+		stderrLogger.Printf("failed to patch node annotations: %v", err)
 		return err
 	}
 
 	return nil
 }
 
-// Filter labels by namespace and name whitelist
-func filterFeatureLabels(labels Labels, extraLabelNs []string, labelWhiteList *regexp.Regexp, extendedResourceNames []string) (Labels, ExtendedResources) {
-	for label := range labels {
-		split := strings.SplitN(label, "/", 2)
-		name := split[0]
+// Filter labels by namespace and name whitelist, and, turn selected labels
+// into extended resources. This function also handles proper namespacing of
+// labels and ERs, i.e. adds the possibly missing default namespace for labels
+// arriving through the gRPC API.
+func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelWhiteList *regexp.Regexp, extendedResourceNames []string) (Labels, ExtendedResources) {
+	outLabels := Labels{}
 
-		// Check namespaced labels, filter out if ns is not whitelisted
-		if len(split) == 2 {
-			ns := split[0]
-			name = split[1]
-			for i, extraNs := range extraLabelNs {
-				if ns == extraNs {
-					break
-				} else if i == len(extraLabelNs)-1 {
-					stderrLogger.Printf("Namespace '%s' is not allowed. Ignoring label '%s'\n", ns, label)
-					delete(labels, label)
-				}
+	for label, value := range labels {
+		// Add possibly missing default ns
+		label := addNs(label, LabelNs)
+
+		ns, name := splitNs(label)
+
+		// Check label namespace, filter out if ns is not whitelisted
+		if ns != LabelNs {
+			if _, ok := extraLabelNs[ns]; !ok {
+				stderrLogger.Printf("Namespace '%s' is not allowed. Ignoring label '%s'\n", ns, label)
+				continue
 			}
 		}
 
 		// Skip if label doesn't match labelWhiteList
 		if !labelWhiteList.MatchString(name) {
-			stderrLogger.Printf("%s does not match the whitelist (%s) and will not be published.", name, labelWhiteList.String())
-			delete(labels, label)
+			stderrLogger.Printf("%s (%s) does not match the whitelist (%s) and will not be published.", name, label, labelWhiteList.String())
+			continue
 		}
+		outLabels[label] = value
 	}
 
 	// Remove labels which are intended to be extended resources
 	extendedResources := ExtendedResources{}
 	for _, extendedResourceName := range extendedResourceNames {
-		// remove possibly given default LabelNs to keep annotations shorter
-		extendedResourceName = strings.TrimPrefix(extendedResourceName, LabelNs)
-		if _, ok := labels[extendedResourceName]; ok {
-			if _, err := strconv.Atoi(labels[extendedResourceName]); err != nil {
-				stderrLogger.Printf("bad label value encountered for extended resource: %s", err.Error())
+		// Add possibly missing default ns
+		extendedResourceName = addNs(extendedResourceName, LabelNs)
+		if value, ok := outLabels[extendedResourceName]; ok {
+			if _, err := strconv.Atoi(value); err != nil {
+				stderrLogger.Printf("bad label value (%s: %s) encountered for extended resource: %s", extendedResourceName, value, err.Error())
 				continue // non-numeric label can't be used
 			}
 
-			extendedResources[extendedResourceName] = labels[extendedResourceName]
-			delete(labels, extendedResourceName)
+			extendedResources[extendedResourceName] = value
+			delete(outLabels, extendedResourceName)
 		}
 	}
 
-	return labels, extendedResources
+	return outLabels, extendedResources
 }
 
 // Implement LabelerServer
@@ -306,23 +347,8 @@ func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*p
 	labels, extendedResources := filterFeatureLabels(r.Labels, s.args.ExtraLabelNs, s.args.LabelWhiteList, s.args.ResourceLabels)
 
 	if !s.args.NoPublish {
-		// Advertise NFD worker version, label names and extended resources as annotations
-		labelKeys := make([]string, 0, len(labels))
-		for k := range labels {
-			labelKeys = append(labelKeys, k)
-		}
-		sort.Strings(labelKeys)
-
-		extendedResourceKeys := make([]string, 0, len(extendedResources))
-		for key := range extendedResources {
-			extendedResourceKeys = append(extendedResourceKeys, key)
-		}
-		sort.Strings(extendedResourceKeys)
-
-		annotations := Annotations{"worker.version": r.NfdVersion,
-			"feature-labels":     strings.Join(labelKeys, ","),
-			"extended-resources": strings.Join(extendedResourceKeys, ","),
-		}
+		// Advertise NFD worker version as an annotation
+		annotations := Annotations{workerVersionAnnotation: r.NfdVersion}
 
 		err := updateNodeFeatures(s.apiHelper, r.NodeName, labels, annotations, extendedResources)
 		if err != nil {
@@ -333,8 +359,9 @@ func (s *labelerServer) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*p
 	return &pb.SetLabelsReply{}, nil
 }
 
-// advertiseFeatureLabels advertises the feature labels to a Kubernetes node
-// via the API server.
+// updateNodeFeatures ensures the Kubernetes node object is up to date,
+// creating new labels and extended resources where necessary and removing
+// outdated ones. Also updates the corresponding annotations.
 func updateNodeFeatures(helper apihelper.APIHelpers, nodeName string, labels Labels, annotations Annotations, extendedResources ExtendedResources) error {
 	cli, err := helper.GetClient()
 	if err != nil {
@@ -347,78 +374,106 @@ func updateNodeFeatures(helper apihelper.APIHelpers, nodeName string, labels Lab
 		return err
 	}
 
-	// Resolve publishable extended resources before node is modified
-	statusOps := getExtendedResourceOps(node, extendedResources)
-
-	// Remove old labels
-	if l, ok := node.Annotations[AnnotationNs+"feature-labels"]; ok {
-		oldLabels := strings.Split(l, ",")
-		removeLabels(node, oldLabels)
+	// Store names of labels in an annotation
+	labelKeys := make([]string, 0, len(labels))
+	for key := range labels {
+		// Drop the ns part for labels in the default ns
+		labelKeys = append(labelKeys, strings.TrimPrefix(key, LabelNs+"/"))
 	}
+	sort.Strings(labelKeys)
+	annotations[featureLabelAnnotation] = strings.Join(labelKeys, ",")
+
+	// Store names of extended resources in an annotation
+	extendedResourceKeys := make([]string, 0, len(extendedResources))
+	for key := range extendedResources {
+		// Drop the ns part if in the default ns
+		extendedResourceKeys = append(extendedResourceKeys, strings.TrimPrefix(key, LabelNs+"/"))
+	}
+	sort.Strings(extendedResourceKeys)
+	annotations[extendedResourceAnnotation] = strings.Join(extendedResourceKeys, ",")
+
+	// Create JSON patches for changes in labels and annotations
+	oldLabels := stringToNsNames(node.Annotations[featureLabelAnnotation], LabelNs)
+	patches := createPatches(oldLabels, node.Labels, labels, "/metadata/labels")
+	patches = append(patches, createPatches(nil, node.Annotations, annotations, "/metadata/annotations")...)
 
 	// Also, remove all labels with the old prefix, and the old version label
-	removeLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/nfd")
-	removeLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/node-feature-discovery")
+	patches = append(patches, removeLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/nfd")...)
+	patches = append(patches, removeLabelsWithPrefix(node, "node.alpha.kubernetes-incubator.io/node-feature-discovery")...)
 
-	// Add labels to the node object.
-	addLabels(node, labels)
-
-	// Add annotations
-	addAnnotations(node, annotations)
-
-	// Send the updated node to the apiserver.
-	err = helper.UpdateNode(cli, node)
+	// Patch the node object in the apiserver
+	err = helper.PatchNode(cli, node.Name, patches)
 	if err != nil {
-		stderrLogger.Printf("can't update node: %s", err.Error())
+		stderrLogger.Printf("error while patching node object: %s", err.Error())
 		return err
 	}
 
 	// patch node status with extended resource changes
-	if len(statusOps) > 0 {
-		err = helper.PatchStatus(cli, node.Name, statusOps)
-		if err != nil {
-			stderrLogger.Printf("error while patching extended resources: %s", err.Error())
-			return err
-		}
+	patches = createExtendedResourcePatches(node, extendedResources)
+	err = helper.PatchNodeStatus(cli, node.Name, patches)
+	if err != nil {
+		stderrLogger.Printf("error while patching extended resources: %s", err.Error())
+		return err
 	}
 
 	return err
 }
 
 // Remove any labels having the given prefix
-func removeLabelsWithPrefix(n *api.Node, search string) {
+func removeLabelsWithPrefix(n *api.Node, search string) []apihelper.JsonPatch {
+	var p []apihelper.JsonPatch
+
 	for k := range n.Labels {
 		if strings.HasPrefix(k, search) {
-			delete(n.Labels, k)
+			p = append(p, apihelper.NewJsonPatch("remove", "/metadata/labels", k, ""))
 		}
 	}
+
+	return p
 }
 
-// Removes NFD labels from a Node object
-func removeLabels(n *api.Node, labelNames []string) {
-	for _, l := range labelNames {
-		if strings.Contains(l, "/") {
-			delete(n.Labels, l)
+// createPatches is a generic helper that returns json patch operations to perform
+func createPatches(removeKeys []string, oldItems map[string]string, newItems map[string]string, jsonPath string) []apihelper.JsonPatch {
+	patches := []apihelper.JsonPatch{}
+
+	// Determine items to remove
+	for _, key := range removeKeys {
+		if _, ok := oldItems[key]; ok {
+			if _, ok := newItems[key]; !ok {
+				patches = append(patches, apihelper.NewJsonPatch("remove", jsonPath, key, ""))
+			}
+		}
+	}
+
+	// Determine items to add or replace
+	for key, newVal := range newItems {
+		if oldVal, ok := oldItems[key]; ok {
+			if newVal != oldVal {
+				patches = append(patches, apihelper.NewJsonPatch("replace", jsonPath, key, newVal))
+			}
 		} else {
-			delete(n.Labels, LabelNs+l)
+			patches = append(patches, apihelper.NewJsonPatch("add", jsonPath, key, newVal))
 		}
 	}
+
+	return patches
 }
 
-// getExtendedResourceOps returns a slice of operations to perform on the node status
-func getExtendedResourceOps(n *api.Node, extendedResources ExtendedResources) []statusOp {
-	var statusOps []statusOp
+// createExtendedResourcePatches returns a slice of operations to perform on
+// the node status
+func createExtendedResourcePatches(n *api.Node, extendedResources ExtendedResources) []apihelper.JsonPatch {
+	patches := []apihelper.JsonPatch{}
 
-	oldResources := strings.Split(n.Annotations[AnnotationNs+"extended-resources"], ",")
+	// Form a list of namespaced resource names managed by us
+	oldResources := stringToNsNames(n.Annotations[extendedResourceAnnotation], LabelNs)
 
 	// figure out which resources to remove
 	for _, resource := range oldResources {
-		if _, ok := n.Status.Capacity[api.ResourceName(addNs(resource, LabelNs))]; ok {
+		if _, ok := n.Status.Capacity[api.ResourceName(resource)]; ok {
 			// check if the ext resource is still needed
-			_, extResNeeded := extendedResources[resource]
-			if !extResNeeded {
-				statusOps = append(statusOps, createStatusOp("remove", resource, "capacity", ""))
-				statusOps = append(statusOps, createStatusOp("remove", resource, "allocatable", ""))
+			if _, extResNeeded := extendedResources[resource]; !extResNeeded {
+				patches = append(patches, apihelper.NewJsonPatch("remove", "/status/capacity", resource, ""))
+				patches = append(patches, apihelper.NewJsonPatch("remove", "/status/allocatable", resource, ""))
 			}
 		}
 	}
@@ -426,37 +481,19 @@ func getExtendedResourceOps(n *api.Node, extendedResources ExtendedResources) []
 	// figure out which resources to replace and which to add
 	for resource, value := range extendedResources {
 		// check if the extended resource already exists with the same capacity in the node
-		if quantity, ok := n.Status.Capacity[api.ResourceName(addNs(resource, LabelNs))]; ok {
+		if quantity, ok := n.Status.Capacity[api.ResourceName(resource)]; ok {
 			val, _ := quantity.AsInt64()
 			if strconv.FormatInt(val, 10) != value {
-				statusOps = append(statusOps, createStatusOp("replace", resource, "capacity", value))
-				statusOps = append(statusOps, createStatusOp("replace", resource, "allocatable", value))
+				patches = append(patches, apihelper.NewJsonPatch("replace", "/status/capacity", resource, value))
+				patches = append(patches, apihelper.NewJsonPatch("replace", "/status/allocatable", resource, value))
 			}
 		} else {
-			statusOps = append(statusOps, createStatusOp("add", resource, "capacity", value))
+			patches = append(patches, apihelper.NewJsonPatch("add", "/status/capacity", resource, value))
 			// "allocatable" gets added implicitly after adding to capacity
 		}
 	}
 
-	return statusOps
-}
-
-// Add NFD labels to a Node object.
-func addLabels(n *api.Node, labels map[string]string) {
-	for k, v := range labels {
-		if strings.Contains(k, "/") {
-			n.Labels[k] = v
-		} else {
-			n.Labels[LabelNs+k] = v
-		}
-	}
-}
-
-// Add Annotations to a Node object
-func addAnnotations(n *api.Node, annotations map[string]string) {
-	for k, v := range annotations {
-		n.Annotations[AnnotationNs+k] = v
-	}
+	return patches
 }
 
 // addNs adds a namespace if one isn't already found from src string
@@ -464,5 +501,28 @@ func addNs(src string, nsToAdd string) string {
 	if strings.Contains(src, "/") {
 		return src
 	}
-	return nsToAdd + src
+	return filepath.Join(nsToAdd, src)
+}
+
+// splitNs splits a name into its namespace and name parts
+func splitNs(fullname string) (string, string) {
+	split := strings.SplitN(fullname, "/", 2)
+	if len(split) == 2 {
+		return split[0], split[1]
+	}
+	return "", fullname
+}
+
+// stringToNsNames is a helper for converting a string of comma-separated names
+// into a slice of fully namespaced names
+func stringToNsNames(cslist, ns string) []string {
+	var names []string
+	if cslist != "" {
+		names = strings.Split(cslist, ",")
+		for i, name := range names {
+			// Expect that names may omit the ns part
+			names[i] = addNs(name, ns)
+		}
+	}
+	return names
 }

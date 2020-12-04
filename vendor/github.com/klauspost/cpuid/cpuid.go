@@ -3,14 +3,20 @@
 // Package cpuid provides information about the CPU running the current program.
 //
 // CPU features are detected on startup, and kept for fast access through the life of the application.
-// Currently x86 / x64 (AMD64) is supported.
+// Currently x86 / x64 (AMD64) as well as arm64 is supported.
 //
 // You can access the CPU information by accessing the shared CPU variable of the cpuid library.
 //
 // Package home: https://github.com/klauspost/cpuid
 package cpuid
 
-import "strings"
+import (
+	"math"
+	"strings"
+)
+
+// AMD refererence: https://www.amd.com/system/files/TechDocs/25481.pdf
+// and Processor Programming Reference (PPR)
 
 // Vendor is a representation of a CPU vendor.
 type Vendor int
@@ -28,74 +34,94 @@ const (
 	XenHVM
 	Bhyve
 	Hygon
+	SiS
+	RDC
 )
 
 const (
-	CMOV               = 1 << iota // i686 CMOV
-	NX                             // NX (No-Execute) bit
-	AMD3DNOW                       // AMD 3DNOW
-	AMD3DNOWEXT                    // AMD 3DNowExt
-	MMX                            // standard MMX
-	MMXEXT                         // SSE integer functions or AMD MMX ext
-	SSE                            // SSE functions
-	SSE2                           // P4 SSE functions
-	SSE3                           // Prescott SSE3 functions
-	SSSE3                          // Conroe SSSE3 functions
-	SSE4                           // Penryn SSE4.1 functions
-	SSE4A                          // AMD Barcelona microarchitecture SSE4a instructions
-	SSE42                          // Nehalem SSE4.2 functions
-	AVX                            // AVX functions
-	AVX2                           // AVX2 functions
-	FMA3                           // Intel FMA 3
-	FMA4                           // Bulldozer FMA4 functions
-	XOP                            // Bulldozer XOP functions
-	F16C                           // Half-precision floating-point conversion
-	BMI1                           // Bit Manipulation Instruction Set 1
-	BMI2                           // Bit Manipulation Instruction Set 2
-	TBM                            // AMD Trailing Bit Manipulation
-	LZCNT                          // LZCNT instruction
-	POPCNT                         // POPCNT instruction
-	AESNI                          // Advanced Encryption Standard New Instructions
-	CLMUL                          // Carry-less Multiplication
-	HTT                            // Hyperthreading (enabled)
-	HLE                            // Hardware Lock Elision
-	RTM                            // Restricted Transactional Memory
-	RDRAND                         // RDRAND instruction is available
-	RDSEED                         // RDSEED instruction is available
-	ADX                            // Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
-	SHA                            // Intel SHA Extensions
-	AVX512F                        // AVX-512 Foundation
-	AVX512DQ                       // AVX-512 Doubleword and Quadword Instructions
-	AVX512IFMA                     // AVX-512 Integer Fused Multiply-Add Instructions
-	AVX512PF                       // AVX-512 Prefetch Instructions
-	AVX512ER                       // AVX-512 Exponential and Reciprocal Instructions
-	AVX512CD                       // AVX-512 Conflict Detection Instructions
-	AVX512BW                       // AVX-512 Byte and Word Instructions
-	AVX512VL                       // AVX-512 Vector Length Extensions
-	AVX512VBMI                     // AVX-512 Vector Bit Manipulation Instructions
-	AVX512VBMI2                    // AVX-512 Vector Bit Manipulation Instructions, Version 2
-	AVX512VNNI                     // AVX-512 Vector Neural Network Instructions
-	AVX512VPOPCNTDQ                // AVX-512 Vector Population Count Doubleword and Quadword
-	GFNI                           // Galois Field New Instructions
-	VAES                           // Vector AES
-	AVX512BITALG                   // AVX-512 Bit Algorithms
-	VPCLMULQDQ                     // Carry-Less Multiplication Quadword
-	AVX512BF16                     // AVX-512 BFLOAT16 Instructions
-	AVX512VP2INTERSECT             // AVX-512 Intersect for D/Q
-	MPX                            // Intel MPX (Memory Protection Extensions)
-	ERMS                           // Enhanced REP MOVSB/STOSB
-	RDTSCP                         // RDTSCP Instruction
-	CX16                           // CMPXCHG16B Instruction
-	SGX                            // Software Guard Extensions
-	SGXLC                          // Software Guard Extensions Launch Control
-	IBPB                           // Indirect Branch Restricted Speculation (IBRS) and Indirect Branch Predictor Barrier (IBPB)
-	STIBP                          // Single Thread Indirect Branch Predictors
-	VMX                            // Virtual Machine Extensions
+	CMOV               = iota // i686 CMOV
+	NX                        // NX (No-Execute) bit
+	AMD3DNOW                  // AMD 3DNOW
+	AMD3DNOWEXT               // AMD 3DNowExt
+	MMX                       // standard MMX
+	MMXEXT                    // SSE integer functions or AMD MMX ext
+	SSE                       // SSE functions
+	SSE2                      // P4 SSE functions
+	SSE3                      // Prescott SSE3 functions
+	SSSE3                     // Conroe SSSE3 functions
+	SSE4                      // Penryn SSE4.1 functions
+	SSE4A                     // AMD Barcelona microarchitecture SSE4a instructions
+	SSE42                     // Nehalem SSE4.2 functions
+	AVX                       // AVX functions
+	AVX2                      // AVX2 functions
+	FMA3                      // Intel FMA 3
+	FMA4                      // Bulldozer FMA4 functions
+	XOP                       // Bulldozer XOP functions
+	F16C                      // Half-precision floating-point conversion
+	BMI1                      // Bit Manipulation Instruction Set 1
+	BMI2                      // Bit Manipulation Instruction Set 2
+	TBM                       // AMD Trailing Bit Manipulation
+	LZCNT                     // LZCNT instruction
+	POPCNT                    // POPCNT instruction
+	AESNI                     // Advanced Encryption Standard New Instructions
+	CLMUL                     // Carry-less Multiplication
+	HTT                       // Hyperthreading (enabled)
+	HLE                       // Hardware Lock Elision
+	RTM                       // Restricted Transactional Memory
+	RDRAND                    // RDRAND instruction is available
+	RDSEED                    // RDSEED instruction is available
+	ADX                       // Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
+	SHA                       // Intel SHA Extensions
+	AVX512F                   // AVX-512 Foundation
+	AVX512DQ                  // AVX-512 Doubleword and Quadword Instructions
+	AVX512IFMA                // AVX-512 Integer Fused Multiply-Add Instructions
+	AVX512PF                  // AVX-512 Prefetch Instructions
+	AVX512ER                  // AVX-512 Exponential and Reciprocal Instructions
+	AVX512CD                  // AVX-512 Conflict Detection Instructions
+	AVX512BW                  // AVX-512 Byte and Word Instructions
+	AVX512VL                  // AVX-512 Vector Length Extensions
+	AVX512VBMI                // AVX-512 Vector Bit Manipulation Instructions
+	AVX512VBMI2               // AVX-512 Vector Bit Manipulation Instructions, Version 2
+	AVX512VNNI                // AVX-512 Vector Neural Network Instructions
+	AVX512VPOPCNTDQ           // AVX-512 Vector Population Count Doubleword and Quadword
+	GFNI                      // Galois Field New Instructions
+	VAES                      // Vector AES
+	AVX512BITALG              // AVX-512 Bit Algorithms
+	VPCLMULQDQ                // Carry-Less Multiplication Quadword
+	AVX512BF16                // AVX-512 BFLOAT16 Instructions
+	AVX512VP2INTERSECT        // AVX-512 Intersect for D/Q
+	MPX                       // Intel MPX (Memory Protection Extensions)
+	ERMS                      // Enhanced REP MOVSB/STOSB
+	RDTSCP                    // RDTSCP Instruction
+	CX16                      // CMPXCHG16B Instruction
+	SGX                       // Software Guard Extensions
+	SGXLC                     // Software Guard Extensions Launch Control
+	IBPB                      // Indirect Branch Restricted Speculation (IBRS) and Indirect Branch Predictor Barrier (IBPB)
+	STIBP                     // Single Thread Indirect Branch Predictors
+	VMX                       // Virtual Machine Extensions
 
 	// Performance indicators
 	SSE2SLOW // SSE2 is supported, but usually not faster
 	SSE3SLOW // SSE3 is supported, but usually not faster
 	ATOM     // Atom processor, some SSSE3 instructions are slower
+
+	AMXBF16 // Tile computational operations on BFLOAT16 numbers
+	AMXTILE // Tile architecture
+	AMXINT8 // Tile computational operations on 8-bit integers
+
+	HYPERVISOR // This bit has been reserved by Intel & AMD for use by hypervisors
+
+	WAITPKG   // TPAUSE, UMONITOR, UMWAIT
+	SERIALIZE // Serialize Instruction Execution
+	TSXLDTRK  // Intel TSX Suspend Load Address Tracking
+	WBNOINVD  // Write Back and Do Not Invalidate Cache
+	MOVDIRI   // Move Doubleword as Direct Store
+	MOVDIR64B // Move 64 Bytes as Direct Store
+	ENQCMD    // Enqueue Command
+	CLDEMOTE  // Cache Line Demote
+
+	// Keep it last. It automatically defines the size of []FlagSet
+	LASTID
 )
 
 var flagNames = map[Flags]string{
@@ -165,24 +191,98 @@ var flagNames = map[Flags]string{
 	SSE3SLOW: "SSE3SLOW", // SSE3 supported, but usually not faster
 	ATOM:     "ATOM",     // Atom processor, some SSSE3 instructions are slower
 
+	AMXBF16: "AMXBF16", // Tile computational operations on BFLOAT16 numbers
+	AMXTILE: "AMXTILE", // Tile architecture
+	AMXINT8: "AMXINT8", // Tile computational operations on 8-bit integers
+
+	HYPERVISOR: "HYPERVISOR", // This bit has been reserved by Intel & AMD for use by hypervisors
+
+	WAITPKG:   "WAITPKG",   // TPAUSE, UMONITOR, UMWAIT
+	SERIALIZE: "SERIALIZE", // Serialize Instruction Execution
+	TSXLDTRK:  "TSXLDTRK",  // Intel TSX Suspend Load Address Tracking
+	WBNOINVD:  "WBNOINVD",  // Write Back and Do Not Invalidate Cache
+	MOVDIRI:   "MOVDIRI",   // Move Doubleword as Direct Store
+	MOVDIR64B: "MOVDIR64B", // Move 64 Bytes as Direct Store
+	ENQCMD:    "ENQCMD",    // Enqueue Command
+	CLDEMOTE:  "CLDEMOTE",  // Cache Line Demote
+}
+
+/* all special features for arm64 should be defined here */
+const (
+	/* extension instructions */
+	FP ArmFlags = 1 << iota
+	ASIMD
+	EVTSTRM
+	AES
+	PMULL
+	SHA1
+	SHA2
+	CRC32
+	ATOMICS
+	FPHP
+	ASIMDHP
+	ARMCPUID
+	ASIMDRDM
+	JSCVT
+	FCMA
+	LRCPC
+	DCPOP
+	SHA3
+	SM3
+	SM4
+	ASIMDDP
+	SHA512
+	SVE
+	GPA
+)
+
+var flagNamesArm = map[ArmFlags]string{
+	FP:       "FP",       // Single-precision and double-precision floating point
+	ASIMD:    "ASIMD",    // Advanced SIMD
+	EVTSTRM:  "EVTSTRM",  // Generic timer
+	AES:      "AES",      // AES instructions
+	PMULL:    "PMULL",    // Polynomial Multiply instructions (PMULL/PMULL2)
+	SHA1:     "SHA1",     // SHA-1 instructions (SHA1C, etc)
+	SHA2:     "SHA2",     // SHA-2 instructions (SHA256H, etc)
+	CRC32:    "CRC32",    // CRC32/CRC32C instructions
+	ATOMICS:  "ATOMICS",  // Large System Extensions (LSE)
+	FPHP:     "FPHP",     // Half-precision floating point
+	ASIMDHP:  "ASIMDHP",  // Advanced SIMD half-precision floating point
+	ARMCPUID: "CPUID",    // Some CPU ID registers readable at user-level
+	ASIMDRDM: "ASIMDRDM", // Rounding Double Multiply Accumulate/Subtract (SQRDMLAH/SQRDMLSH)
+	JSCVT:    "JSCVT",    // Javascript-style double->int convert (FJCVTZS)
+	FCMA:     "FCMA",     // Floatin point complex number addition and multiplication
+	LRCPC:    "LRCPC",    // Weaker release consistency (LDAPR, etc)
+	DCPOP:    "DCPOP",    // Data cache clean to Point of Persistence (DC CVAP)
+	SHA3:     "SHA3",     // SHA-3 instructions (EOR3, RAXI, XAR, BCAX)
+	SM3:      "SM3",      // SM3 instructions
+	SM4:      "SM4",      // SM4 instructions
+	ASIMDDP:  "ASIMDDP",  // SIMD Dot Product
+	SHA512:   "SHA512",   // SHA512 instructions
+	SVE:      "SVE",      // Scalable Vector Extension
+	GPA:      "GPA",      // Generic Pointer Authentication
 }
 
 // CPUInfo contains information about the detected system CPU.
 type CPUInfo struct {
-	BrandName      string // Brand name reported by the CPU
-	VendorID       Vendor // Comparable CPU vendor ID
-	Features       Flags  // Features of the CPU
-	PhysicalCores  int    // Number of physical processor cores in your CPU. Will be 0 if undetectable.
-	ThreadsPerCore int    // Number of threads per physical core. Will be 1 if undetectable.
-	LogicalCores   int    // Number of physical cores times threads that can run on each core through the use of hyperthreading. Will be 0 if undetectable.
-	Family         int    // CPU family number
-	Model          int    // CPU model number
-	CacheLine      int    // Cache line size in bytes. Will be 0 if undetectable.
+	BrandName      string   // Brand name reported by the CPU
+	VendorID       Vendor   // Comparable CPU vendor ID
+	VendorString   string   // Raw vendor string.
+	Features       Flags    // Features of the CPU (x64) (deprecated)
+	featureSet     FlagSet  // Features of the CPU
+	Arm            ArmFlags // Features of the CPU (arm)
+	PhysicalCores  int      // Number of physical processor cores in your CPU. Will be 0 if undetectable.
+	ThreadsPerCore int      // Number of threads per physical core. Will be 1 if undetectable.
+	LogicalCores   int      // Number of physical cores times threads that can run on each core through the use of hyperthreading. Will be 0 if undetectable.
+	Family         int      // CPU family number
+	Model          int      // CPU model number
+	CacheLine      int      // Cache line size in bytes. Will be 0 if undetectable.
+	Hz             int64    // Clock speed, if known
 	Cache          struct {
 		L1I int // L1 Instruction Cache (per core or shared). Will be -1 if undetected
 		L1D int // L1 Data Cache (per core or shared). Will be -1 if undetected
 		L2  int // L2 Cache (per core or shared). Will be -1 if undetected
-		L3  int // L3 Instruction Cache (per core or shared). Will be -1 if undetected
+		L3  int // L3 Cache (per core, per ccx or shared). Will be -1 if undetected
 	}
 	SGX       SGXSupport
 	maxFunc   uint32
@@ -197,8 +297,7 @@ var rdtscpAsm func() (eax, ebx, ecx, edx uint32)
 // CPU contains information about the CPU as detected on startup,
 // or when Detect last was called.
 //
-// Use this as the primary entry point to you data,
-// this way queries are
+// Use this as the primary entry point to you data.
 var CPU CPUInfo
 
 func init() {
@@ -214,326 +313,376 @@ func init() {
 // If you call this, you must ensure that no other goroutine is accessing the
 // exported CPU variable.
 func Detect() {
-	CPU.maxFunc = maxFunctionID()
-	CPU.maxExFunc = maxExtendedFunction()
-	CPU.BrandName = brandName()
-	CPU.CacheLine = cacheLine()
-	CPU.Family, CPU.Model = familyModel()
-	CPU.Features = support()
-	CPU.SGX = hasSGX(CPU.Features&SGX != 0, CPU.Features&SGXLC != 0)
-	CPU.ThreadsPerCore = threadsPerCore()
-	CPU.LogicalCores = logicalCores()
-	CPU.PhysicalCores = physicalCores()
-	CPU.VendorID = vendorID()
-	CPU.cacheSize()
+	// Set defaults
+	CPU.ThreadsPerCore = 1
+	CPU.Cache.L1I = -1
+	CPU.Cache.L1D = -1
+	CPU.Cache.L2 = -1
+	CPU.Cache.L3 = -1
+	addInfo(&CPU)
 }
 
 // Generated here: http://play.golang.org/p/BxFH2Gdc0G
 
 // Cmov indicates support of CMOV instructions
 func (c CPUInfo) Cmov() bool {
-	return c.Features&CMOV != 0
+	return c.featureSet.inSet(CMOV)
 }
 
 // Amd3dnow indicates support of AMD 3DNOW! instructions
 func (c CPUInfo) Amd3dnow() bool {
-	return c.Features&AMD3DNOW != 0
+	return c.featureSet.inSet(AMD3DNOW)
 }
 
 // Amd3dnowExt indicates support of AMD 3DNOW! Extended instructions
 func (c CPUInfo) Amd3dnowExt() bool {
-	return c.Features&AMD3DNOWEXT != 0
+	return c.featureSet.inSet(AMD3DNOWEXT)
 }
 
 // VMX indicates support of VMX
 func (c CPUInfo) VMX() bool {
-	return c.Features&VMX != 0
+	return c.featureSet.inSet(VMX)
 }
 
 // MMX indicates support of MMX instructions
 func (c CPUInfo) MMX() bool {
-	return c.Features&MMX != 0
+	return c.featureSet.inSet(MMX)
 }
 
 // MMXExt indicates support of MMXEXT instructions
 // (SSE integer functions or AMD MMX ext)
 func (c CPUInfo) MMXExt() bool {
-	return c.Features&MMXEXT != 0
+	return c.featureSet.inSet(MMXEXT)
 }
 
 // SSE indicates support of SSE instructions
 func (c CPUInfo) SSE() bool {
-	return c.Features&SSE != 0
+	return c.featureSet.inSet(SSE)
 }
 
 // SSE2 indicates support of SSE 2 instructions
 func (c CPUInfo) SSE2() bool {
-	return c.Features&SSE2 != 0
+	return c.featureSet.inSet(SSE2)
 }
 
 // SSE3 indicates support of SSE 3 instructions
 func (c CPUInfo) SSE3() bool {
-	return c.Features&SSE3 != 0
+	return c.featureSet.inSet(SSE3)
 }
 
 // SSSE3 indicates support of SSSE 3 instructions
 func (c CPUInfo) SSSE3() bool {
-	return c.Features&SSSE3 != 0
+	return c.featureSet.inSet(SSSE3)
 }
 
 // SSE4 indicates support of SSE 4 (also called SSE 4.1) instructions
 func (c CPUInfo) SSE4() bool {
-	return c.Features&SSE4 != 0
+	return c.featureSet.inSet(SSE4)
 }
 
 // SSE42 indicates support of SSE4.2 instructions
 func (c CPUInfo) SSE42() bool {
-	return c.Features&SSE42 != 0
+	return c.featureSet.inSet(SSE42)
 }
 
 // AVX indicates support of AVX instructions
 // and operating system support of AVX instructions
 func (c CPUInfo) AVX() bool {
-	return c.Features&AVX != 0
+	return c.featureSet.inSet(AVX)
 }
 
 // AVX2 indicates support of AVX2 instructions
 func (c CPUInfo) AVX2() bool {
-	return c.Features&AVX2 != 0
+	return c.featureSet.inSet(AVX2)
 }
 
 // FMA3 indicates support of FMA3 instructions
 func (c CPUInfo) FMA3() bool {
-	return c.Features&FMA3 != 0
+	return c.featureSet.inSet(FMA3)
 }
 
 // FMA4 indicates support of FMA4 instructions
 func (c CPUInfo) FMA4() bool {
-	return c.Features&FMA4 != 0
+	return c.featureSet.inSet(FMA4)
 }
 
 // XOP indicates support of XOP instructions
 func (c CPUInfo) XOP() bool {
-	return c.Features&XOP != 0
+	return c.featureSet.inSet(XOP)
 }
 
 // F16C indicates support of F16C instructions
 func (c CPUInfo) F16C() bool {
-	return c.Features&F16C != 0
+	return c.featureSet.inSet(F16C)
 }
 
 // BMI1 indicates support of BMI1 instructions
 func (c CPUInfo) BMI1() bool {
-	return c.Features&BMI1 != 0
+	return c.featureSet.inSet(BMI1)
 }
 
 // BMI2 indicates support of BMI2 instructions
 func (c CPUInfo) BMI2() bool {
-	return c.Features&BMI2 != 0
+	return c.featureSet.inSet(BMI2)
 }
 
 // TBM indicates support of TBM instructions
 // (AMD Trailing Bit Manipulation)
 func (c CPUInfo) TBM() bool {
-	return c.Features&TBM != 0
+	return c.featureSet.inSet(TBM)
 }
 
 // Lzcnt indicates support of LZCNT instruction
 func (c CPUInfo) Lzcnt() bool {
-	return c.Features&LZCNT != 0
+	return c.featureSet.inSet(LZCNT)
 }
 
 // Popcnt indicates support of POPCNT instruction
 func (c CPUInfo) Popcnt() bool {
-	return c.Features&POPCNT != 0
+	return c.featureSet.inSet(POPCNT)
 }
 
 // HTT indicates the processor has Hyperthreading enabled
 func (c CPUInfo) HTT() bool {
-	return c.Features&HTT != 0
+	return c.featureSet.inSet(HTT)
 }
 
 // SSE2Slow indicates that SSE2 may be slow on this processor
 func (c CPUInfo) SSE2Slow() bool {
-	return c.Features&SSE2SLOW != 0
+	return c.featureSet.inSet(SSE2SLOW)
 }
 
 // SSE3Slow indicates that SSE3 may be slow on this processor
 func (c CPUInfo) SSE3Slow() bool {
-	return c.Features&SSE3SLOW != 0
+	return c.featureSet.inSet(SSE3SLOW)
 }
 
 // AesNi indicates support of AES-NI instructions
 // (Advanced Encryption Standard New Instructions)
 func (c CPUInfo) AesNi() bool {
-	return c.Features&AESNI != 0
+	return c.featureSet.inSet(AESNI)
 }
 
 // Clmul indicates support of CLMUL instructions
 // (Carry-less Multiplication)
 func (c CPUInfo) Clmul() bool {
-	return c.Features&CLMUL != 0
+	return c.featureSet.inSet(CLMUL)
 }
 
 // NX indicates support of NX (No-Execute) bit
 func (c CPUInfo) NX() bool {
-	return c.Features&NX != 0
+	return c.featureSet.inSet(NX)
 }
 
 // SSE4A indicates support of AMD Barcelona microarchitecture SSE4a instructions
 func (c CPUInfo) SSE4A() bool {
-	return c.Features&SSE4A != 0
+	return c.featureSet.inSet(SSE4A)
 }
 
 // HLE indicates support of Hardware Lock Elision
 func (c CPUInfo) HLE() bool {
-	return c.Features&HLE != 0
+	return c.featureSet.inSet(HLE)
 }
 
 // RTM indicates support of Restricted Transactional Memory
 func (c CPUInfo) RTM() bool {
-	return c.Features&RTM != 0
+	return c.featureSet.inSet(RTM)
 }
 
 // Rdrand indicates support of RDRAND instruction is available
 func (c CPUInfo) Rdrand() bool {
-	return c.Features&RDRAND != 0
+	return c.featureSet.inSet(RDRAND)
 }
 
 // Rdseed indicates support of RDSEED instruction is available
 func (c CPUInfo) Rdseed() bool {
-	return c.Features&RDSEED != 0
+	return c.featureSet.inSet(RDSEED)
 }
 
 // ADX indicates support of Intel ADX (Multi-Precision Add-Carry Instruction Extensions)
 func (c CPUInfo) ADX() bool {
-	return c.Features&ADX != 0
+	return c.featureSet.inSet(ADX)
 }
 
 // SHA indicates support of Intel SHA Extensions
 func (c CPUInfo) SHA() bool {
-	return c.Features&SHA != 0
+	return c.featureSet.inSet(SHA)
 }
 
 // AVX512F indicates support of AVX-512 Foundation
 func (c CPUInfo) AVX512F() bool {
-	return c.Features&AVX512F != 0
+	return c.featureSet.inSet(AVX512F)
 }
 
 // AVX512DQ indicates support of AVX-512 Doubleword and Quadword Instructions
 func (c CPUInfo) AVX512DQ() bool {
-	return c.Features&AVX512DQ != 0
+	return c.featureSet.inSet(AVX512DQ)
 }
 
 // AVX512IFMA indicates support of AVX-512 Integer Fused Multiply-Add Instructions
 func (c CPUInfo) AVX512IFMA() bool {
-	return c.Features&AVX512IFMA != 0
+	return c.featureSet.inSet(AVX512IFMA)
 }
 
 // AVX512PF indicates support of AVX-512 Prefetch Instructions
 func (c CPUInfo) AVX512PF() bool {
-	return c.Features&AVX512PF != 0
+	return c.featureSet.inSet(AVX512PF)
 }
 
 // AVX512ER indicates support of AVX-512 Exponential and Reciprocal Instructions
 func (c CPUInfo) AVX512ER() bool {
-	return c.Features&AVX512ER != 0
+	return c.featureSet.inSet(AVX512ER)
 }
 
 // AVX512CD indicates support of AVX-512 Conflict Detection Instructions
 func (c CPUInfo) AVX512CD() bool {
-	return c.Features&AVX512CD != 0
+	return c.featureSet.inSet(AVX512CD)
 }
 
 // AVX512BW indicates support of AVX-512 Byte and Word Instructions
 func (c CPUInfo) AVX512BW() bool {
-	return c.Features&AVX512BW != 0
+	return c.featureSet.inSet(AVX512BW)
 }
 
 // AVX512VL indicates support of AVX-512 Vector Length Extensions
 func (c CPUInfo) AVX512VL() bool {
-	return c.Features&AVX512VL != 0
+	return c.featureSet.inSet(AVX512VL)
 }
 
 // AVX512VBMI indicates support of AVX-512 Vector Bit Manipulation Instructions
 func (c CPUInfo) AVX512VBMI() bool {
-	return c.Features&AVX512VBMI != 0
+	return c.featureSet.inSet(AVX512VBMI)
 }
 
 // AVX512VBMI2 indicates support of AVX-512 Vector Bit Manipulation Instructions, Version 2
 func (c CPUInfo) AVX512VBMI2() bool {
-	return c.Features&AVX512VBMI2 != 0
+	return c.featureSet.inSet(AVX512VBMI2)
 }
 
 // AVX512VNNI indicates support of AVX-512 Vector Neural Network Instructions
 func (c CPUInfo) AVX512VNNI() bool {
-	return c.Features&AVX512VNNI != 0
+	return c.featureSet.inSet(AVX512VNNI)
 }
 
 // AVX512VPOPCNTDQ indicates support of AVX-512 Vector Population Count Doubleword and Quadword
 func (c CPUInfo) AVX512VPOPCNTDQ() bool {
-	return c.Features&AVX512VPOPCNTDQ != 0
+	return c.featureSet.inSet(AVX512VPOPCNTDQ)
 }
 
 // GFNI indicates support of Galois Field New Instructions
 func (c CPUInfo) GFNI() bool {
-	return c.Features&GFNI != 0
+	return c.featureSet.inSet(GFNI)
 }
 
 // VAES indicates support of Vector AES
 func (c CPUInfo) VAES() bool {
-	return c.Features&VAES != 0
+	return c.featureSet.inSet(VAES)
 }
 
 // AVX512BITALG indicates support of AVX-512 Bit Algorithms
 func (c CPUInfo) AVX512BITALG() bool {
-	return c.Features&AVX512BITALG != 0
+	return c.featureSet.inSet(AVX512BITALG)
 }
 
 // VPCLMULQDQ indicates support of Carry-Less Multiplication Quadword
 func (c CPUInfo) VPCLMULQDQ() bool {
-	return c.Features&VPCLMULQDQ != 0
+	return c.featureSet.inSet(VPCLMULQDQ)
 }
 
-// AVX512BF16 indicates support of
+// AVX512BF16 indicates support of AVX-512 BFLOAT16 Instruction
 func (c CPUInfo) AVX512BF16() bool {
-	return c.Features&AVX512BF16 != 0
+	return c.featureSet.inSet(AVX512BF16)
 }
 
-// AVX512VP2INTERSECT indicates support of
+// AVX512VP2INTERSECT indicates support of AVX-512 Intersect for D/Q
 func (c CPUInfo) AVX512VP2INTERSECT() bool {
-	return c.Features&AVX512VP2INTERSECT != 0
+	return c.featureSet.inSet(AVX512VP2INTERSECT)
+}
+
+// AMXBF16 indicates support of Tile computational operations on BFLOAT16 numbers
+func (c CPUInfo) AMXBF16() bool {
+	return c.featureSet.inSet(AMXBF16)
+}
+
+// AMXTILE indicates support of Tile architecture
+func (c CPUInfo) AMXTILE() bool {
+	return c.featureSet.inSet(AMXTILE)
+}
+
+// AMXINT8 indicates support of Tile computational operations on 8-bit integers
+func (c CPUInfo) AMXINT8() bool {
+	return c.featureSet.inSet(AMXINT8)
+}
+
+// WAITPKG indicates support of TPAUSE, UMONITOR, UMWAIT
+func (c CPUInfo) WAITPKG() bool {
+	return c.featureSet.inSet(WAITPKG)
+}
+
+// SERIALIZE indicates support of Serialize Instruction Execution
+func (c CPUInfo) SERIALIZE() bool {
+	return c.featureSet.inSet(SERIALIZE)
+}
+
+// TSXLDTRK indicates support of Intel TSX Suspend Load Address Tracking
+func (c CPUInfo) TSXLDTRK() bool {
+	return c.featureSet.inSet(TSXLDTRK)
+}
+
+// WBNOINVD indicates support of Write Back and Do Not Invalidate Cache
+func (c CPUInfo) WBNOINVD() bool {
+	return c.featureSet.inSet(WBNOINVD)
+}
+
+// MOVDIRI indicates support of Move Doubleword as Direct Store
+func (c CPUInfo) MOVDIRI() bool {
+	return c.featureSet.inSet(MOVDIRI)
+}
+
+// MOVDIR64B indicates support of Move 64 Bytes as Direct Store
+func (c CPUInfo) MOVDIR64B() bool {
+	return c.featureSet.inSet(MOVDIR64B)
+}
+
+// ENQCMD indicates support of Enqueue Command
+func (c CPUInfo) ENQCMD() bool {
+	return c.featureSet.inSet(ENQCMD)
+}
+
+// CLDEMOTE indicates support of Cache Line Demote
+func (c CPUInfo) CLDEMOTE() bool {
+	return c.featureSet.inSet(CLDEMOTE)
 }
 
 // MPX indicates support of Intel MPX (Memory Protection Extensions)
 func (c CPUInfo) MPX() bool {
-	return c.Features&MPX != 0
+	return c.featureSet.inSet(MPX)
 }
 
 // ERMS indicates support of Enhanced REP MOVSB/STOSB
 func (c CPUInfo) ERMS() bool {
-	return c.Features&ERMS != 0
+	return c.featureSet.inSet(ERMS)
 }
 
 // RDTSCP Instruction is available.
 func (c CPUInfo) RDTSCP() bool {
-	return c.Features&RDTSCP != 0
+	return c.featureSet.inSet(RDTSCP)
 }
 
 // CX16 indicates if CMPXCHG16B instruction is available.
 func (c CPUInfo) CX16() bool {
-	return c.Features&CX16 != 0
+	return c.featureSet.inSet(CX16)
 }
 
 // TSX is split into HLE (Hardware Lock Elision) and RTM (Restricted Transactional Memory) detection.
 // So TSX simply checks that.
 func (c CPUInfo) TSX() bool {
-	return c.Features&(HLE|RTM) == HLE|RTM
+	return c.featureSet.inSet(HLE) && c.featureSet.inSet(RTM)
 }
 
 // Atom indicates an Atom processor
 func (c CPUInfo) Atom() bool {
-	return c.Features&ATOM != 0
+	return c.featureSet.inSet(ATOM)
 }
 
 // Intel returns true if vendor is recognized as Intel
@@ -564,6 +713,14 @@ func (c CPUInfo) NSC() bool {
 // VIA returns true if vendor is recognized as VIA
 func (c CPUInfo) VIA() bool {
 	return c.VendorID == VIA
+}
+
+func (c CPUInfo) FeatureSet() []string {
+	s := make([]string, 0)
+	for _, f := range c.featureSet.Strings() {
+		s = append(s, f)
+	}
+	return s
 }
 
 // RTCounter returns the 64-bit time-stamp counter
@@ -601,19 +758,79 @@ func (c CPUInfo) LogicalCPU() int {
 	return int(ebx >> 24)
 }
 
-// VM Will return true if the cpu id indicates we are in
-// a virtual machine. This is only a hint, and will very likely
-// have many false negatives.
-func (c CPUInfo) VM() bool {
-	switch c.VendorID {
-	case MSVM, KVM, VMware, XenHVM, Bhyve:
-		return true
+// hertz tries to compute the clock speed of the CPU. If leaf 15 is
+// supported, use it, otherwise parse the brand string. Yes, really.
+func hertz(model string) int64 {
+	mfi := maxFunctionID()
+	if mfi >= 0x15 {
+		eax, ebx, ecx, _ := cpuid(0x15)
+		if eax != 0 && ebx != 0 && ecx != 0 {
+			return int64((int64(ecx) * int64(ebx)) / int64(eax))
+		}
 	}
-	return false
+	// computeHz determines the official rated speed of a CPU from its brand
+	// string. This insanity is *actually the official documented way to do
+	// this according to Intel*, prior to leaf 0x15 existing. The official
+	// documentation only shows this working for exactly `x.xx` or `xxxx`
+	// cases, e.g., `2.50GHz` or `1300MHz`; this parser will accept other
+	// sizes.
+	hz := strings.LastIndex(model, "Hz")
+	if hz < 3 {
+		return -1
+	}
+	var multiplier int64
+	switch model[hz-1] {
+	case 'M':
+		multiplier = 1000 * 1000
+	case 'G':
+		multiplier = 1000 * 1000 * 1000
+	case 'T':
+		multiplier = 1000 * 1000 * 1000 * 1000
+	}
+	if multiplier == 0 {
+		return -1
+	}
+	freq := int64(0)
+	divisor := int64(0)
+	decimalShift := int64(1)
+	var i int
+	for i = hz - 2; i >= 0 && model[i] != ' '; i-- {
+		if model[i] >= '0' && model[i] <= '9' {
+			freq += int64(model[i]-'0') * decimalShift
+			decimalShift *= 10
+		} else if model[i] == '.' {
+			if divisor != 0 {
+				return -1
+			}
+			divisor = decimalShift
+		} else {
+			return -1
+		}
+	}
+	// we didn't find a space
+	if i < 0 {
+		return -1
+	}
+	if divisor != 0 {
+		return (freq * multiplier) / divisor
+	}
+	return freq * multiplier
 }
 
-// Flags contains detected cpu features and caracteristics
+// VM Will return true if the cpu id indicates we are in
+// a virtual machine.
+func (c CPUInfo) VM() bool {
+	return CPU.featureSet.inSet(HYPERVISOR)
+}
+
+// Flags contains detected cpu features and characteristics
 type Flags uint64
+
+// ArmFlags contains detected ARM cpu features and characteristics
+type ArmFlags uint64
+
+// FlagSet contains detected cpu features and characteristics in an array of Flags
+type FlagSet []Flags
 
 // String returns a string representation of the detected
 // CPU features.
@@ -621,14 +838,54 @@ func (f Flags) String() string {
 	return strings.Join(f.Strings(), ",")
 }
 
-// Strings returns and array of the detected features.
+func (s FlagSet) inSet(offset uint) bool {
+	if len(s) == 0 {
+		return false
+	}
+	return s[offset>>6]&(1<<(offset&63)) != 0
+}
+
+func (s FlagSet) set(offset uint) {
+	if len(s) == 0 {
+		return
+	}
+	s[offset>>6] |= 1 << (offset & 63)
+}
+
+// Strings returns an array of the detected features.
 func (f Flags) Strings() []string {
-	s := support()
+	s := FlagSet{f}
+	return s.Strings()
+}
+
+// Strings returns an array of the detected features for FlagsSet.
+func (s FlagSet) Strings() []string {
+	if len(s) == 0 {
+		return []string{""}
+	}
+	bits := uint(len(s) * 64)
+	r := make([]string, 0, bits)
+	for i := uint(0); i < bits; i++ {
+		if s.inSet(i) {
+			r = append(r, flagNames[Flags(i)])
+		}
+	}
+	return r
+}
+
+// String returns a string representation of the detected
+// CPU features.
+func (f ArmFlags) String() string {
+	return strings.Join(f.Strings(), ",")
+}
+
+// Strings returns an array of the detected features.
+func (f ArmFlags) Strings() []string {
 	r := make([]string, 0, 20)
 	for i := uint(0); i < 64; i++ {
-		key := Flags(1 << i)
-		val := flagNames[key]
-		if s&key != 0 {
+		key := ArmFlags(1 << i)
+		val := flagNamesArm[key]
+		if f&key != 0 {
 			r = append(r, val)
 		}
 	}
@@ -659,11 +916,16 @@ func brandName() string {
 
 func threadsPerCore() int {
 	mfi := maxFunctionID()
-	if mfi < 0x4 || vendorID() != Intel {
+	vend, _ := vendorID()
+
+	if mfi < 0x4 || (vend != Intel && vend != AMD) {
 		return 1
 	}
 
 	if mfi < 0xb {
+		if vend != Intel {
+			return 1
+		}
 		_, b, _, d := cpuid(1)
 		if (d & (1 << 28)) != 0 {
 			// v will contain logical core count
@@ -688,7 +950,8 @@ func threadsPerCore() int {
 
 func logicalCores() int {
 	mfi := maxFunctionID()
-	switch vendorID() {
+	v, _ := vendorID()
+	switch v {
 	case Intel:
 		// Use this on old Intel processors
 		if mfi < 0xb {
@@ -723,10 +986,18 @@ func familyModel() (int, int) {
 }
 
 func physicalCores() int {
-	switch vendorID() {
+	v, _ := vendorID()
+	switch v {
 	case Intel:
 		return logicalCores() / threadsPerCore()
 	case AMD, Hygon:
+		lc := logicalCores()
+		tpc := threadsPerCore()
+		if lc > 0 && tpc > 0 {
+			return lc / tpc
+		}
+		// The following is inaccurate on AMD EPYC 7742 64-Core Processor
+
 		if maxExtendedFunction() >= 0x80000008 {
 			_, _, c, _ := cpuid(0x80000008)
 			return int(c&0xff) + 1
@@ -751,16 +1022,20 @@ var vendorMapping = map[string]Vendor{
 	"XenVMMXenVMM": XenHVM,
 	"bhyve bhyve ": Bhyve,
 	"HygonGenuine": Hygon,
+	"Vortex86 SoC": SiS,
+	"SiS SiS SiS ": SiS,
+	"RiseRiseRise": SiS,
+	"Genuine  RDC": RDC,
 }
 
-func vendorID() Vendor {
+func vendorID() (Vendor, string) {
 	_, b, c, d := cpuid(0)
-	v := valAsString(b, d, c)
-	vend, ok := vendorMapping[string(v)]
+	v := string(valAsString(b, d, c))
+	vend, ok := vendorMapping[v]
 	if !ok {
-		return Other
+		return Other, v
 	}
-	return vend
+	return vend, v
 }
 
 func cacheLine() int {
@@ -783,7 +1058,7 @@ func (c *CPUInfo) cacheSize() {
 	c.Cache.L1I = -1
 	c.Cache.L2 = -1
 	c.Cache.L3 = -1
-	vendor := vendorID()
+	vendor, _ := vendorID()
 	switch vendor {
 	case Intel:
 		if maxFunctionID() < 4 {
@@ -837,6 +1112,49 @@ func (c *CPUInfo) cacheSize() {
 		}
 		_, _, ecx, _ = cpuid(0x80000006)
 		c.Cache.L2 = int(((ecx >> 16) & 0xFFFF) * 1024)
+
+		// CPUID Fn8000_001D_EAX_x[N:0] Cache Properties
+		if maxExtendedFunction() < 0x8000001D {
+			return
+		}
+		for i := uint32(0); i < math.MaxUint32; i++ {
+			eax, ebx, ecx, _ := cpuidex(0x8000001D, i)
+
+			level := (eax >> 5) & 7
+			cacheNumSets := ecx + 1
+			cacheLineSize := 1 + (ebx & 2047)
+			cachePhysPartitions := 1 + ((ebx >> 12) & 511)
+			cacheNumWays := 1 + ((ebx >> 22) & 511)
+
+			typ := eax & 15
+			size := int(cacheNumSets * cacheLineSize * cachePhysPartitions * cacheNumWays)
+			if typ == 0 {
+				return
+			}
+
+			switch level {
+			case 1:
+				switch typ {
+				case 1:
+					// Data cache
+					c.Cache.L1D = size
+				case 2:
+					// Inst cache
+					c.Cache.L1I = size
+				default:
+					if c.Cache.L1D < 0 {
+						c.Cache.L1I = size
+					}
+					if c.Cache.L1I < 0 {
+						c.Cache.L1I = size
+					}
+				}
+			case 2:
+				c.Cache.L2 = size
+			case 3:
+				c.Cache.L3 = size
+			}
+		}
 	}
 
 	return
@@ -893,76 +1211,87 @@ func hasSGX(available, lc bool) (rval SGXSupport) {
 	return
 }
 
-func support() Flags {
+func support() FlagSet {
 	mfi := maxFunctionID()
-	vend := vendorID()
+	vend, _ := vendorID()
 	if mfi < 0x1 {
-		return 0
+		return nil
 	}
-	rval := uint64(0)
+
+	fs := make(FlagSet, LASTID/64+1)
+
 	_, _, c, d := cpuid(1)
 	if (d & (1 << 15)) != 0 {
-		rval |= CMOV
+		fs.set(CMOV)
 	}
 	if (d & (1 << 23)) != 0 {
-		rval |= MMX
+		fs.set(MMX)
 	}
 	if (d & (1 << 25)) != 0 {
-		rval |= MMXEXT
+		fs.set(MMXEXT)
 	}
 	if (d & (1 << 25)) != 0 {
-		rval |= SSE
+		fs.set(SSE)
 	}
 	if (d & (1 << 26)) != 0 {
-		rval |= SSE2
+		fs.set(SSE2)
 	}
 	if (c & 1) != 0 {
-		rval |= SSE3
+		fs.set(SSE3)
 	}
 	if (c & (1 << 5)) != 0 {
-		rval |= VMX
+		fs.set(VMX)
 	}
 	if (c & 0x00000200) != 0 {
-		rval |= SSSE3
+		fs.set(SSSE3)
 	}
 	if (c & 0x00080000) != 0 {
-		rval |= SSE4
+		fs.set(SSE4)
 	}
 	if (c & 0x00100000) != 0 {
-		rval |= SSE42
+		fs.set(SSE42)
 	}
 	if (c & (1 << 25)) != 0 {
-		rval |= AESNI
+		fs.set(AESNI)
 	}
 	if (c & (1 << 1)) != 0 {
-		rval |= CLMUL
+		fs.set(CLMUL)
 	}
 	if c&(1<<23) != 0 {
-		rval |= POPCNT
+		fs.set(POPCNT)
 	}
 	if c&(1<<30) != 0 {
-		rval |= RDRAND
+		fs.set(RDRAND)
+	}
+	// This bit has been reserved by Intel & AMD for use by hypervisors,
+	// and indicates the presence of a hypervisor.
+	if c&(1<<31) != 0 {
+		fs.set(HYPERVISOR)
 	}
 	if c&(1<<29) != 0 {
-		rval |= F16C
+		fs.set(F16C)
 	}
 	if c&(1<<13) != 0 {
-		rval |= CX16
+		fs.set(CX16)
 	}
 	if vend == Intel && (d&(1<<28)) != 0 && mfi >= 4 {
 		if threadsPerCore() > 1 {
-			rval |= HTT
+			fs.set(HTT)
 		}
 	}
-
+	if vend == AMD && (d&(1<<28)) != 0 && mfi >= 4 {
+		if threadsPerCore() > 1 {
+			fs.set(HTT)
+		}
+	}
 	// Check XGETBV, OXSAVE and AVX bits
 	if c&(1<<26) != 0 && c&(1<<27) != 0 && c&(1<<28) != 0 {
 		// Check for OS support
 		eax, _ := xgetbv(0)
 		if (eax & 0x6) == 0x6 {
-			rval |= AVX
+			fs.set(AVX)
 			if (c & 0x00001000) != 0 {
-				rval |= FMA3
+				fs.set(FMA3)
 			}
 		}
 	}
@@ -971,47 +1300,71 @@ func support() Flags {
 	if mfi >= 7 {
 		_, ebx, ecx, edx := cpuidex(7, 0)
 		eax1, _, _, _ := cpuidex(7, 1)
-		if (rval&AVX) != 0 && (ebx&0x00000020) != 0 {
-			rval |= AVX2
+		if fs.inSet(AVX) && (ebx&0x00000020) != 0 {
+			fs.set(AVX2)
 		}
+		// CPUID.(EAX=7, ECX=0).EBX
 		if (ebx & 0x00000008) != 0 {
-			rval |= BMI1
+			fs.set(BMI1)
 			if (ebx & 0x00000100) != 0 {
-				rval |= BMI2
+				fs.set(BMI2)
 			}
 		}
 		if ebx&(1<<2) != 0 {
-			rval |= SGX
+			fs.set(SGX)
 		}
 		if ebx&(1<<4) != 0 {
-			rval |= HLE
+			fs.set(HLE)
 		}
 		if ebx&(1<<9) != 0 {
-			rval |= ERMS
+			fs.set(ERMS)
 		}
 		if ebx&(1<<11) != 0 {
-			rval |= RTM
+			fs.set(RTM)
 		}
 		if ebx&(1<<14) != 0 {
-			rval |= MPX
+			fs.set(MPX)
 		}
 		if ebx&(1<<18) != 0 {
-			rval |= RDSEED
+			fs.set(RDSEED)
 		}
 		if ebx&(1<<19) != 0 {
-			rval |= ADX
+			fs.set(ADX)
 		}
 		if ebx&(1<<29) != 0 {
-			rval |= SHA
+			fs.set(SHA)
 		}
-		if edx&(1<<26) != 0 {
-			rval |= IBPB
+		// CPUID.(EAX=7, ECX=0).ECX
+		if ecx&(1<<5) != 0 {
+			fs.set(WAITPKG)
+		}
+		if ecx&(1<<25) != 0 {
+			fs.set(CLDEMOTE)
+		}
+		if ecx&(1<<27) != 0 {
+			fs.set(MOVDIRI)
+		}
+		if ecx&(1<<28) != 0 {
+			fs.set(MOVDIR64B)
+		}
+		if ecx&(1<<29) != 0 {
+			fs.set(ENQCMD)
 		}
 		if ecx&(1<<30) != 0 {
-			rval |= SGXLC
+			fs.set(SGXLC)
+		}
+		// CPUID.(EAX=7, ECX=0).EDX
+		if edx&(1<<14) != 0 {
+			fs.set(SERIALIZE)
+		}
+		if edx&(1<<16) != 0 {
+			fs.set(TSXLDTRK)
+		}
+		if edx&(1<<26) != 0 {
+			fs.set(IBPB)
 		}
 		if edx&(1<<27) != 0 {
-			rval |= STIBP
+			fs.set(STIBP)
 		}
 
 		// Only detect AVX-512 features if XGETBV is supported
@@ -1024,61 +1377,70 @@ func support() Flags {
 			/// and that XCR0[2:1] = ‘11b’ (XMM state and YMM state are enabled by OS).
 			if (eax>>5)&7 == 7 && (eax>>1)&3 == 3 {
 				if ebx&(1<<16) != 0 {
-					rval |= AVX512F
+					fs.set(AVX512F)
 				}
 				if ebx&(1<<17) != 0 {
-					rval |= AVX512DQ
+					fs.set(AVX512DQ)
 				}
 				if ebx&(1<<21) != 0 {
-					rval |= AVX512IFMA
+					fs.set(AVX512IFMA)
 				}
 				if ebx&(1<<26) != 0 {
-					rval |= AVX512PF
+					fs.set(AVX512PF)
 				}
 				if ebx&(1<<27) != 0 {
-					rval |= AVX512ER
+					fs.set(AVX512ER)
 				}
 				if ebx&(1<<28) != 0 {
-					rval |= AVX512CD
+					fs.set(AVX512CD)
 				}
 				if ebx&(1<<30) != 0 {
-					rval |= AVX512BW
+					fs.set(AVX512BW)
 				}
 				if ebx&(1<<31) != 0 {
-					rval |= AVX512VL
+					fs.set(AVX512VL)
 				}
 				// ecx
 				if ecx&(1<<1) != 0 {
-					rval |= AVX512VBMI
+					fs.set(AVX512VBMI)
 				}
 				if ecx&(1<<6) != 0 {
-					rval |= AVX512VBMI2
+					fs.set(AVX512VBMI2)
 				}
 				if ecx&(1<<8) != 0 {
-					rval |= GFNI
+					fs.set(GFNI)
 				}
 				if ecx&(1<<9) != 0 {
-					rval |= VAES
+					fs.set(VAES)
 				}
 				if ecx&(1<<10) != 0 {
-					rval |= VPCLMULQDQ
+					fs.set(VPCLMULQDQ)
 				}
 				if ecx&(1<<11) != 0 {
-					rval |= AVX512VNNI
+					fs.set(AVX512VNNI)
 				}
 				if ecx&(1<<12) != 0 {
-					rval |= AVX512BITALG
+					fs.set(AVX512BITALG)
 				}
 				if ecx&(1<<14) != 0 {
-					rval |= AVX512VPOPCNTDQ
+					fs.set(AVX512VPOPCNTDQ)
 				}
 				// edx
 				if edx&(1<<8) != 0 {
-					rval |= AVX512VP2INTERSECT
+					fs.set(AVX512VP2INTERSECT)
 				}
-				// cpuid eax 07h,ecx=1
+				if edx&(1<<22) != 0 {
+					fs.set(AMXBF16)
+				}
+				if edx&(1<<24) != 0 {
+					fs.set(AMXTILE)
+				}
+				if edx&(1<<25) != 0 {
+					fs.set(AMXINT8)
+				}
+				// eax1 = CPUID.(EAX=7, ECX=1).EAX
 				if eax1&(1<<5) != 0 {
-					rval |= AVX512BF16
+					fs.set(AVX512BF16)
 				}
 			}
 		}
@@ -1087,29 +1449,29 @@ func support() Flags {
 	if maxExtendedFunction() >= 0x80000001 {
 		_, _, c, d := cpuid(0x80000001)
 		if (c & (1 << 5)) != 0 {
-			rval |= LZCNT
-			rval |= POPCNT
+			fs.set(LZCNT)
+			fs.set(POPCNT)
 		}
 		if (d & (1 << 31)) != 0 {
-			rval |= AMD3DNOW
+			fs.set(AMD3DNOW)
 		}
 		if (d & (1 << 30)) != 0 {
-			rval |= AMD3DNOWEXT
+			fs.set(AMD3DNOWEXT)
 		}
 		if (d & (1 << 23)) != 0 {
-			rval |= MMX
+			fs.set(MMX)
 		}
 		if (d & (1 << 22)) != 0 {
-			rval |= MMXEXT
+			fs.set(MMXEXT)
 		}
 		if (c & (1 << 6)) != 0 {
-			rval |= SSE4A
+			fs.set(SSE4A)
 		}
 		if d&(1<<20) != 0 {
-			rval |= NX
+			fs.set(NX)
 		}
 		if d&(1<<27) != 0 {
-			rval |= RDTSCP
+			fs.set(RDTSCP)
 		}
 
 		/* Allow for selectively disabling SSE2 functions on AMD processors
@@ -1119,33 +1481,33 @@ func support() Flags {
 		   AV_CPU_FLAG_SSE2 and AV_CPU_FLAG_SSE2SLOW are both set in this case
 		   so that SSE2 is used unless explicitly disabled by checking
 		   AV_CPU_FLAG_SSE2SLOW. */
-		if vendorID() != Intel &&
-			rval&SSE2 != 0 && (c&0x00000040) == 0 {
-			rval |= SSE2SLOW
+		if vend != Intel &&
+			fs.inSet(SSE2) && (c&0x00000040) == 0 {
+			fs.set(SSE2SLOW)
 		}
 
 		/* XOP and FMA4 use the AVX instruction coding scheme, so they can't be
 		 * used unless the OS has AVX support. */
-		if (rval & AVX) != 0 {
+		if fs.inSet(AVX) {
 			if (c & 0x00000800) != 0 {
-				rval |= XOP
+				fs.set(XOP)
 			}
 			if (c & 0x00010000) != 0 {
-				rval |= FMA4
+				fs.set(FMA4)
 			}
 		}
 
-		if vendorID() == Intel {
+		if vend == Intel {
 			family, model := familyModel()
 			if family == 6 && (model == 9 || model == 13 || model == 14) {
 				/* 6/9 (pentium-m "banias"), 6/13 (pentium-m "dothan"), and
 				 * 6/14 (core1 "yonah") theoretically support sse2, but it's
 				 * usually slower than mmx. */
-				if (rval & SSE2) != 0 {
-					rval |= SSE2SLOW
+				if fs.inSet(SSE2) {
+					fs.set(SSE2SLOW)
 				}
-				if (rval & SSE3) != 0 {
-					rval |= SSE3SLOW
+				if fs.inSet(SSE3) {
+					fs.set(SSE3SLOW)
 				}
 			}
 			/* The Atom processor has SSSE3 support, which is useful in many cases,
@@ -1154,11 +1516,18 @@ func support() Flags {
 			 * SSSE3. This flag allows for selectively disabling certain SSSE3
 			 * functions on the Atom. */
 			if family == 6 && model == 28 {
-				rval |= ATOM
+				fs.set(ATOM)
 			}
 		}
 	}
-	return Flags(rval)
+	if maxExtendedFunction() >= 0x80000008 {
+		_, b, _, _ := cpuid(0x80000008)
+		if (b & (1 << 9)) != 0 {
+			fs.set(WBNOINVD)
+		}
+	}
+
+	return fs
 }
 
 func valAsString(values ...uint32) []byte {
@@ -1181,4 +1550,119 @@ func valAsString(values ...uint32) []byte {
 		}
 	}
 	return r
+}
+
+// Single-precision and double-precision floating point
+func (c CPUInfo) ArmFP() bool {
+	return c.Arm&FP != 0
+}
+
+// Advanced SIMD
+func (c CPUInfo) ArmASIMD() bool {
+	return c.Arm&ASIMD != 0
+}
+
+// Generic timer
+func (c CPUInfo) ArmEVTSTRM() bool {
+	return c.Arm&EVTSTRM != 0
+}
+
+// AES instructions
+func (c CPUInfo) ArmAES() bool {
+	return c.Arm&AES != 0
+}
+
+// Polynomial Multiply instructions (PMULL/PMULL2)
+func (c CPUInfo) ArmPMULL() bool {
+	return c.Arm&PMULL != 0
+}
+
+// SHA-1 instructions (SHA1C, etc)
+func (c CPUInfo) ArmSHA1() bool {
+	return c.Arm&SHA1 != 0
+}
+
+// SHA-2 instructions (SHA256H, etc)
+func (c CPUInfo) ArmSHA2() bool {
+	return c.Arm&SHA2 != 0
+}
+
+// CRC32/CRC32C instructions
+func (c CPUInfo) ArmCRC32() bool {
+	return c.Arm&CRC32 != 0
+}
+
+// Large System Extensions (LSE)
+func (c CPUInfo) ArmATOMICS() bool {
+	return c.Arm&ATOMICS != 0
+}
+
+// Half-precision floating point
+func (c CPUInfo) ArmFPHP() bool {
+	return c.Arm&FPHP != 0
+}
+
+// Advanced SIMD half-precision floating point
+func (c CPUInfo) ArmASIMDHP() bool {
+	return c.Arm&ASIMDHP != 0
+}
+
+// Rounding Double Multiply Accumulate/Subtract (SQRDMLAH/SQRDMLSH)
+func (c CPUInfo) ArmASIMDRDM() bool {
+	return c.Arm&ASIMDRDM != 0
+}
+
+// Javascript-style double->int convert (FJCVTZS)
+func (c CPUInfo) ArmJSCVT() bool {
+	return c.Arm&JSCVT != 0
+}
+
+// Floatin point complex number addition and multiplication
+func (c CPUInfo) ArmFCMA() bool {
+	return c.Arm&FCMA != 0
+}
+
+// Weaker release consistency (LDAPR, etc)
+func (c CPUInfo) ArmLRCPC() bool {
+	return c.Arm&LRCPC != 0
+}
+
+// Data cache clean to Point of Persistence (DC CVAP)
+func (c CPUInfo) ArmDCPOP() bool {
+	return c.Arm&DCPOP != 0
+}
+
+// SHA-3 instructions (EOR3, RAXI, XAR, BCAX)
+func (c CPUInfo) ArmSHA3() bool {
+	return c.Arm&SHA3 != 0
+}
+
+// SM3 instructions
+func (c CPUInfo) ArmSM3() bool {
+	return c.Arm&SM3 != 0
+}
+
+// SM4 instructions
+func (c CPUInfo) ArmSM4() bool {
+	return c.Arm&SM4 != 0
+}
+
+// SIMD Dot Product
+func (c CPUInfo) ArmASIMDDP() bool {
+	return c.Arm&ASIMDDP != 0
+}
+
+// SHA512 instructions
+func (c CPUInfo) ArmSHA512() bool {
+	return c.Arm&SHA512 != 0
+}
+
+// Scalable Vector Extension
+func (c CPUInfo) ArmSVE() bool {
+	return c.Arm&SVE != 0
+}
+
+// Generic Pointer Authentication
+func (c CPUInfo) ArmGPA() bool {
+	return c.Arm&GPA != 0
 }
