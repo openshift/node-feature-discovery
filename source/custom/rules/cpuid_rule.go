@@ -17,7 +17,7 @@ limitations under the License.
 package rules
 
 import (
-	"sigs.k8s.io/node-feature-discovery/source/internal/cpuidutils"
+	"openshift/node-feature-discovery/source/internal/cpuidutils"
 )
 
 // CpuIDRule implements Rule

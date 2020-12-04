@@ -20,8 +20,8 @@ import (
 	"io/ioutil"
 	"log"
 
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/internal/cpuidutils"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/internal/cpuidutils"
 )
 
 // Configuration file options

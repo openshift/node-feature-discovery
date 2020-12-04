@@ -18,7 +18,7 @@ package rules
 
 import (
 	"fmt"
-	"sigs.k8s.io/node-feature-discovery/source/internal/kernelutils"
+	"openshift/node-feature-discovery/source/internal/kernelutils"
 )
 
 // KconfigRule implements Rule

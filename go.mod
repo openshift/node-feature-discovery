@@ -18,7 +18,6 @@ require (
 	k8s.io/apimachinery v0.19.4
 	k8s.io/client-go v11.0.0+incompatible
 	k8s.io/kubernetes v1.18.6
-	sigs.k8s.io/node-feature-discovery v0.7.0
 	sigs.k8s.io/yaml v1.2.0
 )
 

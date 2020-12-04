@@ -21,8 +21,8 @@ import (
 	"regexp"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/internal/kernelutils"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/internal/kernelutils"
 )
 
 // Configuration file options
