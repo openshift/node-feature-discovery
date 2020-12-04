@@ -5,7 +5,7 @@ WORKDIR /go/node-feature-discovery
 # Do actual build
 COPY . /go/node-feature-discovery
 
-ARG VERSION=v0.6.0
+ARG VERSION=v0.7.0
 ARG HOSTMOUNT_PREFIX=/host-
 
 RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}

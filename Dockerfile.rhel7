@@ -6,7 +6,7 @@ WORKDIR /go/src/openshift/node-feature-discovery
 
 
 RUN go install \
-  -ldflags "-X openshift/node-feature-discovery/pkg/version.version=v0.6.0" \
+  -ldflags "-X openshift/node-feature-discovery/pkg/version.version=v0.7.0" \
   ./cmd/*
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 

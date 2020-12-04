@@ -1,4 +1,4 @@
-.PHONY: all test templates yamls
+.PHONY: all build verify verify-gofmt clean local-image local-image-push test-e2e yamls
 .FORCE:
 
 GO_CMD ?= go
@@ -8,21 +8,6 @@ IMAGE_BUILD_CMD ?= podman build
 IMAGE_BUILD_EXTRA_OPTS ?=
 IMAGE_PUSH_CMD ?= podman push
 CONTAINER_RUN_CMD ?= podman run
-
-# Docker base command for working with html documentation.
-# Use host networking because 'jekyll serve' is stupid enough to use the
-# same site url than the "host" it binds to. Thus, all the links will be
-# broken if we'd bind to 0.0.0.0
-JEKYLL_VERSION := 3.8
-JEKYLL_ENV ?= development
-SITE_BUILD_CMD := $(CONTAINER_RUN_CMD) --rm -i -u "`id -u`:`id -g`" \
-	-e JEKYLL_ENV=$(JEKYLL_ENV) \
-	--volume="$$PWD/docs:/srv/jekyll" \
-	--volume="$$PWD/docs/vendor/bundle:/usr/local/bundle" \
-	--network=host jekyll/jekyll:$(JEKYLL_VERSION)
-SITE_BASEURL ?=
-SITE_DESTDIR ?= _site
-JEKYLL_OPTS := -d '$(SITE_DESTDIR)' $(if $(SITE_BASEURL),-b '$(SITE_BASEURL)',)
 
 VERSION := $(shell git describe --tags --dirty --always)
 
@@ -150,4 +135,3 @@ site-serve:
 	@mkdir -p docs/vendor/bundle
 	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"
 
-.PHONY: all build verify verify-gofmt clean local-image local-image-push test-e2e

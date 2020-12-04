@@ -72,7 +72,7 @@ spec:
           effect: "NoSchedule"
       containers:
         - name: nfd-master
-          image: gcr.io/k8s-staging-nfd/node-feature-discovery:master
+          image: registry.ci.openshift.org/origin/4.7:node-feature-discovery
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
