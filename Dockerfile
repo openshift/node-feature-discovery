@@ -1,4 +1,4 @@
-FROM registry.svc.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.6 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.15-openshift-4.6 AS builder
 
 WORKDIR /go/node-feature-discovery
 
@@ -11,7 +11,7 @@ ARG HOSTMOUNT_PREFIX=/host-
 RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 RUN install -D -m644 nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
 
-FROM registry.svc.ci.openshift.org/ocp/4.6:base
+FROM registry.ci.openshift.org/ocp/4.6:base
 
 # Run as unprivileged user
 USER 65534:65534
