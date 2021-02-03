@@ -78,6 +78,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 		sort.Strings(fakeExtResourceNames)
 
 		mockAPIHelper := new(apihelper.MockAPIHelpers)
+		mockMaster := newMockMaster(mockAPIHelper)
 		mockClient := &k8sclient.Clientset{}
 		// Mock node with old features
 		mockNode := newMockNode()
@@ -108,7 +109,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 			mockAPIHelper.On("GetNode", mockClient, mockNodeName).Return(mockNode, nil).Once()
 			mockAPIHelper.On("PatchNode", mockClient, mockNodeName, mock.MatchedBy(jsonPatchMatcher(metadataPatches))).Return(nil)
 			mockAPIHelper.On("PatchNodeStatus", mockClient, mockNodeName, mock.MatchedBy(jsonPatchMatcher(statusPatches))).Return(nil)
-			err := updateNodeFeatures(mockAPIHelper, mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
+			err := mockMaster.updateNodeFeatures(mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
 
 			Convey("Error is nil", func() {
 				So(err, ShouldBeNil)
@@ -118,7 +119,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 		Convey("When I fail to update the node with feature labels", func() {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(nil, expectedError)
-			err := updateNodeFeatures(mockAPIHelper, mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
+			err := mockMaster.updateNodeFeatures(mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -128,7 +129,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 		Convey("When I fail to get a mock client while updating feature labels", func() {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(nil, expectedError)
-			err := updateNodeFeatures(mockAPIHelper, mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
+			err := mockMaster.updateNodeFeatures(mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -139,7 +140,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 			expectedError := errors.New("fake error")
 			mockAPIHelper.On("GetClient").Return(mockClient, nil)
 			mockAPIHelper.On("GetNode", mockClient, mockNodeName).Return(nil, expectedError).Once()
-			err := updateNodeFeatures(mockAPIHelper, mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
+			err := mockMaster.updateNodeFeatures(mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
@@ -151,7 +152,7 @@ func TestUpdateNodeFeatures(t *testing.T) {
 			mockAPIHelper.On("GetClient").Return(mockClient, nil)
 			mockAPIHelper.On("GetNode", mockClient, mockNodeName).Return(mockNode, nil).Once()
 			mockAPIHelper.On("PatchNode", mockClient, mockNodeName, mock.Anything).Return(expectedError).Once()
-			err := updateNodeFeatures(mockAPIHelper, mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
+			err := mockMaster.updateNodeFeatures(mockNodeName, fakeFeatureLabels, fakeAnnotations, fakeExtResources)
 
 			Convey("Error is produced", func() {
 				So(err, ShouldEqual, expectedError)
