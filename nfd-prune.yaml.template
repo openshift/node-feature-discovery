@@ -73,6 +73,7 @@ spec:
       containers:
         - name: nfd-master
           image: registry.ci.openshift.org/origin/4.7:node-feature-discovery
+          imagePullPolicy: Always
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:

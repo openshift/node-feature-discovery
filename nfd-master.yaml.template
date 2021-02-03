@@ -80,6 +80,7 @@ spec:
               fieldRef:
                 fieldPath: spec.nodeName
           image: registry.ci.openshift.org/origin/4.7:node-feature-discovery
+          imagePullPolicy: Always
           name: nfd-master
           securityContext:
             allowPrivilegeEscalation: false
