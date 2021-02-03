@@ -46,14 +46,14 @@ const (
 	// Namespace for feature labels
 	LabelNs = "feature.node.kubernetes.io"
 
-	// Namespace for all NFD-related annotations
-	AnnotationNs = "nfd.node.kubernetes.io"
+	// Base namespace for all NFD-related annotations
+	AnnotationNsBase = "nfd.node.kubernetes.io"
 
 	// NFD Annotations
-	extendedResourceAnnotation = AnnotationNs + "/extended-resources"
-	featureLabelAnnotation     = AnnotationNs + "/feature-labels"
-	masterVersionAnnotation    = AnnotationNs + "/master.version"
-	workerVersionAnnotation    = AnnotationNs + "/worker.version"
+	extendedResourceAnnotation = "extended-resources"
+	featureLabelAnnotation     = "feature-labels"
+	masterVersionAnnotation    = "master.version"
+	workerVersionAnnotation    = "worker.version"
 )
 
 // package loggers
@@ -76,6 +76,7 @@ type Args struct {
 	CaFile         string
 	CertFile       string
 	ExtraLabelNs   map[string]struct{}
+	Instance       string
 	KeyFile        string
 	Kubeconfig     string
 	LabelWhiteList *regexp.Regexp
@@ -93,18 +94,26 @@ type NfdMaster interface {
 }
 
 type nfdMaster struct {
-	args      Args
-	nodeName  string
-	server    *grpc.Server
-	ready     chan bool
-	apihelper apihelper.APIHelpers
+	args         Args
+	nodeName     string
+	annotationNs string
+	server       *grpc.Server
+	ready        chan bool
+	apihelper    apihelper.APIHelpers
 }
 
 // Create new NfdMaster server instance.
 func NewNfdMaster(args Args) (NfdMaster, error) {
 	nfd := &nfdMaster{args: args,
 		nodeName: os.Getenv("NODE_NAME"),
-		ready:    make(chan bool, 1)}
+		ready:    make(chan bool, 1),
+	}
+
+	if args.Instance == "" {
+		nfd.annotationNs = AnnotationNsBase
+	} else {
+		nfd.annotationNs = args.Instance + "." + AnnotationNsBase
+	}
 
 	// Check TLS related args
 	if args.CertFile != "" || args.KeyFile != "" || args.CaFile != "" {
@@ -129,6 +138,9 @@ func NewNfdMaster(args Args) (NfdMaster, error) {
 // is called.
 func (m *nfdMaster) Run() error {
 	stdoutLogger.Printf("Node Feature Discovery Master %s", version.Get())
+	if m.args.Instance != "" {
+		stdoutLogger.Printf("Master instance: '%s'", m.args.Instance)
+	}
 	stdoutLogger.Printf("NodeName: '%s'", m.nodeName)
 
 	if m.args.Prune {
@@ -230,7 +242,7 @@ func (m *nfdMaster) prune() error {
 			return err
 		}
 		for a := range node.Annotations {
-			if strings.HasPrefix(a, AnnotationNs) {
+			if strings.HasPrefix(a, m.annotationNs) {
 				delete(node.Annotations, a)
 			}
 		}
@@ -255,7 +267,10 @@ func (m *nfdMaster) updateMasterNode() error {
 	}
 
 	// Advertise NFD version as an annotation
-	p := createPatches(nil, node.Annotations, Annotations{masterVersionAnnotation: version.Get()}, "/metadata/annotations")
+	p := createPatches(nil,
+		node.Annotations,
+		Annotations{m.annotationName(masterVersionAnnotation): version.Get()},
+		"/metadata/annotations")
 	err = m.apihelper.PatchNode(cli, node.Name, p)
 	if err != nil {
 		stderrLogger.Printf("failed to patch node annotations: %v", err)
@@ -344,7 +359,7 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 
 	if !m.args.NoPublish {
 		// Advertise NFD worker version as an annotation
-		annotations := Annotations{workerVersionAnnotation: r.NfdVersion}
+		annotations := Annotations{m.annotationName(workerVersionAnnotation): r.NfdVersion}
 
 		err := m.updateNodeFeatures(r.NodeName, labels, annotations, extendedResources)
 		if err != nil {
@@ -377,7 +392,7 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 		labelKeys = append(labelKeys, strings.TrimPrefix(key, LabelNs+"/"))
 	}
 	sort.Strings(labelKeys)
-	annotations[featureLabelAnnotation] = strings.Join(labelKeys, ",")
+	annotations[m.annotationName(featureLabelAnnotation)] = strings.Join(labelKeys, ",")
 
 	// Store names of extended resources in an annotation
 	extendedResourceKeys := make([]string, 0, len(extendedResources))
@@ -386,10 +401,10 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 		extendedResourceKeys = append(extendedResourceKeys, strings.TrimPrefix(key, LabelNs+"/"))
 	}
 	sort.Strings(extendedResourceKeys)
-	annotations[extendedResourceAnnotation] = strings.Join(extendedResourceKeys, ",")
+	annotations[m.annotationName(extendedResourceAnnotation)] = strings.Join(extendedResourceKeys, ",")
 
 	// Create JSON patches for changes in labels and annotations
-	oldLabels := stringToNsNames(node.Annotations[featureLabelAnnotation], LabelNs)
+	oldLabels := stringToNsNames(node.Annotations[m.annotationName(featureLabelAnnotation)], LabelNs)
 	patches := createPatches(oldLabels, node.Labels, labels, "/metadata/labels")
 	patches = append(patches, createPatches(nil, node.Annotations, annotations, "/metadata/annotations")...)
 
@@ -405,7 +420,7 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 	}
 
 	// patch node status with extended resource changes
-	patches = createExtendedResourcePatches(node, extendedResources)
+	patches = m.createExtendedResourcePatches(node, extendedResources)
 	err = m.apihelper.PatchNodeStatus(cli, node.Name, patches)
 	if err != nil {
 		stderrLogger.Printf("error while patching extended resources: %s", err.Error())
@@ -413,6 +428,10 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 	}
 
 	return err
+}
+
+func (m *nfdMaster) annotationName(name string) string {
+	return path.Join(m.annotationNs, name)
 }
 
 // Remove any labels having the given prefix
@@ -457,11 +476,11 @@ func createPatches(removeKeys []string, oldItems map[string]string, newItems map
 
 // createExtendedResourcePatches returns a slice of operations to perform on
 // the node status
-func createExtendedResourcePatches(n *api.Node, extendedResources ExtendedResources) []apihelper.JsonPatch {
+func (m *nfdMaster) createExtendedResourcePatches(n *api.Node, extendedResources ExtendedResources) []apihelper.JsonPatch {
 	patches := []apihelper.JsonPatch{}
 
 	// Form a list of namespaced resource names managed by us
-	oldResources := stringToNsNames(n.Annotations[extendedResourceAnnotation], LabelNs)
+	oldResources := stringToNsNames(n.Annotations[m.annotationName(extendedResourceAnnotation)], LabelNs)
 
 	// figure out which resources to remove
 	for _, resource := range oldResources {
