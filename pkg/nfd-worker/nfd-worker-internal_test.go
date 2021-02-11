@@ -214,6 +214,7 @@ func TestCreateFeatureLabels(t *testing.T) {
 		Convey("When fake feature source is configured", func() {
 			emptyLabelWL := regex{*regexp.MustCompile("")}
 			fakeFeatureSource := source.FeatureSource(new(fake.Source))
+			fakeFeatureSource.SetConfig(fakeFeatureSource.NewConfig())
 			sources := []source.FeatureSource{}
 			sources = append(sources, fakeFeatureSource)
 			labels := createFeatureLabels(sources, emptyLabelWL)
