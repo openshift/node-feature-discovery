@@ -106,6 +106,7 @@ type NfdWorker interface {
 
 type nfdWorker struct {
 	args           Args
+	certWatch      *utils.FsWatcher
 	clientConn     *grpc.ClientConn
 	client         pb.LabelerClient
 	configFilePath string
@@ -191,6 +192,12 @@ func (w *nfdWorker) Run() error {
 		return err
 	}
 
+	// Create watcher for TLS certificates
+	w.certWatch, err = utils.CreateFsWatcher(time.Second, w.args.CaFile, w.args.CertFile, w.args.KeyFile)
+	if err != nil {
+		return err
+	}
+
 	// Connect to NFD master
 	err = w.connect()
 	if err != nil {
@@ -238,9 +245,17 @@ func (w *nfdWorker) Run() error {
 			// comes into effect even if the sleep interval is long (or infinite)
 			labelTrigger = time.After(0)
 
+		case <-w.certWatch.Events:
+			klog.Infof("TLS certificate update, renewing connection to nfd-master")
+			w.disconnect()
+			if err := w.connect(); err != nil {
+				return err
+			}
+
 		case <-w.stop:
 			klog.Infof("shutting down nfd-worker")
 			configWatch.Close()
+			w.certWatch.Close()
 			return nil
 		}
 	}
@@ -295,6 +310,7 @@ func (w *nfdWorker) connect() error {
 	} else {
 		dialOpts = append(dialOpts, grpc.WithInsecure())
 	}
+	klog.Infof("connecting to nfd-master at %s ...", w.args.Server)
 	conn, err := grpc.DialContext(dialCtx, w.args.Server, dialOpts...)
 	if err != nil {
 		return err
@@ -308,6 +324,7 @@ func (w *nfdWorker) connect() error {
 // disconnect closes the connection to NFD master
 func (w *nfdWorker) disconnect() {
 	if w.clientConn != nil {
+		klog.Infof("closing connection to nfd-master ...")
 		w.clientConn.Close()
 	}
 	w.clientConn = nil
