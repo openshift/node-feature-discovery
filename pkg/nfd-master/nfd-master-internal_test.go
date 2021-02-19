@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -27,6 +27,10 @@ import (
 	"openshift/node-feature-discovery/pkg/labeler"
 	"openshift/node-feature-discovery/pkg/version"
 
+	"cmd/nfd-master/main.go/pkg/apihelper"
+	"cmd/nfd-master/main.go/pkg/labeler"
+	"cmd/nfd-master/main.go/pkg/utils"
+	"cmd/nfd-master/main.go/pkg/version"
 	"github.com/smartystreets/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
@@ -56,7 +60,7 @@ func newMockMaster(apihelper apihelper.APIHelpers) *nfdMaster {
 	return &nfdMaster{
 		nodeName:     mockNodeName,
 		annotationNs: AnnotationNsBase,
-		args:         Args{LabelWhiteList: regexp.MustCompile("")},
+		args:         Args{LabelWhiteList: utils.RegexpVal{Regexp: *regexp.MustCompile("")}},
 		apihelper:    apihelper,
 	}
 }
@@ -340,7 +344,7 @@ func TestSetLabels(t *testing.T) {
 				apihelper.NewJsonPatch("add", "/metadata/labels", LabelNs+"/feature-2", mockLabels["feature-2"]),
 			}
 
-			mockMaster.args.LabelWhiteList = regexp.MustCompile("^f.*2$")
+			mockMaster.args.LabelWhiteList.Regexp = *regexp.MustCompile("^f.*2$")
 			mockHelper.On("GetClient").Return(mockClient, nil)
 			mockHelper.On("GetNode", mockClient, workerName).Return(mockNode, nil)
 			mockHelper.On("PatchNode", mockClient, mockNodeName, mock.MatchedBy(jsonPatchMatcher(expectedPatches))).Return(nil)
@@ -391,7 +395,7 @@ func TestSetLabels(t *testing.T) {
 				apihelper.NewJsonPatch("add", "/status/capacity", LabelNs+"/feature-3", mockLabels["feature-3"]),
 			}
 
-			mockMaster.args.ResourceLabels = []string{"feature-3", "feature-1"}
+			mockMaster.args.ResourceLabels = map[string]struct{}{"feature-3": struct{}{}, "feature-1": struct{}{}}
 			mockHelper.On("GetClient").Return(mockClient, nil)
 			mockHelper.On("GetNode", mockClient, workerName).Return(mockNode, nil)
 			mockHelper.On("PatchNode", mockClient, mockNodeName, mock.MatchedBy(jsonPatchMatcher(expectedPatches))).Return(nil)
