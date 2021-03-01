@@ -48,7 +48,6 @@ import (
 	"openshift/node-feature-discovery/source/local"
 	"openshift/node-feature-discovery/source/memory"
 	"openshift/node-feature-discovery/source/network"
-	"openshift/node-feature-discovery/source/panic_fake"
 	"openshift/node-feature-discovery/source/pci"
 	"openshift/node-feature-discovery/source/storage"
 	"openshift/node-feature-discovery/source/system"
@@ -144,7 +143,6 @@ func NewNfdWorker(args *Args) (NfdWorker, error) {
 		},
 		testSources: []source.FeatureSource{
 			&fake.Source{},
-			&panicfake.Source{},
 		},
 		stop: make(chan struct{}, 1),
 	}
@@ -503,13 +501,6 @@ func createFeatureLabels(sources []source.FeatureSource, labelWhiteList regexp.R
 // getFeatureLabels returns node labels for features discovered by the
 // supplied source.
 func getFeatureLabels(source source.FeatureSource, labelWhiteList regexp.Regexp) (labels Labels, err error) {
-	defer func() {
-		if r := recover(); r != nil {
-			klog.Errorf("panic occurred during discovery of source [%s]: %v", source.Name(), r)
-			err = fmt.Errorf("%v", r)
-		}
-	}()
-
 	labels = Labels{}
 	features, err := source.Discover()
 	if err != nil {
