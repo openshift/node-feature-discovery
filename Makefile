@@ -109,7 +109,7 @@ gofmt:
 	@$(GO_FMT) -w -l $$(find . -name '*.go')
 
 ci-lint:
-	golangci-lint run --timeout 5m0s
+	golangci-lint run --timeout 7m0s
 
 test:
 	$(GO_CMD) test -x -v ./cmd/... ./pkg/...
