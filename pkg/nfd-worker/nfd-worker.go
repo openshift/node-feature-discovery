@@ -382,8 +382,26 @@ func (c *coreConfig) sanitize() {
 	}
 }
 
-func (w *nfdWorker) configureCore(c coreConfig) {
-	// Determine enabled feature sourcds
+func (w *nfdWorker) configureCore(c coreConfig) error {
+	// Handle klog
+	for k, a := range w.args.Klog {
+		if !a.IsSetFromCmdline() {
+			v, ok := c.Klog[k]
+			if !ok {
+				v = a.DefValue()
+			}
+			if err := a.SetFromConfig(v); err != nil {
+				return fmt.Errorf("failed to set logger option klog.%s = %v: %v", k, v, err)
+			}
+		}
+	}
+	for k := range c.Klog {
+		if _, ok := w.args.Klog[k]; !ok {
+			klog.Warningf("unknown logger option in config: %q", k)
+		}
+	}
+
+	// Determine enabled feature sources
 	sourceList := map[string]struct{}{}
 	all := false
 	for _, s := range c.Sources {
@@ -440,7 +458,7 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 			if err != nil {
 				return fmt.Errorf("Failed to parse config file: %s", err)
 			}
-			klog.Infof("Configuration successfully loaded from %q", filepath)
+			klog.Infof("configuration file %q parsed", filepath)
 		}
 	}
 
@@ -472,6 +490,8 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 	for _, s := range allSources {
 		s.SetConfig(c.Sources[s.Name()])
 	}
+
+	klog.Infof("worker (re-)configuration successfully completed")
 
 	return nil
 }
