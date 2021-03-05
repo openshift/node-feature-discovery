@@ -54,6 +54,9 @@ func main() {
 >>>>>>> 7da7fde8... nfd-worker: switch to klog
 	}
 
+	// Plug klog into grpc logging infrastructure
+	utils.ConfigureGrpcKlog()
+
 	// Get new NfdWorker instance
 	instance, err := worker.NewNfdWorker(args)
 	if err != nil {
