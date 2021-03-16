@@ -143,6 +143,14 @@ func (s *Source) Discover() (source.Features, error) {
 		features["rdt."+f] = true
 	}
 
+	// Detect cstate configuration
+	cstate, err := detectCstate()
+	if err != nil {
+		log.Printf("ERROR: failed to detect cstate: %v", err)
+	} else {
+		features["cstate.enabled"] = cstate
+	}
+
 	return features, nil
 }
 

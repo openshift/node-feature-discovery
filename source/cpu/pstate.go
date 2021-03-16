@@ -19,7 +19,9 @@ package cpu
 import (
 	"fmt"
 	"io/ioutil"
+        "log"
 	"runtime"
+	"strings"
 
 	"openshift/node-feature-discovery/source"
 )
@@ -32,14 +34,72 @@ func detectPstate() (map[string]string, error) {
 		return nil, nil
 	}
 
-	// Only looking for turbo boost for now...
+	// Get global pstate status
+	data, err := ioutil.ReadFile(source.SysfsDir.Path("devices/system/cpu/intel_pstate/status"))
+	if err != nil {
+		return nil, fmt.Errorf("could not read pstate status: %s", err.Error())
+	}
+	status := strings.TrimSpace(string(data))
+	if status == "off" {
+		// No need to check other pstate features
+		log.Printf("ERROR: intel_pstate driver is not in use")
+		return nil, nil
+	}
+	features := map[string]string{"status": status}
+
+	// Check turbo boost
 	bytes, err := ioutil.ReadFile(source.SysfsDir.Path("devices/system/cpu/intel_pstate/no_turbo"))
 	if err != nil {
-		return nil, fmt.Errorf("can't detect whether turbo boost is enabled: %s", err.Error())
+		log.Printf("ERROR: can't detect whether turbo boost is enabled: %s", err.Error())
+	} else {
+		features["turbo"] = "false"
+		if bytes[0] == byte('0') {
+			features["turbo"] = "true"
+		}
 	}
-	features := map[string]string{"turbo": "false"}
-	if bytes[0] == byte('0') {
-		features["turbo"] = "true"
+
+	if status != "active" {
+		// Don't check other features which depend on active state
+		return features, nil
+	}
+
+	// Determine scaling governor that is being used
+	policies, err := ioutil.ReadDir(source.SysfsDir.Path("devices/system/cpu/cpufreq"))
+	if err != nil {
+		log.Printf("ERROR: failed to read cpufreq directory: %s", err.Error())
+		return features, nil
+	}
+
+	scaling := ""
+	for _, policy := range policies {
+		// Ensure at least one cpu is using this policy
+		cpus, err := ioutil.ReadFile(source.SysfsDir.Path("devices/system/cpu/cpufreq", policy.Name(), "affected_cpus"))
+		if err != nil {
+			log.Printf("ERROR: could not read cpufreq policy %s affected_cpus", policy.Name())
+			continue
+		}
+		if strings.TrimSpace(string(cpus)) == "" {
+			log.Printf("ERROR: policy %s has no associated cpus", policy.Name())
+			continue
+		}
+
+		data, err := ioutil.ReadFile(source.SysfsDir.Path("devices/system/cpu/cpufreq", policy.Name(), "scaling_governor"))
+		if err != nil {
+			log.Printf("ERROR: could not read cpufreq policy %s scaling_governor", policy.Name())
+			continue
+		}
+		policy_scaling := strings.TrimSpace(string(data))
+		// Check that all of the policies have the same scaling governor, if not don't set feature
+		if scaling != "" && scaling != policy_scaling {
+			log.Printf("ERROR: scaling_governor for policy %s doesn't match prior policy", policy.Name())
+			scaling = ""
+			break
+		}
+		scaling = policy_scaling
+	}
+
+	if scaling != "" {
+		features["scaling_governor"] = scaling
 	}
 
 	return features, nil
