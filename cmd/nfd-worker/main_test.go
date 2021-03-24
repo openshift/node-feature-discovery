@@ -23,7 +23,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/utils"
 )
 
 func TestParseArgs(t *testing.T) {
