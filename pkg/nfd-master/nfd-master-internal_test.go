@@ -25,12 +25,9 @@ import (
 
 	"openshift/node-feature-discovery/pkg/apihelper"
 	"openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/pkg/version"
 
-	"cmd/nfd-master/main.go/pkg/apihelper"
-	"cmd/nfd-master/main.go/pkg/labeler"
-	"cmd/nfd-master/main.go/pkg/utils"
-	"cmd/nfd-master/main.go/pkg/version"
 	"github.com/smartystreets/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"

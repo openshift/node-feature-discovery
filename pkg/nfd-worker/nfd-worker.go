@@ -64,6 +64,7 @@ type NFDConfig struct {
 }
 
 type coreConfig struct {
+	Klog           map[string]string
 	LabelWhiteList utils.RegexpVal
 	NoPublish      bool
 	Sources        []string
@@ -86,6 +87,7 @@ type Args struct {
 	Server             string
 	ServerNameOverride string
 
+	Klog      map[string]*utils.KlogFlagVal
 	Overrides ConfigOverrideArgs
 }
 
@@ -173,6 +175,7 @@ func newDefaultConfig() *NFDConfig {
 			LabelWhiteList: utils.RegexpVal{Regexp: *regexp.MustCompile("")},
 			SleepInterval:  duration{60 * time.Second},
 			Sources:        []string{"all"},
+			Klog:           make(map[string]string),
 		},
 	}
 }
@@ -389,6 +392,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 		}
 		klog.Warningf("skipping unknown source(s) %q specified in core.sources (or --sources)", strings.Join(names, ", "))
 	}
+	return nil
 }
 
 // Parse configuration options
@@ -413,7 +417,7 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 		} else {
 			err = yaml.Unmarshal(data, c)
 			if err != nil {
-				return fmt.Errorf("Failed to parse config file: %s", err)
+				return fmt.Errorf("failed to parse config file: %s", err)
 			}
 			klog.Infof("configuration file %q parsed", filepath)
 		}
@@ -421,7 +425,7 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 
 	// Parse config overrides
 	if err := yaml.Unmarshal([]byte(overrides), c); err != nil {
-		return fmt.Errorf("Failed to parse --options: %s", err)
+		return fmt.Errorf("failed to parse --options: %s", err)
 	}
 
 	if w.args.Overrides.LabelWhiteList != nil {
@@ -441,7 +445,9 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 
 	w.config = c
 
-	w.configureCore(c.Core)
+	if err := w.configureCore(c.Core); err != nil {
+		return err
+	}
 
 	// (Re-)configure all "real" sources, test sources are not configurable
 	for _, s := range allSources {
@@ -512,7 +518,7 @@ func getFeatureLabels(source source.FeatureSource, labelWhiteList regexp.Regexp)
 		// Validate label name.
 		errs := validation.IsQualifiedName(nameForValidation)
 		if len(errs) > 0 {
-			klog.Warningf("Ignoring invalid feature name '%s': %s", label, errs)
+			klog.Warningf("ignoring invalid feature name '%s': %s", label, errs)
 			continue
 		}
 
@@ -520,7 +526,7 @@ func getFeatureLabels(source source.FeatureSource, labelWhiteList regexp.Regexp)
 		// Validate label value
 		errs = validation.IsValidLabelValue(value)
 		if len(errs) > 0 {
-			klog.Warningf("Ignoring invalid feature value %s=%s: %s", label, value, errs)
+			klog.Warningf("ignoring invalid feature value %s=%s: %s", label, value, errs)
 			continue
 		}
 
@@ -541,7 +547,7 @@ func advertiseFeatureLabels(client pb.LabelerClient, labels Labels) error {
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	klog.Infof("Sending labeling request to nfd-master")
+	klog.Infof("sending labeling request to nfd-master")
 
 	labelReq := pb.SetLabelsRequest{Labels: labels,
 		NfdVersion: version.Get(),

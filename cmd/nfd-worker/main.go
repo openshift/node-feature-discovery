@@ -47,11 +47,7 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-<<<<<<< HEAD
-		log.Printf("WARNING: version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
-=======
 		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
->>>>>>> 7da7fde8... nfd-worker: switch to klog
 	}
 
 	// Plug klog into grpc logging infrastructure

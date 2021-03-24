@@ -28,14 +28,6 @@ import (
 	"strings"
 	"time"
 
-	"openshift/node-feature-discovery/pkg/apihelper"
-	pb "openshift/node-feature-discovery/pkg/labeler"
-	"openshift/node-feature-discovery/pkg/version"
-
-	"cmd/nfd-master/main.go/pkg/apihelper"
-	pb "cmd/nfd-master/main.go/pkg/labeler"
-	"cmd/nfd-master/main.go/pkg/utils"
-	"cmd/nfd-master/main.go/pkg/version"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"

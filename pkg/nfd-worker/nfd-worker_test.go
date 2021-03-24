@@ -23,10 +23,6 @@ import (
 	"testing"
 	"time"
 
-	nfdmaster "openshift/node-feature-discovery/pkg/nfd-master"
-	w "openshift/node-feature-discovery/pkg/nfd-worker"
-	"openshift/node-feature-discovery/test/data"
-
 	. "github.com/smartystreets/goconvey/convey"
 
 	master "openshift/node-feature-discovery/pkg/nfd-master"

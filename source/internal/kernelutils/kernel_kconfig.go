@@ -21,6 +21,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io/ioutil"
+	"openshift/node-feature-discovery/source"
 	"os"
 	"path/filepath"
 	"regexp"

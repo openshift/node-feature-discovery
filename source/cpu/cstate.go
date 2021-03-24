@@ -22,7 +22,7 @@ import (
 	"strconv"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Discover if c-states are enabled
