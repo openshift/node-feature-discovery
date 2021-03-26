@@ -31,6 +31,7 @@ var osReleaseFields = [...]string{
 	"ID",
 	"VERSION_ID",
 	"RHEL_VERSION",
+	"OPENSHIFT_VERSION",
 }
 
 // Implement FeatureSource interface
