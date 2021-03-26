@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2019-2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,16 +17,16 @@ limitations under the License.
 package main
 
 import (
+	"flag"
 	"fmt"
-	"log"
+	"os"
 	"regexp"
-	"strconv"
-	"strings"
+
+	"k8s.io/klog/v2"
 
 	master "openshift/node-feature-discovery/pkg/nfd-master"
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/pkg/version"
-
-	"github.com/docopt/docopt-go"
 )
 
 const (
@@ -35,101 +35,76 @@ const (
 )
 
 func main() {
-	// Assert that the version is known
-	if version.Undefined() {
-		log.Print("WARNING: version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+	flags := flag.NewFlagSet(ProgramName, flag.ExitOnError)
+
+	printVersion := flags.Bool("version", false, "Print version and exit.")
+
+	args := initFlags(flags)
+	// Inject klog flags
+	klog.InitFlags(flags)
+
+	_ = flags.Parse(os.Args[1:])
+	if len(flags.Args()) > 0 {
+		fmt.Printf("unknown command line argument: %s\n", flags.Args()[0])
+		flags.Usage()
+		os.Exit(2)
 	}
 
-	// Parse command-line arguments.
-	args, err := argsParse(nil)
-	if err != nil {
-		log.Fatalf("failed to parse command line: %v", err)
+	if *printVersion {
+		fmt.Println(ProgramName, version.Get())
+		os.Exit(0)
 	}
+
+	// Assert that the version is known
+	if version.Undefined() {
+		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+	}
+
+	// Plug klog into grpc logging infrastructure
+	utils.ConfigureGrpcKlog()
 
 	// Get new NfdMaster instance
 	instance, err := master.NewNfdMaster(args)
 	if err != nil {
-		log.Fatalf("Failed to initialize NfdMaster instance: %v", err)
+		klog.Exitf("Failed to initialize NfdMaster instance: %v", err)
 	}
 
 	if err = instance.Run(); err != nil {
-		log.Fatalf("ERROR: %v", err)
+		klog.Exit(err)
 	}
 }
 
-// argsParse parses the command line arguments passed to the program.
-// The argument argv is passed only for testing purposes.
-func argsParse(argv []string) (master.Args, error) {
-	args := master.Args{}
-	usage := fmt.Sprintf(`%s.
-
-  Usage:
-  %s [--prune] [--no-publish] [--label-whitelist=<pattern>] [--port=<port>]
-     [--ca-file=<path>] [--cert-file=<path>] [--key-file=<path>]
-     [--verify-node-name] [--extra-label-ns=<list>] [--resource-labels=<list>]
-     [--kubeconfig=<path>]
-  %s -h | --help
-  %s --version
-
-  Options:
-  -h --help                       Show this screen.
-  --version                       Output version and exit.
-  --prune                         Prune all NFD related attributes from all nodes
-                                  of the cluster and exit.
-  --kubeconfig=<path>             Kubeconfig to use [Default: ]
-                                  of the cluster and exit.
-  --port=<port>                   Port on which to listen for connections.
-                                  [Default: 8080]
-  --ca-file=<path>                Root certificate for verifying connections
-                                  [Default: ]
-  --cert-file=<path>              Certificate used for authenticating connections
-                                  [Default: ]
-  --key-file=<path>               Private key matching --cert-file
-                                  [Default: ]
-  --verify-node-name              Verify worker node name against CN from the TLS
-                                  certificate. Only has effect when TLS authentication
-                                  has been enabled.
-  --no-publish                    Do not publish feature labels
-  --label-whitelist=<pattern>     Regular expression to filter label names to
-                                  publish to the Kubernetes API server.
-                                  NB: the label namespace is omitted i.e. the filter
-                                  is only applied to the name part after '/'.
-                                  [Default: ]
-  --extra-label-ns=<list>         Comma separated list of allowed extra label namespaces
-                                  [Default: ]
-  --resource-labels=<list>        Comma separated list of labels to be exposed as extended resources.
-                                  [Default: ]`,
-		ProgramName,
-		ProgramName,
-		ProgramName,
-		ProgramName,
-	)
-
-	arguments, _ := docopt.ParseArgs(usage, argv,
-		fmt.Sprintf("%s %s", ProgramName, version.Get()))
-
-	// Parse argument values as usable types.
-	var err error
-	args.CaFile = arguments["--ca-file"].(string)
-	args.CertFile = arguments["--cert-file"].(string)
-	args.KeyFile = arguments["--key-file"].(string)
-	args.NoPublish = arguments["--no-publish"].(bool)
-	args.Port, err = strconv.Atoi(arguments["--port"].(string))
-	if err != nil {
-		return args, fmt.Errorf("invalid --port defined: %s", err)
+func initFlags(flagset *flag.FlagSet) *master.Args {
+	args := &master.Args{
+		LabelWhiteList: utils.RegexpVal{Regexp: *regexp.MustCompile("")},
 	}
-	args.LabelWhiteList, err = regexp.Compile(arguments["--label-whitelist"].(string))
-	if err != nil {
-		return args, fmt.Errorf("error parsing whitelist regex (%s): %s", arguments["--label-whitelist"], err)
-	}
-	args.VerifyNodeName = arguments["--verify-node-name"].(bool)
-	args.ExtraLabelNs = map[string]struct{}{}
-	for _, n := range strings.Split(arguments["--extra-label-ns"].(string), ",") {
-		args.ExtraLabelNs[n] = struct{}{}
-	}
-	args.ResourceLabels = strings.Split(arguments["--resource-labels"].(string), ",")
-	args.Prune = arguments["--prune"].(bool)
-	args.Kubeconfig = arguments["--kubeconfig"].(string)
 
-	return args, nil
+	flagset.StringVar(&args.CaFile, "ca-file", "",
+		"Root certificate for verifying connections")
+	flagset.StringVar(&args.CertFile, "cert-file", "",
+		"Certificate used for authenticating connections")
+	flagset.Var(&args.ExtraLabelNs, "extra-label-ns",
+		"Comma separated list of allowed extra label namespaces")
+	flagset.StringVar(&args.Instance, "instance", "",
+		"Instance name. Used to separate annotation namespaces for multiple parallel deployments.")
+	flagset.StringVar(&args.KeyFile, "key-file", "",
+		"Private key matching -cert-file")
+	flagset.StringVar(&args.Kubeconfig, "kubeconfig", "",
+		"Kubeconfig to use")
+	flagset.Var(&args.LabelWhiteList, "label-whitelist",
+		"Regular expression to filter label names to publish to the Kubernetes API server. "+
+			"NB: the label namespace is omitted i.e. the filter is only applied to the name part after '/'.")
+	flagset.BoolVar(&args.NoPublish, "no-publish", false,
+		"Do not publish feature labels")
+	flagset.IntVar(&args.Port, "port", 8080,
+		"Port on which to listen for connections.")
+	flagset.BoolVar(&args.Prune, "prune", false,
+		"Prune all NFD related attributes from all nodes of the cluaster and exit.")
+	flagset.Var(&args.ResourceLabels, "resource-labels",
+		"Comma separated list of labels to be exposed as extended resources.")
+	flagset.BoolVar(&args.VerifyNodeName, "verify-node-name", false,
+		"Verify worker node name against CN from the TLS certificate. "+
+			"Only takes effect when TLS authentication has been enabled.")
+
+	return args
 }

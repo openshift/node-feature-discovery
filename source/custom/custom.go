@@ -1,5 +1,5 @@
 /*
-Copyright 2020 The Kubernetes Authors.
+Copyright 2020-2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -17,8 +17,11 @@ limitations under the License.
 package custom
 
 import (
-	"log"
+	"reflect"
 
+	"k8s.io/klog/v2"
+
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/source"
 	"openshift/node-feature-discovery/source/custom/rules"
 )
@@ -30,10 +33,12 @@ type MatchRule struct {
 	LoadedKMod *rules.LoadedKModRule `json:"loadedKMod,omitempty"`
 	CpuID      *rules.CpuIDRule      `json:"cpuId,omitempty"`
 	Kconfig    *rules.KconfigRule    `json:"kConfig,omitempty"`
+	Nodename   *rules.NodenameRule   `json:"nodename,omitempty"`
 }
 
 type FeatureSpec struct {
 	Name    string      `json:"name"`
+	Value   *string     `json:"value,omitempty"`
 	MatchOn []MatchRule `json:"matchOn"`
 }
 
@@ -64,7 +69,7 @@ func (s *Source) SetConfig(conf source.Config) {
 	case *config:
 		s.config = v
 	default:
-		log.Printf("PANIC: invalid config type: %T", conf)
+		klog.Fatalf("invalid config type: %T", conf)
 	}
 }
 
@@ -72,16 +77,21 @@ func (s *Source) SetConfig(conf source.Config) {
 func (s Source) Discover() (source.Features, error) {
 	features := source.Features{}
 	allFeatureConfig := append(getStaticFeatureConfig(), *s.config...)
-	log.Printf("INFO: Custom features: %+v", allFeatureConfig)
+	allFeatureConfig = append(allFeatureConfig, getDirectoryFeatureConfig()...)
+	utils.KlogDump(2, "custom features configuration:", "  ", allFeatureConfig)
 	// Iterate over features
 	for _, customFeature := range allFeatureConfig {
 		featureExist, err := s.discoverFeature(customFeature)
 		if err != nil {
-			log.Printf("ERROR: failed to discover feature: %q: %s", customFeature.Name, err.Error())
+			klog.Errorf("failed to discover feature: %q: %s", customFeature.Name, err.Error())
 			continue
 		}
 		if featureExist {
-			features[customFeature.Name] = true
+			var value interface{} = true
+			if customFeature.Value != nil {
+				value = *customFeature.Value
+			}
+			features[customFeature.Name] = value
 		}
 	}
 	return features, nil
@@ -90,58 +100,37 @@ func (s Source) Discover() (source.Features, error) {
 // Process a single feature by Matching on the defined rules.
 // A feature is present if all defined Rules in a MatchRule return a match.
 func (s Source) discoverFeature(feature FeatureSpec) (bool, error) {
-	for _, rule := range feature.MatchOn {
-		// PCI ID rule
-		if rule.PciID != nil {
-			match, err := rule.PciID.Match()
-			if err != nil {
-				return false, err
-			}
-			if !match {
-				continue
-			}
+	for _, matchRules := range feature.MatchOn {
+
+		allRules := []rules.Rule{
+			matchRules.PciID,
+			matchRules.UsbID,
+			matchRules.LoadedKMod,
+			matchRules.CpuID,
+			matchRules.Kconfig,
+			matchRules.Nodename,
 		}
-		// USB ID rule
-		if rule.UsbID != nil {
-			match, err := rule.UsbID.Match()
-			if err != nil {
-				return false, err
+
+		// return true, nil if all rules match
+		matchRules := func(rules []rules.Rule) (bool, error) {
+			for _, rule := range rules {
+				if reflect.ValueOf(rule).IsNil() {
+					continue
+				}
+				if match, err := rule.Match(); err != nil {
+					return false, err
+				} else if !match {
+					return false, nil
+				}
 			}
-			if !match {
-				continue
-			}
+			return true, nil
 		}
-		// Loaded kernel module rule
-		if rule.LoadedKMod != nil {
-			match, err := rule.LoadedKMod.Match()
-			if err != nil {
-				return false, err
-			}
-			if !match {
-				continue
-			}
+
+		if match, err := matchRules(allRules); err != nil {
+			return false, err
+		} else if match {
+			return true, nil
 		}
-		// cpuid rule
-		if rule.CpuID != nil {
-			match, err := rule.CpuID.Match()
-			if err != nil {
-				return false, err
-			}
-			if !match {
-				continue
-			}
-		}
-		// kconfig rule
-		if rule.Kconfig != nil {
-			match, err := rule.Kconfig.Match()
-			if err != nil {
-				return false, err
-			}
-			if !match {
-				continue
-			}
-		}
-		return true, nil
 	}
 	return false, nil
 }

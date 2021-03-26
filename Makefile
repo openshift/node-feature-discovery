@@ -20,7 +20,9 @@ IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 IMAGE_EXTRA_TAGS := $(foreach tag,$(IMAGE_EXTRA_TAG_NAMES),$(IMAGE_REPO):$(tag))
 
-K8S_NAMESPACE ?= node-feature-discovery
+K8S_NAMESPACE ?= openshift-nfd
+
+OPENSHIFT ?= yes
 
 # We use different mount prefix for local and container builds.
 # Take CONTAINER_HOSTMOUNT_PREFIX from HOSTMOUNT_PREFIX if only the latter is specified
@@ -75,8 +77,13 @@ templates: $(yaml_templates)
 	@# Need to prepend each line in the sample config with spaces in order to
 	@# fit correctly in the configmap spec.
 	@sed s'/^/    /' nfd-worker.conf.example > nfd-worker.conf.tmp
-	@# The quick-n-dirty sed below expects the configmap data to be at the very end of the file
-	@for f in $+; do sed -e '/nfd-worker\.conf/r nfd-worker.conf.tmp' -e '/nfd-worker\.conf/q' -i $$f; done
+	@# The sed magic below replaces the block of text between the lines with start and end markers
+	@for f in $+; do \
+	    start=NFD-WORKER-CONF-START-DO-NOT-REMOVE; \
+	    end=NFD-WORKER-CONF-END-DO-NOT-REMOVE; \
+	    sed -e "/$$start/,/$$end/{ /$$start/{ p; r nfd-worker.conf.tmp" \
+	        -e "}; /$$end/p; d }" -i $$f; \
+	done
 	@rm nfd-worker.conf.tmp
 
 mock:
@@ -102,36 +109,16 @@ gofmt:
 	@$(GO_FMT) -w -l $$(find . -name '*.go')
 
 ci-lint:
-	golangci-lint run --timeout 5m0s
+	golangci-lint run --timeout 7m0s
 
 test:
 	$(GO_CMD) test -x -v ./cmd/... ./pkg/...
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
-	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[NFD\]"
-
-push:
-	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
-	for tag in $(IMAGE_EXTRA_TAGS); do $(IMAGE_PUSH_CMD) $$tag; done
-
-poll-image:
-	set -e; \
-	image=$(IMAGE_REPO):$(IMAGE_TAG_NAME); \
-	base_url=`echo $(IMAGE_REPO) | sed -e s'!\([^/]*\)!\1/v2!'`; \
-	errors=`curl -fsS -X GET https://$$base_url/manifests/$(IMAGE_TAG_NAME)|jq .errors`;  \
-	if [ "$$errors" = "null" ]; then \
-	  echo Image $$image found; \
-	else \
-	  echo Image $$image not found; \
-	  exit 1; \
-	fi;
-
-site-build:
-	@mkdir -p docs/vendor/bundle
-	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll build $(JEKYLL_OPTS)"
-
-site-serve:
-	@mkdir -p docs/vendor/bundle
-	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"
-
+	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) \
+	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[NFD\]" \
+	    $(if $(OPENSHIFT),-nfd.openshift,)
+	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
+	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[NFD\]" \
+	    $(if $(OPENSHIFT),-nfd.openshift,)
