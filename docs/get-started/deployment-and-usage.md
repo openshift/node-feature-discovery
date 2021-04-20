@@ -159,10 +159,31 @@ the nfd-master Service of the cluster. By default, nfd-master only check that
 the nfd-worker has been signed by the specified root certificate (--ca-file).
 Additional hardening can be enabled by specifying --verify-node-name in
 nfd-master args, in which case nfd-master verifies that the NodeName presented
-by nfd-worker matches the Common Name (CN) of its certificate. This means that
-each nfd-worker requires a individual node-specific TLS certificate.
+by nfd-worker matches the Common Name (CN) or a Subject Alternative Name (SAN)
+of its certificate.
 
-## Configuration
+#### Automated TLS certificate management using cert-manager
+
+[cert-manager](https://cert-manager.io/) can be used to automate certificate
+management between nfd-master and the nfd-worker pods. The instructions below describe
+steps how to set up cert-manager's
+[CA Issuer](https://cert-manager.io/docs/configuration/ca/) to
+sign `Certificate` requests for NFD components in `node-feature-discovery` namespace.
+
+```bash
+$ kubectl apply -f https://github.com/jetstack/cert-manager/releases/download/v1.2.0/cert-manager.yaml
+$ make yamls
+$ openssl genrsa -out ca.key 2048
+$ openssl req -x509 -new -nodes -key ca.key -subj "/CN=nfd-ca" -days 10000 -out ca.crt
+$ sed s"/tls.key:.*/tls.key: $(cat ca.key|base64 -w 0)/" -i nfd-cert-manager.yaml
+$ sed s"/tls.crt:.*/tls.crt: $(cat ca.crt|base64 -w 0)/" -i nfd-cert-manager.yaml
+$ kubectl apply -f nfd-cert-manager.yaml
+```
+
+Finally, deploy `nfd-master.yaml` and `nfd-worker-daemonset.yaml` with the Secrets
+(`nfd-master-cert` and `nfd-worker-cert`) mounts enabled.
+
+## Worker configuration
 
 NFD-Worker supports a configuration file. The default location is
 `/etc/kubernetes/node-feature-discovery/nfd-worker.conf`, but,
