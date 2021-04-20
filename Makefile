@@ -9,6 +9,8 @@ IMAGE_BUILD_EXTRA_OPTS ?=
 IMAGE_PUSH_CMD ?= podman push
 CONTAINER_RUN_CMD ?= podman run
 
+MDL ?= mdl
+
 VERSION := $(shell git describe --tags --dirty --always)
 
 IMAGE_REGISTRY ?= quay.io/openshift-psap
@@ -51,11 +53,14 @@ install:
 	$(GO_CMD) install -v $(LDFLAGS) ./cmd/...
 
 local-image: yamls
-	$(IMAGE_BUILD_CMD) --build-arg VERSION=$(VERSION) \
-		--build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
-		-t $(IMAGE_TAG) \
-		$(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
-		$(IMAGE_BUILD_EXTRA_OPTS) ./
+	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
+	    --target full \
+	    --build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
+	    --build-arg BASE_IMAGE_FULL=$(BASE_IMAGE_FULL) \
+	    --build-arg BASE_IMAGE_MINIMAL=$(BASE_IMAGE_MINIMAL) \
+	    -t $(IMAGE_TAG) \
+	    $(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
+	    $(IMAGE_BUILD_EXTRA_OPTS) ./
 
 local-image-push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
