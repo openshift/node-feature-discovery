@@ -29,7 +29,7 @@ import (
 var osReleaseFields = [...]string{
 	"ID",
 	"VERSION_ID",
-	"RHEL_VERSION", 
+	"RHEL_VERSION",
 	"OPENSHIFT_VERSION",
 }
 
