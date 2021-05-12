@@ -34,10 +34,12 @@ var osReleaseFields = [...]string{
 	"OPENSHIFT_VERSION",
 }
 
+const Name = "system"
+
 // Implement FeatureSource interface
 type Source struct{}
 
-func (s Source) Name() string { return "system" }
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return nil }
