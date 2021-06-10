@@ -109,6 +109,8 @@ else
 	@echo ""
 	@exit 1
 endif
+apigen:
+	protoc --go_opt=paths=source_relative --go_out=plugins=grpc:.  pkg/labeler/labeler.proto
 
 gofmt:
 	@$(GO_FMT) -w -l $$(find . -name '*.go')
