@@ -116,6 +116,12 @@ gofmt:
 ci-lint:
 	golangci-lint run --timeout 7m0s
 
+lint:
+	golint -set_exit_status ./...
+
+mdlint:
+	find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs $(MDL) -s docs/mdl-style.rb
+
 test:
 	$(GO_CMD) test -x -v ./cmd/... ./pkg/...
 
