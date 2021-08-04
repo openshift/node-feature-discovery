@@ -4,8 +4,7 @@ approvers:
 reviewers:
   - dagrayvid
   - zvonkok
-  - cep235
-  - sjug
+  - courtneypacheco
   - jmencak
   - ArangoGutierrez
 component: "Node Feature Discovery Operator"
