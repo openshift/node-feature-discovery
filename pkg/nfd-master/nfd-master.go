@@ -40,6 +40,9 @@ import (
 	pb "openshift/node-feature-discovery/pkg/labeler"
 	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/pkg/version"
+
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 const (
@@ -186,6 +189,7 @@ func (m *nfdMaster) Run() error {
 	}
 	m.server = grpc.NewServer(serverOpts...)
 	pb.RegisterLabelerServer(m.server, m)
+	grpc_health_v1.RegisterHealthServer(m.server, health.NewServer())
 	klog.Infof("gRPC server serving on port: %d", m.args.Port)
 
 	// Run gRPC server
