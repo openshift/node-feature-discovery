@@ -53,30 +53,6 @@ else
     exit 1
 fi
 
-<<<<<<< HEAD
-# Patch docs configuration
-echo Patching docs/_config.yml
-sed -e s"/release:.*/release: $release/"  \
-    -e s"/version:.*/version: $docs_version/" \
-    -e s"!container_image:.*!container_image: k8s.gcr.io/nfd/node-feature-discovery:$release!" \
-    -i docs/_config.yml
-
-# Patch README
-echo Patching README.md to refer to $release
-sed s"!node-feature-discovery/v.*/!node-feature-discovery/$release/!" -i README.md
-
-# Patch deployment templates
-echo Patching '*.yaml.template' to use $container_image
-sed -E -e s",^([[:space:]]+)image:.+$,\1image: $container_image," \
-       -e s",^([[:space:]]+)imagePullPolicy:.+$,\1imagePullPolicy: IfNotPresent," \
-       -i *yaml.template
-
-# Patch e2e test
-echo Patching test/e2e/node_feature_discovery.go flag defaults to k8s.gcr.io/nfd/node-feature-discovery and $release
-sed -e s'!"nfd\.repo",.*,!"nfd.repo", "k8s.gcr.io/nfd/node-feature-discovery",!' \
-    -e s"!\"nfd\.tag\",.*,!\"nfd.tag\", \"$release\",!" \
-  -i test/e2e/node_feature_discovery.go
-=======
 if [ -z "$assets_only" ]; then
     # Patch docs configuration
     echo Patching docs/_config.yml
@@ -131,4 +107,3 @@ cat << EOF
 ***
 *******************************************************************************
 EOF
->>>>>>> 63c1256d (Drop deployment templates)

@@ -1,11 +1,4 @@
-node-feature-discovery-job.json
+bin/
 demo/helper-scripts/*.pdf
 demo/helper-scripts/*.log
-<<<<<<< HEAD
-nfd-daemonset-combined.yaml
-nfd-master.yaml
-nfd-worker-daemonset.yaml
-nfd-worker-job.yaml
-nfd-prune.yaml
-=======
->>>>>>> 63c1256d (Drop deployment templates)
+/kustomization.yaml
