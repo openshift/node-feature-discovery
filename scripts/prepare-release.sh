@@ -53,25 +53,57 @@ else
     exit 1
 fi
 
-# Patch docs configuration
-echo Patching docs/_config.yml
-sed -e s"/release:.*/release: $release/"  \
-    -e s"/version:.*/version: $docs_version/" \
-    -e s"!container_image:.*!container_image: k8s.gcr.io/nfd/node-feature-discovery:$release!" \
-    -i docs/_config.yml
+if [ -z "$assets_only" ]; then
+    # Patch docs configuration
+    echo Patching docs/_config.yml
+    sed -e s"/release:.*/release: $release/"  \
+        -e s"/version:.*/version: $docs_version/" \
+        -e s"!container_image:.*!container_image: k8s.gcr.io/nfd/node-feature-discovery:$release!" \
+        -i docs/_config.yml
 
-# Patch README
-echo Patching README.md to refer to $release
-sed s"!node-feature-discovery/v.*/!node-feature-discovery/$release/!" -i README.md
+    # Patch README
+    echo Patching README.md to refer to $release
+    sed s"!node-feature-discovery/v.*/!node-feature-discovery/$release/!" -i README.md
 
-# Patch deployment templates
-echo Patching '*.yaml.template' to use $container_image
-sed -E -e s",^([[:space:]]+)image:.+$,\1image: $container_image," \
-       -e s",^([[:space:]]+)imagePullPolicy:.+$,\1imagePullPolicy: IfNotPresent," \
-       -i *yaml.template
+    # Patch deployment templates
+    echo Patching kustomize templates to use $container_image
+    sed -E -e s",^([[:space:]]+)image:.+$,\1image: $container_image," \
+           -e s",^([[:space:]]+)imagePullPolicy:.+$,\1imagePullPolicy: IfNotPresent," \
+           -i deployment/base/*/*yaml
 
-# Patch e2e test
-echo Patching test/e2e/node_feature_discovery.go flag defaults to k8s.gcr.io/nfd/node-feature-discovery and $release
-sed -e s'!"nfd\.repo",.*,!"nfd.repo", "k8s.gcr.io/nfd/node-feature-discovery",!' \
-    -e s"!\"nfd\.tag\",.*,!\"nfd.tag\", \"$release\",!" \
-  -i test/e2e/node_feature_discovery.go
+    # Patch Helm chart
+    echo "Patching Helm chart"
+    sed -e s"/appVersion:.*/appVersion: $release/" -i deployment/helm/node-feature-discovery/Chart.yaml
+    sed -e s"/pullPolicy:.*/pullPolicy: IfNotPresent/" \
+        -e s"!gcr.io/k8s-staging-nfd/node-feature-discovery!k8s.gcr.io/nfd/node-feature-discovery!" \
+        -i deployment/helm/node-feature-discovery/values.yaml
+    sed -e s"!kubernetes-sigs.github.io/node-feature-discovery/master!kubernetes-sigs.github.io/node-feature-discovery/$docs_version!" \
+        -i deployment/helm/node-feature-discovery/README.md
+
+    # Patch e2e test
+    echo Patching test/e2e/node_feature_discovery.go flag defaults to k8s.gcr.io/nfd/node-feature-discovery and $release
+    sed -e s'!"nfd\.repo",.*,!"nfd.repo", "k8s.gcr.io/nfd/node-feature-discovery",!' \
+        -e s"!\"nfd\.tag\",.*,!\"nfd.tag\", \"$release\",!" \
+      -i test/e2e/node_feature_discovery.go
+fi
+
+#
+# Create release assets to be uploaded
+#
+helm package deployment/helm/node-feature-discovery/ --version $semver
+
+chart_name="node-feature-discovery-chart-$semver.tgz"
+mv node-feature-discovery-$semver.tgz $chart_name
+sign_helm_chart $chart_name
+
+cat << EOF
+
+*******************************************************************************
+*** Please manually upload the following generated files to the Github release
+*** page:
+***
+***   $chart_name
+***   $chart_name.prov
+***
+*******************************************************************************
+EOF

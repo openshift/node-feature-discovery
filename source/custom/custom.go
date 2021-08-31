@@ -26,6 +26,8 @@ import (
 	"openshift/node-feature-discovery/source/custom/rules"
 )
 
+const Name = "custom"
+
 // Custom Features Configurations
 type MatchRule struct {
 	PciID      *rules.PciIDRule      `json:"pciId,omitempty"`
@@ -49,13 +51,13 @@ func newDefaultConfig() *config {
 	return &config{}
 }
 
-// Implements FeatureSource Interface
+// Source implements FeatureSource Interface
 type Source struct {
 	config *config
 }
 
-// Return name of the feature source
-func (s Source) Name() string { return "custom" }
+// Name returns the name of the feature source
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return newDefaultConfig() }

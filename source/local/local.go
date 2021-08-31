@@ -30,16 +30,19 @@ import (
 	"openshift/node-feature-discovery/source"
 )
 
+const Name = "local"
+
 // Config
 var (
 	featureFilesDir = "/etc/kubernetes/node-feature-discovery/features.d/"
 	hookDir         = "/etc/kubernetes/node-feature-discovery/source.d/"
 )
 
-// Implement FeatureSource interface
+// Source implements FeatureSource interface
 type Source struct{}
 
-func (s Source) Name() string { return "local" }
+// Name returns the name of the feature source
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return nil }
@@ -50,6 +53,7 @@ func (s *Source) GetConfig() source.Config { return nil }
 // SetConfig method of the FeatureSource interface
 func (s *Source) SetConfig(source.Config) {}
 
+// Discover returns features from hooks and files
 func (s Source) Discover() (source.Features, error) {
 	featuresFromHooks, err := getFeaturesFromHooks()
 	if err != nil {

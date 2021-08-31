@@ -23,10 +23,13 @@ import (
 	"openshift/node-feature-discovery/source"
 )
 
+const Name = "iommu"
+
 // Implement FeatureSource interface
+// Source implements FeatureSource interface
 type Source struct{}
 
-func (s Source) Name() string { return "iommu" }
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return nil }

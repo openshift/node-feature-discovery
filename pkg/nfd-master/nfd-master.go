@@ -18,6 +18,7 @@ package nfdmaster
 
 import (
 	"crypto/tls"
+	"crypto/x509"
 	"fmt"
 	"net"
 	"os"
@@ -39,13 +40,19 @@ import (
 	pb "openshift/node-feature-discovery/pkg/labeler"
 	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/pkg/version"
+
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 )
 
 const (
-	// Namespace for feature labels
+	// LabelNs defines the namespace for feature labels
 	LabelNs = "feature.node.kubernetes.io"
 
-	// Base namespace for all NFD-related annotations
+	// LabelSubNsSuffix is the suffix for allowed label sub-namespaces
+	LabelSubNsSuffix = "." + LabelNs
+
+	// AnnotationNsBase namespace for all NFD-related annotations
 	AnnotationNsBase = "nfd.node.kubernetes.io"
 
 	// NFD Annotations
@@ -64,7 +71,7 @@ type ExtendedResources map[string]string
 // Annotations are used for NFD-related node metadata
 type Annotations map[string]string
 
-// Command line arguments
+// Args holds command line arguments
 type Args struct {
 	CaFile         string
 	CertFile       string
@@ -182,6 +189,7 @@ func (m *nfdMaster) Run() error {
 	}
 	m.server = grpc.NewServer(serverOpts...)
 	pb.RegisterLabelerServer(m.server, m)
+	grpc_health_v1.RegisterHealthServer(m.server, health.NewServer())
 	klog.Infof("gRPC server serving on port: %d", m.args.Port)
 
 	// Run gRPC server
@@ -313,7 +321,7 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 		ns, name := splitNs(label)
 
 		// Check label namespace, filter out if ns is not whitelisted
-		if ns != LabelNs {
+		if ns != LabelNs && !strings.HasSuffix(ns, LabelSubNsSuffix) {
 			if _, ok := extraLabelNs[ns]; !ok {
 				klog.Errorf("Namespace %q is not allowed. Ignoring label %q\n", ns, label)
 				continue
@@ -347,6 +355,18 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 	return outLabels, extendedResources
 }
 
+func verifyNodeName(cert *x509.Certificate, nodeName string) error {
+	if cert.Subject.CommonName == nodeName {
+		return nil
+	}
+
+	err := cert.VerifyHostname(nodeName)
+	if err != nil {
+		return fmt.Errorf("Certificate %q not valid for node %q: %v", cert.Subject.CommonName, nodeName, err)
+	}
+	return nil
+}
+
 // SetLabels implements LabelerServer
 func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.SetLabelsReply, error) {
 	if m.args.VerifyNodeName {
@@ -366,10 +386,11 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 			klog.Errorf("gRPC request error: client certificate verification for '%v' failed", client.Addr)
 			return &pb.SetLabelsReply{}, fmt.Errorf("client certificate verification failed")
 		}
-		cn := tlsAuth.State.VerifiedChains[0][0].Subject.CommonName
-		if cn != r.NodeName {
-			klog.Errorf("gRPC request error: authorization for %v failed: cert valid for %q, requested node name %q", client.Addr, cn, r.NodeName)
-			return &pb.SetLabelsReply{}, fmt.Errorf("request authorization failed: cert valid for %q, requested node name %q", cn, r.NodeName)
+
+		err := verifyNodeName(tlsAuth.State.VerifiedChains[0][0], r.NodeName)
+		if err != nil {
+			klog.Errorf("gRPC request error: authorization for %v failed: %v", client.Addr, err)
+			return &pb.SetLabelsReply{}, err
 		}
 	}
 	if klog.V(1).Enabled() {

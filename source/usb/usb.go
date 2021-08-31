@@ -26,6 +26,8 @@ import (
 	usbutils "openshift/node-feature-discovery/source/internal"
 )
 
+const Name = "usb"
+
 type Config struct {
 	DeviceClassWhitelist []string `json:"deviceClassWhitelist,omitempty"`
 	DeviceLabelFields    []string `json:"deviceLabelFields,omitempty"`
@@ -42,13 +44,13 @@ func newDefaultConfig() *Config {
 	}
 }
 
-// Implement FeatureSource interface
+// Source implements FeatureSource interface
 type Source struct {
 	config *Config
 }
 
-// Return name of the feature source
-func (s Source) Name() string { return "usb" }
+// Name returns the name of the feature source
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return newDefaultConfig() }

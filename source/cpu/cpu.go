@@ -25,6 +25,8 @@ import (
 	"openshift/node-feature-discovery/source/internal/cpuidutils"
 )
 
+const Name = "cpu"
+
 // Configuration file options
 type cpuidConfig struct {
 	AttributeBlacklist []string `json:"attributeBlacklist,omitempty"`
@@ -61,8 +63,8 @@ func newDefaultConfig() *Config {
 				"SSE",
 				"SSE2",
 				"SSE3",
-				"SSE4.1",
-				"SSE4.2",
+				"SSE4",
+				"SSE42",
 				"SSSE3",
 			},
 			AttributeWhitelist: []string{},
@@ -82,7 +84,7 @@ type Source struct {
 	cpuidFilter *keyFilter
 }
 
-func (s Source) Name() string { return "cpu" }
+func (s Source) Name() string { return Name }
 
 // NewConfig method of the FeatureSource interface
 func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
@@ -145,10 +147,10 @@ func (s *Source) Discover() (source.Features, error) {
 	}
 
 	// Detect cstate configuration
-	cstate, err := detectCstate()
+	cstate, ok, err := detectCstate()
 	if err != nil {
-		klog.Errorf("failed to detect cstate: %v", err)
-	} else {
+		klog.Error(err)
+	} else if ok {
 		features["cstate.enabled"] = cstate
 	}
 
