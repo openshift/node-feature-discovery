@@ -10,10 +10,9 @@ WORKDIR /go/node-feature-discovery
 COPY . .
 
 # Do actual build
-ARG VERSION
-ARG HOSTMOUNT_PREFIX
-
-RUN make install VERSION=$VERSION HOSTMOUNT_PREFIX=$HOSTMOUNT_PREFIX
+ARG VERSION=v0.9.0
+ARG HOSTMOUNT_PREFIX=/host-
+RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 
 # Create full variant of the production image
 FROM registry.ci.openshift.org/ocp/4.9:base
