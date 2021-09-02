@@ -42,11 +42,14 @@ LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.versio
 
 all: image
 
+grpc-health-probe:
+	@CGO_ENABLED=0 $(GO_CMD) install -v -tags netgo -ldflags=-w ./vendor/github.com/grpc-ecosystem/grpc-health-probe/...
+
 build:
 	@mkdir -p bin
 	$(GO_CMD) build -v -o bin $(LDFLAGS) ./cmd/...
 
-install:
+install: grpc-health-probe
 	$(GO_CMD) install -v $(LDFLAGS) ./cmd/...
 
 local-image: yamls
