@@ -32,7 +32,7 @@ var osReleaseFields = [...]string{
 	"VERSION_ID",
 	"RHEL_VERSION",
 	"OPENSHIFT_VERSION",
-	"VERSION",
+	"OSTREE_VERSION",
 }
 
 const Name = "system"
