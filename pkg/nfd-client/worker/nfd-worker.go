@@ -43,7 +43,6 @@ import (
 	_ "github.com/openshift/node-feature-discovery/source/cpu"
 	_ "github.com/openshift/node-feature-discovery/source/custom"
 	_ "github.com/openshift/node-feature-discovery/source/fake"
-	_ "github.com/openshift/node-feature-discovery/source/iommu"
 	_ "github.com/openshift/node-feature-discovery/source/kernel"
 	_ "github.com/openshift/node-feature-discovery/source/local"
 	_ "github.com/openshift/node-feature-discovery/source/memory"
