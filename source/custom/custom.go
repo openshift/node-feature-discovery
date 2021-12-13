@@ -17,10 +17,16 @@ limitations under the License.
 package custom
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
+	"strings"
 
 	"k8s.io/klog/v2"
+	"sigs.k8s.io/yaml"
 
+	"openshift/node-feature-discovery/pkg/api/feature"
+	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/source"
 	"openshift/node-feature-discovery/source/custom/rules"
@@ -28,8 +34,8 @@ import (
 
 const Name = "custom"
 
-// Custom Features Configurations
-type MatchRule struct {
+// LegacyMatcher contains the legacy custom rules.
+type LegacyMatcher struct {
 	PciID      *rules.PciIDRule      `json:"pciId,omitempty"`
 	UsbID      *rules.UsbIDRule      `json:"usbId,omitempty"`
 	LoadedKMod *rules.LoadedKModRule `json:"loadedKMod,omitempty"`
@@ -38,35 +44,55 @@ type MatchRule struct {
 	Nodename   *rules.NodenameRule   `json:"nodename,omitempty"`
 }
 
-type FeatureSpec struct {
-	Name    string      `json:"name"`
-	Value   *string     `json:"value,omitempty"`
-	MatchOn []MatchRule `json:"matchOn"`
+type LegacyRule struct {
+	Name    string          `json:"name"`
+	Value   *string         `json:"value,omitempty"`
+	MatchOn []LegacyMatcher `json:"matchOn"`
 }
 
-type config []FeatureSpec
+type Rule struct {
+	nfdv1alpha1.Rule
+}
+
+type config []CustomRule
+
+type CustomRule struct {
+	*LegacyRule
+	*Rule
+}
 
 // newDefaultConfig returns a new config with pre-populated defaults
 func newDefaultConfig() *config {
 	return &config{}
 }
 
-// Source implements FeatureSource Interface
-type Source struct {
+// customSource implements the LabelSource and ConfigurableSource interfaces.
+type customSource struct {
 	config *config
 }
 
+type legacyRule interface {
+	Match() (bool, error)
+}
+
+// Singleton source instance
+var (
+	src                           = customSource{config: newDefaultConfig()}
+	_   source.LabelSource        = &src
+	_   source.ConfigurableSource = &src
+)
+
 // Name returns the name of the feature source
-func (s Source) Name() string { return Name }
+func (s *customSource) Name() string { return Name }
 
-// NewConfig method of the FeatureSource interface
-func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
+// NewConfig method of the LabelSource interface
+func (s *customSource) NewConfig() source.Config { return newDefaultConfig() }
 
-// GetConfig method of the FeatureSource interface
-func (s *Source) GetConfig() source.Config { return s.config }
+// GetConfig method of the LabelSource interface
+func (s *customSource) GetConfig() source.Config { return s.config }
 
-// SetConfig method of the FeatureSource interface
-func (s *Source) SetConfig(conf source.Config) {
+// SetConfig method of the LabelSource interface
+func (s *customSource) SetConfig(conf source.Config) {
 	switch v := conf.(type) {
 	case *config:
 		s.config = v
@@ -75,64 +101,144 @@ func (s *Source) SetConfig(conf source.Config) {
 	}
 }
 
-// Discover features
-func (s Source) Discover() (source.Features, error) {
-	features := source.Features{}
+// Priority method of the LabelSource interface
+func (s *customSource) Priority() int { return 10 }
+
+// GetLabels method of the LabelSource interface
+func (s *customSource) GetLabels() (source.FeatureLabels, error) {
+	// Get raw features from all sources
+	domainFeatures := make(map[string]*feature.DomainFeatures)
+	for n, s := range source.GetAllFeatureSources() {
+		domainFeatures[n] = s.GetFeatures()
+	}
+
+	labels := source.FeatureLabels{}
 	allFeatureConfig := append(getStaticFeatureConfig(), *s.config...)
 	allFeatureConfig = append(allFeatureConfig, getDirectoryFeatureConfig()...)
 	utils.KlogDump(2, "custom features configuration:", "  ", allFeatureConfig)
 	// Iterate over features
-	for _, customFeature := range allFeatureConfig {
-		featureExist, err := s.discoverFeature(customFeature)
+	for _, rule := range allFeatureConfig {
+		ruleOut, err := rule.execute(domainFeatures)
 		if err != nil {
-			klog.Errorf("failed to discover feature: %q: %s", customFeature.Name, err.Error())
+			klog.Error(err)
 			continue
 		}
-		if featureExist {
-			var value interface{} = true
-			if customFeature.Value != nil {
-				value = *customFeature.Value
-			}
-			features[customFeature.Name] = value
+
+		for n, v := range ruleOut.Labels {
+			labels[n] = v
 		}
+		// Feed back rule output to features map for subsequent rules to match
+		feature.InsertFeatureValues(domainFeatures, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
+		feature.InsertFeatureValues(domainFeatures, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
 	}
-	return features, nil
+	return labels, nil
 }
 
-// Process a single feature by Matching on the defined rules.
-// A feature is present if all defined Rules in a MatchRule return a match.
-func (s Source) discoverFeature(feature FeatureSpec) (bool, error) {
-	for _, matchRules := range feature.MatchOn {
-
-		allRules := []rules.Rule{
-			matchRules.PciID,
-			matchRules.UsbID,
-			matchRules.LoadedKMod,
-			matchRules.CpuID,
-			matchRules.Kconfig,
-			matchRules.Nodename,
+func (r *CustomRule) execute(features map[string]*feature.DomainFeatures) (nfdv1alpha1.RuleOutput, error) {
+	if r.LegacyRule != nil {
+		ruleOut, err := r.LegacyRule.execute(features)
+		if err != nil {
+			return nfdv1alpha1.RuleOutput{}, fmt.Errorf("failed to execute legacy rule %s: %w", r.LegacyRule.Name, err)
 		}
+		return nfdv1alpha1.RuleOutput{Labels: ruleOut}, nil
+	}
 
-		// return true, nil if all rules match
-		matchRules := func(rules []rules.Rule) (bool, error) {
-			for _, rule := range rules {
-				if reflect.ValueOf(rule).IsNil() {
-					continue
-				}
-				if match, err := rule.Match(); err != nil {
-					return false, err
-				} else if !match {
-					return false, nil
-				}
+	if r.Rule != nil {
+		ruleOut, err := r.Rule.Execute(features)
+		if err != nil {
+			return ruleOut, fmt.Errorf("failed to execute rule %s: %w", r.Rule.Name, err)
+		}
+		return ruleOut, nil
+	}
+
+	return nfdv1alpha1.RuleOutput{}, fmt.Errorf("BUG: an empty rule, this really should not happen")
+}
+
+func (r *LegacyRule) execute(features map[string]*feature.DomainFeatures) (map[string]string, error) {
+	if len(r.MatchOn) > 0 {
+		// Logical OR over the legacy rules
+		matched := false
+		for _, matcher := range r.MatchOn {
+			if m, err := matcher.match(); err != nil {
+				return nil, err
+			} else if m {
+				matched = true
+				break
 			}
-			return true, nil
 		}
-
-		if match, err := matchRules(allRules); err != nil {
-			return false, err
-		} else if match {
-			return true, nil
+		if !matched {
+			return nil, nil
 		}
 	}
-	return false, nil
+
+	// Prefix non-namespaced labels with "custom-"
+	name := r.Name
+	if !strings.Contains(name, "/") {
+		name = "custom-" + name
+	}
+
+	value := "true"
+	if r.Value != nil {
+		value = *r.Value
+	}
+
+	return map[string]string{name: value}, nil
+}
+
+func (m *LegacyMatcher) match() (bool, error) {
+	allRules := []legacyRule{
+		m.PciID,
+		m.UsbID,
+		m.LoadedKMod,
+		m.CpuID,
+		m.Kconfig,
+		m.Nodename,
+	}
+
+	// return true, nil if all rules match
+	matchRules := func(rules []legacyRule) (bool, error) {
+		for _, rule := range rules {
+			if reflect.ValueOf(rule).IsNil() {
+				continue
+			}
+			if match, err := rule.Match(); err != nil {
+				return false, err
+			} else if !match {
+				return false, nil
+			}
+		}
+		return true, nil
+	}
+
+	return matchRules(allRules)
+}
+
+// UnmarshalJSON implements the Unmarshaler interface from "encoding/json"
+func (c *CustomRule) UnmarshalJSON(data []byte) error {
+	// Do a raw parse to determine if this is a legacy rule
+	raw := map[string]json.RawMessage{}
+	err := yaml.Unmarshal(data, &raw)
+	if err != nil {
+		return err
+	}
+
+	for k := range raw {
+		if strings.ToLower(k) == "matchon" {
+			return yaml.Unmarshal(data, &c.LegacyRule)
+		}
+	}
+
+	return yaml.Unmarshal(data, &c.Rule)
+}
+
+// MarshalJSON implements the Marshaler interface from "encoding/json"
+func (c *CustomRule) MarshalJSON() ([]byte, error) {
+	if c.LegacyRule != nil {
+		return json.Marshal(c.LegacyRule)
+	}
+	return json.Marshal(c.Rule)
+}
+
+func init() {
+	source.Register(&src)
 }

@@ -31,31 +31,50 @@ func TestParseArgs(t *testing.T) {
 		flags := flag.NewFlagSet(ProgramName, flag.ExitOnError)
 
 		Convey("When no override args are specified", func() {
-			args := parseArgs(flags, "--oneshot")
+			args := parseArgs(flags, "-oneshot")
 
 			Convey("overrides should be nil", func() {
 				So(args.Oneshot, ShouldBeTrue)
 				So(args.Overrides.NoPublish, ShouldBeNil)
 				So(args.Overrides.LabelWhiteList, ShouldBeNil)
 				So(args.Overrides.SleepInterval, ShouldBeNil)
-				So(args.Overrides.Sources, ShouldBeNil)
+				So(args.Overrides.FeatureSources, ShouldBeNil)
+				So(args.Overrides.LabelSources, ShouldBeNil)
 			})
 		})
 
 		Convey("When all override args are specified", func() {
 			args := parseArgs(flags,
-				"--no-publish",
+				"-no-publish",
 				"-label-whitelist=.*rdt.*",
-				"-sources=fake1,fake2,fake3",
+				"-feature-sources=cpu",
+				"-label-sources=fake1,fake2,fake3",
 				"-sleep-interval=30s")
 
 			Convey("args.sources is set to appropriate values", func() {
 				So(args.Oneshot, ShouldBeFalse)
 				So(*args.Overrides.NoPublish, ShouldBeTrue)
 				So(*args.Overrides.SleepInterval, ShouldEqual, 30*time.Second)
-				So(*args.Overrides.Sources, ShouldResemble, utils.StringSliceVal{"fake1", "fake2", "fake3"})
+				So(*args.Overrides.FeatureSources, ShouldResemble, utils.StringSliceVal{"cpu"})
+				So(*args.Overrides.LabelSources, ShouldResemble, utils.StringSliceVal{"fake1", "fake2", "fake3"})
 				So(args.Overrides.LabelWhiteList.Regexp.String(), ShouldResemble, ".*rdt.*")
 			})
+		})
+	})
+}
+
+func TestKlogConfigOptName(t *testing.T) {
+	Convey("When converting names of klog command line flags", t, func() {
+		tcs := map[string]string{
+			"":                    "",
+			"a":                   "a",
+			"an_arg":              "anArg",
+			"arg_with_many_parts": "argWithManyParts",
+		}
+		Convey("resulting config option names should be as expected", func() {
+			for input, expected := range tcs {
+				So(klogConfigOptName(input), ShouldEqual, expected)
+			}
 		})
 	})
 }

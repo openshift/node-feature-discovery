@@ -5,18 +5,40 @@ this=`basename $0`
 
 usage () {
 cat << EOF
-Usage: $this [-h] RELEASE_VERSION
+Usage: $this [-h] RELEASE_VERSION GPG_KEY
 
 Options:
   -h         show this help and exit
+  -a         only generate release assets, do not patch files in the repo
+
+Example:
+
+  $this v0.1.2 "Jane Doe <jane.doe@example.com>"
+
+
+NOTE: The GPG key should be associated with the signer's Github account.
 EOF
+}
+
+sign_helm_chart() {
+  local chart="$1"
+  echo "Signing Helm chart $chart"
+  local sha256=`openssl dgst -sha256 "$chart" | awk '{ print $2 }'`
+  local yaml=`tar xf $chart -O node-feature-discovery/Chart.yaml`
+  echo "$yaml
+...
+files:
+  $chart: sha256:$sha256" | gpg -u "$key" --clearsign -o "$chart.prov"
 }
 
 #
 # Parse command line
 #
-while getopts "h" opt; do
+assets_only=
+while getopts "ah" opt; do
     case $opt in
+        a)  assets_only=y
+            ;;
         h)  usage
             exit 0
             ;;
@@ -28,13 +50,20 @@ done
 shift "$((OPTIND - 1))"
 
 # Check that no extra args were provided
-if [ $# -gt 1 ]; then
-    echo -e "ERROR: unknown arguments: $@\n"
+if [ $# -ne 2 ]; then
+    if [ $# -lt 2 ]; then
+        echo -e "ERROR: too few arguments\n"
+    else
+        echo -e "ERROR: unknown arguments: ${@:3}\n"
+    fi
     usage
     exit 1
 fi
 
 release=$1
+key="$2"
+shift 2
+
 container_image=k8s.gcr.io/nfd/node-feature-discovery:$release
 
 #
@@ -48,6 +77,7 @@ fi
 
 if [[ $release =~ ^(v[0-9]+\.[0-9]+)(\..+)?$ ]]; then
     docs_version=${BASH_REMATCH[1]}
+    semver=${release:1}
 else
     echo -e "ERROR: invalid RELEASE_VERSION '$release'"
     exit 1
@@ -67,9 +97,10 @@ if [ -z "$assets_only" ]; then
 
     # Patch deployment templates
     echo Patching kustomize templates to use $container_image
+    find deployment/base deployment/overlays deployment/components -name '*.yaml' | xargs -I '{}' \
     sed -E -e s",^([[:space:]]+)image:.+$,\1image: $container_image," \
            -e s",^([[:space:]]+)imagePullPolicy:.+$,\1imagePullPolicy: IfNotPresent," \
-           -i deployment/base/*/*yaml
+           -i '{}'
 
     # Patch Helm chart
     echo "Patching Helm chart"

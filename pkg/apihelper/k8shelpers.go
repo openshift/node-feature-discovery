@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 
+	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
 	api "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -30,28 +31,23 @@ import (
 
 // Implements APIHelpers
 type K8sHelpers struct {
-	Kubeconfig string
+	Kubeconfig *restclient.Config
 }
 
 func (h K8sHelpers) GetClient() (*k8sclient.Clientset, error) {
-	// Set up an in-cluster K8S client.
-	var config *restclient.Config
-	var err error
-
-	if h.Kubeconfig == "" {
-		config, err = restclient.InClusterConfig()
-	} else {
-		config, err = clientcmd.BuildConfigFromFlags("", h.Kubeconfig)
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	clientset, err := k8sclient.NewForConfig(config)
+	clientset, err := k8sclient.NewForConfig(h.Kubeconfig)
 	if err != nil {
 		return nil, err
 	}
 	return clientset, nil
+}
+
+func (h K8sHelpers) GetTopologyClient() (*topologyclientset.Clientset, error) {
+	topologyClient, err := topologyclientset.NewForConfig(h.Kubeconfig)
+	if err != nil {
+		return nil, err
+	}
+	return topologyClient, nil
 }
 
 func (h K8sHelpers) GetNode(cli *k8sclient.Clientset, nodeName string) (*api.Node, error) {
@@ -99,4 +95,21 @@ func (h K8sHelpers) PatchNodeStatus(c *k8sclient.Clientset, nodeName string, pat
 	}
 	return nil
 
+}
+
+func (h K8sHelpers) GetPod(cli *k8sclient.Clientset, namespace string, podName string) (*api.Pod, error) {
+	// Get the node object using pod name
+	pod, err := cli.CoreV1().Pods(namespace).Get(context.TODO(), podName, meta_v1.GetOptions{})
+	if err != nil {
+		return nil, err
+	}
+
+	return pod, nil
+}
+
+func GetKubeconfig(path string) (*restclient.Config, error) {
+	if path == "" {
+		return restclient.InClusterConfig()
+	}
+	return clientcmd.BuildConfigFromFlags("", path)
 }

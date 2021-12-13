@@ -1,3 +1,4 @@
+//go:build !amd64
 // +build !amd64
 
 /*
@@ -19,6 +20,6 @@ limitations under the License.
 package cpu
 
 // Discover if c-states are enabled
-func detectCstate() (bool, bool, error) {
-	return false, false, nil
+func detectCstate() (map[string]string, error) {
+	return nil, nil
 }

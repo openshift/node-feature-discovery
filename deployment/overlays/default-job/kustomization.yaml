@@ -5,6 +5,7 @@ namespace: node-feature-discovery
 
 bases:
 - ../../base/rbac
+- ../../base/nfd-crds
 - ../../base/master
 - ../../base/worker-job
 
@@ -14,3 +15,4 @@ resources:
 components:
 - ../../components/worker-config
 - ../../components/common
+  

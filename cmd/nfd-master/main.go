@@ -45,7 +45,7 @@ func main() {
 
 	_ = flags.Parse(os.Args[1:])
 	if len(flags.Args()) > 0 {
-		fmt.Printf("unknown command line argument: %s\n", flags.Args()[0])
+		fmt.Fprintf(flags.Output(), "unknown command line argument: %s\n", flags.Args()[0])
 		flags.Usage()
 		os.Exit(2)
 	}
@@ -66,7 +66,7 @@ func main() {
 	// Get new NfdMaster instance
 	instance, err := master.NewNfdMaster(args)
 	if err != nil {
-		klog.Exitf("Failed to initialize NfdMaster instance: %v", err)
+		klog.Exitf("failed to initialize NfdMaster instance: %v", err)
 	}
 
 	if err = instance.Run(); err != nil {
@@ -96,6 +96,8 @@ func initFlags(flagset *flag.FlagSet) *master.Args {
 			"NB: the label namespace is omitted i.e. the filter is only applied to the name part after '/'.")
 	flagset.BoolVar(&args.NoPublish, "no-publish", false,
 		"Do not publish feature labels")
+	flagset.BoolVar(&args.FeatureRulesController, "featurerules-controller", true,
+		"Enable controller for NodeFeatureRule objects. Generates node labels based on the rules in these CRs.")
 	flagset.IntVar(&args.Port, "port", 8080,
 		"Port on which to listen for connections.")
 	flagset.BoolVar(&args.Prune, "prune", false,
