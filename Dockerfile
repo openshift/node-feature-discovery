@@ -1,49 +1,21 @@
-ARG BASE_IMAGE_FULL
-ARG BASE_IMAGE_MINIMAL
-
 # Build node feature discovery
-FROM golang:1.17.2-buster as builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.17-openshift-4.10 as builder
 
 # Download the grpc_health_probe bin
 RUN GRPC_HEALTH_PROBE_VERSION=v0.3.1 && \
     wget -qO/bin/grpc_health_probe https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 && \
     chmod +x /bin/grpc_health_probe
 
-# Get (cache) deps in a separate layer
-COPY go.mod go.sum /go/node-feature-discovery/
-
 WORKDIR /go/node-feature-discovery
-
-RUN go mod download
+COPY . .
 
 # Do actual build
-COPY . /go/node-feature-discovery
-
-ARG VERSION
-ARG HOSTMOUNT_PREFIX
-
-RUN make install VERSION=$VERSION HOSTMOUNT_PREFIX=$HOSTMOUNT_PREFIX
-
-RUN make test
+ARG VERSION=v0.10.0
+ARG HOSTMOUNT_PREFIX=/host-
+RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 
 # Create full variant of the production image
-FROM ${BASE_IMAGE_FULL} as full
-
-# Run as unprivileged user
-USER 65534:65534
-
-# Use more verbose logging of gRPC
-ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
-
-COPY --from=builder /go/node-feature-discovery/deployment/components/worker-config/nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
-COPY --from=builder /go/bin/* /usr/bin/
-COPY --from=builder /bin/grpc_health_probe /usr/bin/grpc_health_probe
-
-# Create minimal variant of the production image
-FROM ${BASE_IMAGE_MINIMAL} as minimal
-
-# Run as unprivileged user
-USER 65534:65534
+FROM registry.ci.openshift.org/ocp/4.10:base
 
 # Use more verbose logging of gRPC
 ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"

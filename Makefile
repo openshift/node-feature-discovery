@@ -4,31 +4,14 @@
 GO_CMD ?= go
 GO_FMT ?= gofmt
 
-IMAGE_BUILD_CMD ?= docker build
+IMAGE_BUILD_CMD ?= podman build
 IMAGE_BUILD_EXTRA_OPTS ?=
-IMAGE_PUSH_CMD ?= docker push
-CONTAINER_RUN_CMD ?= docker run
-BASE_IMAGE_FULL ?= debian:buster-slim
-BASE_IMAGE_MINIMAL ?= gcr.io/distroless/base
+IMAGE_PUSH_CMD ?= podman push
+CONTAINER_RUN_CMD ?= podman run
 
 MDL ?= mdl
 
 K8S_CODE_GENERATOR ?= ../code-generator
-
-# Docker base command for working with html documentation.
-# Use host networking because 'jekyll serve' is stupid enough to use the
-# same site url than the "host" it binds to. Thus, all the links will be
-# broken if we'd bind to 0.0.0.0
-JEKYLL_VERSION := 3.8
-JEKYLL_ENV ?= development
-SITE_BUILD_CMD := $(CONTAINER_RUN_CMD) --rm -i -u "`id -u`:`id -g`" \
-	-e JEKYLL_ENV=$(JEKYLL_ENV) \
-	--volume="$$PWD/docs:/srv/jekyll" \
-	--volume="$$PWD/docs/vendor/bundle:/usr/local/bundle" \
-	--network=host jekyll/jekyll:$(JEKYLL_VERSION)
-SITE_BASEURL ?=
-SITE_DESTDIR ?= _site
-JEKYLL_OPTS := -d '$(SITE_DESTDIR)' $(if $(SITE_BASEURL),-b '$(SITE_BASEURL)',)
 
 VERSION := $(shell git describe --tags --dirty --always)
 
@@ -70,20 +53,9 @@ install:
 
 image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg VERSION=$(VERSION) \
-	    --target full \
 	    --build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
-	    --build-arg BASE_IMAGE_FULL=$(BASE_IMAGE_FULL) \
-	    --build-arg BASE_IMAGE_MINIMAL=$(BASE_IMAGE_MINIMAL) \
 	    -t $(IMAGE_TAG) \
 	    $(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
-	    $(IMAGE_BUILD_EXTRA_OPTS) ./
-	$(IMAGE_BUILD_CMD) --build-arg VERSION=$(VERSION) \
-	    --target minimal \
-	    --build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
-	    --build-arg BASE_IMAGE_FULL=$(BASE_IMAGE_FULL) \
-	    --build-arg BASE_IMAGE_MINIMAL=$(BASE_IMAGE_MINIMAL) \
-	    -t $(IMAGE_TAG)-minimal \
-	    $(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)-minimal) \
 	    $(IMAGE_BUILD_EXTRA_OPTS) ./
 
 # clean NFD labels on all nodes
@@ -92,7 +64,6 @@ deploy-prune:
 	kubectl apply -k deployment/overlays/prune/
 	kubectl wait --for=condition=complete job -l app=nfd -n node-feature-discovery
 	kubectl delete -k deployment/overlays/prune/
-
 
 yamls:
 	@./scripts/kustomize.sh $(K8S_NAMESPACE) $(IMAGE_REPO) $(IMAGE_TAG_NAME)
@@ -163,28 +134,3 @@ e2e-test:
 
 push:
 	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
-	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)-minimal
-	for tag in $(IMAGE_EXTRA_TAGS); do $(IMAGE_PUSH_CMD) $$tag; $(IMAGE_PUSH_CMD) $$tag-minimal; done
-
-poll-images:
-	set -e; \
-	tags="$(foreach tag,$(IMAGE_TAG_NAME) $(IMAGE_EXTRA_TAG_NAMES),$(tag) $(tag)-minimal)" \
-	base_url=`echo $(IMAGE_REPO) | sed -e s'!\([^/]*\)!\1/v2!'`; \
-	for tag in $$tags; do \
-	    image=$(IMAGE_REPO):$$tag \
-	    errors=`curl -fsS -X GET https://$$base_url/manifests/$$tag|jq .errors`;  \
-	    if [ "$$errors" = "null" ]; then \
-	      echo Image $$image found; \
-	    else \
-	      echo Image $$image not found; \
-	      exit 1; \
-	    fi; \
-	done
-
-site-build:
-	@mkdir -p docs/vendor/bundle
-	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll build $(JEKYLL_OPTS)"
-
-site-serve:
-	@mkdir -p docs/vendor/bundle
-	$(SITE_BUILD_CMD) sh -c "bundle install && jekyll serve $(JEKYLL_OPTS) -H 127.0.0.1"

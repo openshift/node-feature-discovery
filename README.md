@@ -11,17 +11,14 @@ features and system configuration!
 #### Quick-start – the short-short version
 
 ```bash
-$ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.9.0
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/node-feature-discovery/v0.6.0/nfd-master.yaml.template
   namespace/node-feature-discovery created
-  serviceaccount/nfd-master created
-  clusterrole.rbac.authorization.k8s.io/nfd-master created
-  clusterrolebinding.rbac.authorization.k8s.io/nfd-master created
-  configmap/nfd-worker-conf created
-  service/nfd-master created
-  deployment.apps/nfd-master created
+...
+
+kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/node-feature-discovery/v0.6.0/nfd-worker-daemonset.yaml.template
   daemonset.apps/nfd-worker created
 
-$ kubectl -n node-feature-discovery get all
+kubectl -n node-feature-discovery get all
   NAME                              READY   STATUS    RESTARTS   AGE
   pod/nfd-master-555458dbbc-sxg6w   1/1     Running   0          56s
   pod/nfd-worker-mjg9f              1/1     Running   0          17s
