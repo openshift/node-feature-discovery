@@ -24,8 +24,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/source"
 )
 
 var mandatoryDevAttrs = []string{"class", "vendor", "device", "subsystem_vendor", "subsystem_device"}

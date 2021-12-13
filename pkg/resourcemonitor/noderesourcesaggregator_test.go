@@ -32,7 +32,7 @@ import (
 
 	topologyv1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/utils"
 )
 
 func TestResourcesAggregator(t *testing.T) {

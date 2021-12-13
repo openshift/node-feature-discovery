@@ -28,7 +28,7 @@ import (
 	"k8s.io/klog/v2"
 	resourcehelper "k8s.io/kubernetes/pkg/apis/core/helper"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 var (

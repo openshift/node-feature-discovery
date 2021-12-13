@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	"github.com/stretchr/testify/assert"
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/api/feature"
 )
 
 func TestRule(t *testing.T) {

@@ -29,7 +29,7 @@ import (
 	"google.golang.org/grpc/credentials"
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/utils"
 )
 
 // NfdClient defines a common interface for NFD clients.

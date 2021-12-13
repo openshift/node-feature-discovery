@@ -25,11 +25,11 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/custom/rules"
+	"openshift/node-feature-discovery/pkg/api/feature"
+	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/custom/rules"
 )
 
 const Name = "custom"

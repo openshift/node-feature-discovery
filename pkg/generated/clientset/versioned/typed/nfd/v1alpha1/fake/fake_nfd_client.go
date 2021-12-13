@@ -21,7 +21,7 @@ package fake
 import (
 	rest "k8s.io/client-go/rest"
 	testing "k8s.io/client-go/testing"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
+	v1alpha1 "openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
 )
 
 type FakeNfdV1alpha1 struct {

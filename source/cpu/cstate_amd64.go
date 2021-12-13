@@ -26,7 +26,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Discover if c-states are enabled

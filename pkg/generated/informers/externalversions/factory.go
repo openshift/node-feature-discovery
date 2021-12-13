@@ -27,9 +27,9 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-	versioned "sigs.k8s.io/node-feature-discovery/pkg/generated/clientset/versioned"
-	internalinterfaces "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
-	nfd "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/nfd"
+	versioned "openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	internalinterfaces "openshift/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
+	nfd "openshift/node-feature-discovery/pkg/generated/informers/externalversions/nfd"
 )
 
 // SharedInformerOption defines the functional option type for SharedInformerFactory.

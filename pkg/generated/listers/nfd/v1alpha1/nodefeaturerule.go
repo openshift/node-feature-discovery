@@ -22,7 +22,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/cache"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	v1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 )
 
 // NodeFeatureRuleLister helps list NodeFeatureRules.

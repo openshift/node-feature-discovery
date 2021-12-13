@@ -19,8 +19,8 @@ limitations under the License.
 package nfd
 
 import (
-	internalinterfaces "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/nfd/v1alpha1"
+	internalinterfaces "openshift/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
+	v1alpha1 "openshift/node-feature-discovery/pkg/generated/informers/externalversions/nfd/v1alpha1"
 )
 
 // Interface provides access to each of this group's versions.

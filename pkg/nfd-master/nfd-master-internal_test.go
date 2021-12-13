@@ -32,10 +32,10 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sclient "k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
-	"sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
+	"openshift/node-feature-discovery/pkg/apihelper"
+	"openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/version"
 	"sigs.k8s.io/yaml"
 )
 

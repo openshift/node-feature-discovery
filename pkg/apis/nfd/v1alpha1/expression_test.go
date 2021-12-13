@@ -22,8 +22,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"sigs.k8s.io/yaml"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
-	api "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"openshift/node-feature-discovery/pkg/api/feature"
+	api "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 )
 
 type BoolAssertionFuncf func(assert.TestingT, bool, string, ...interface{}) bool

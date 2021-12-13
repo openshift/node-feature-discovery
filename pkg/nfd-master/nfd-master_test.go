@@ -20,7 +20,7 @@ import (
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	m "sigs.k8s.io/node-feature-discovery/pkg/nfd-master"
+	m "openshift/node-feature-discovery/pkg/nfd-master"
 )
 
 func TestNewNfdMaster(t *testing.T) {

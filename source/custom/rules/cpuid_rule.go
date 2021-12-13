@@ -19,9 +19,9 @@ package rules
 import (
 	"fmt"
 
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/cpu"
+	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/cpu"
 )
 
 // CpuIDRule implements Rule for the custom source

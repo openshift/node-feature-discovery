@@ -27,7 +27,7 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	testing "k8s.io/client-go/testing"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	v1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 )
 
 // FakeNodeFeatureRules implements NodeFeatureRuleInterface

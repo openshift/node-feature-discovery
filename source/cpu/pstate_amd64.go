@@ -25,7 +25,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source"
 )
 
 // Discover p-state related features such as turbo boost.

@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog/v2"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
+	"openshift/node-feature-discovery/pkg/apihelper"
 )
 
 type PodResourcesScanner struct {

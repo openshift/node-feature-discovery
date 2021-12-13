@@ -1,4 +1,4 @@
-module sigs.k8s.io/node-feature-discovery
+module openshift/node-feature-discovery
 
 go 1.17
 

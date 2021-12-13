@@ -25,11 +25,11 @@ import (
 	v1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
 	. "github.com/smartystreets/goconvey/convey"
 	"k8s.io/apimachinery/pkg/api/resource"
-	nfdclient "sigs.k8s.io/node-feature-discovery/pkg/nfd-client"
-	u "sigs.k8s.io/node-feature-discovery/pkg/nfd-client/topology-updater"
-	nfdmaster "sigs.k8s.io/node-feature-discovery/pkg/nfd-master"
-	"sigs.k8s.io/node-feature-discovery/pkg/resourcemonitor"
-	"sigs.k8s.io/node-feature-discovery/test/data"
+	nfdclient "openshift/node-feature-discovery/pkg/nfd-client"
+	u "openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
+	nfdmaster "openshift/node-feature-discovery/pkg/nfd-master"
+	"openshift/node-feature-discovery/pkg/resourcemonitor"
+	"openshift/node-feature-discovery/test/data"
 )
 
 type testContext struct {

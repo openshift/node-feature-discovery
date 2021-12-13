@@ -19,7 +19,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	internalinterfaces "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
+	internalinterfaces "openshift/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
 )
 
 // Interface provides access to all the informers in this group version.

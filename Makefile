@@ -57,7 +57,7 @@ HOSTMOUNT_PREFIX ?= /
 KUBECONFIG ?=
 E2E_TEST_CONFIG ?=
 
-LDFLAGS = -ldflags "-s -w -X sigs.k8s.io/node-feature-discovery/pkg/version.version=$(VERSION) -X sigs.k8s.io/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
+LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
 all: image
 
@@ -119,12 +119,12 @@ generate:
 	cp deployment/base/nfd-crds/nodefeaturerule-crd.yaml deployment/helm/node-feature-discovery/manifests/
 	rm -rf sigs.k8s.io
 	$(K8S_CODE_GENERATOR)/generate-groups.sh client,informer,lister \
-	    sigs.k8s.io/node-feature-discovery/pkg/generated \
-	    sigs.k8s.io/node-feature-discovery/pkg/apis \
+	    openshift/node-feature-discovery/pkg/generated \
+	    openshift/node-feature-discovery/pkg/apis \
 	    "nfd:v1alpha1" --output-base=. \
 	    --go-header-file hack/boilerplate.go.txt
 	rm -rf pkg/generated
-	mv sigs.k8s.io/node-feature-discovery/pkg/generated pkg/
+	mv openshift/node-feature-discovery/pkg/generated pkg/
 	rm -rf sigs.k8s.io
 
 gofmt:

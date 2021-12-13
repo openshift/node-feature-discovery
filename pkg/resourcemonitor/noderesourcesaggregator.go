@@ -30,8 +30,8 @@ import (
 	"k8s.io/klog/v2"
 	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/source"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/source"
 )
 
 const (

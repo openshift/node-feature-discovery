@@ -29,12 +29,12 @@ import (
 	"github.com/stretchr/testify/mock"
 	"github.com/vektra/errors"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/cpu"
-	"sigs.k8s.io/node-feature-discovery/source/kernel"
-	"sigs.k8s.io/node-feature-discovery/source/pci"
+	"openshift/node-feature-discovery/pkg/labeler"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/source"
+	"openshift/node-feature-discovery/source/cpu"
+	"openshift/node-feature-discovery/source/kernel"
+	"openshift/node-feature-discovery/source/pci"
 )
 
 const fakeLabelSourceName string = "testSource"

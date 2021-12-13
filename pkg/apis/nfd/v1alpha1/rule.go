@@ -24,8 +24,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/utils"
 )
 
 // RuleOutput contains the output out rule execution.

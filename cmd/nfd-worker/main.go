@@ -24,9 +24,9 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/nfd-client/worker"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
+	"openshift/node-feature-discovery/pkg/nfd-client/worker"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -48,7 +48,7 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.Warningf("version not set! Set -ldflags \"-X sigs.k8s.io/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Plug klog into grpc logging infrastructure
