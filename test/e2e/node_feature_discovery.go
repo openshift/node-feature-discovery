@@ -311,7 +311,7 @@ func nfdWorkerPodSpec(image string, extraArgs []string) v1.PodSpec {
 				Image:           image,
 				ImagePullPolicy: v1.PullAlways,
 				Command:         []string{"nfd-worker"},
-				Args:            append([]string{"--server=nfd-master-e2e:8080"}, extraArgs...),
+				Args:            append([]string{"-server=nfd-master-e2e:8080"}, extraArgs...),
 				Env: []v1.EnvVar{
 					{
 						Name: "NODE_NAME",
@@ -426,7 +426,7 @@ func cleanupNode(cs clientset.Interface) {
 			update := false
 			// Remove labels
 			for key := range node.Labels {
-				if strings.HasPrefix(key, master.LabelNs) {
+				if strings.HasPrefix(key, master.FeatureLabelNs) {
 					delete(node.Labels, key)
 					update = true
 				}
@@ -499,9 +499,9 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 			It("it should decorate the node with the fake feature labels", func() {
 
 				fakeFeatureLabels := map[string]string{
-					master.LabelNs + "/fake-fakefeature1": "true",
-					master.LabelNs + "/fake-fakefeature2": "true",
-					master.LabelNs + "/fake-fakefeature3": "true",
+					master.FeatureLabelNs + "/fake-fakefeature1": "true",
+					master.FeatureLabelNs + "/fake-fakefeature2": "true",
+					master.FeatureLabelNs + "/fake-fakefeature3": "true",
 				}
 
 				// Remove pre-existing stale annotations and labels
@@ -510,7 +510,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 				// Launch nfd-worker
 				By("Creating a nfd worker pod")
 				image := fmt.Sprintf("%s:%s", *dockerRepo, *dockerTag)
-				workerPod := nfdWorkerPod(image, []string{"--oneshot", "--sources=fake"})
+				workerPod := nfdWorkerPod(image, []string{"-oneshot", "-label-sources=fake"})
 				workerPod, err := f.ClientSet.CoreV1().Pods(f.Namespace.Name).Create(context.TODO(), workerPod, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -528,7 +528,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 
 				// Check that there are no unexpected NFD labels
 				for k := range node.Labels {
-					if strings.HasPrefix(k, master.LabelNs) {
+					if strings.HasPrefix(k, master.FeatureLabelNs) {
 						Expect(fakeFeatureLabels).Should(HaveKey(k))
 					}
 				}
@@ -593,7 +593,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 						Expect(node.Labels).To(HaveKey(k))
 					}
 					for k := range node.Labels {
-						if strings.HasPrefix(k, master.LabelNs) {
+						if strings.HasPrefix(k, master.FeatureLabelNs) {
 							if _, ok := nodeConf.ExpectedLabelValues[k]; ok {
 								continue
 							}
@@ -655,7 +655,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 				Expect(err).NotTo(HaveOccurred())
 				Expect(len(nodeList.Items)).ToNot(BeZero())
 
-				targetNodeName := ""
+				targetNodeName := nodeList.Items[0].Name
 				for _, node := range nodeList.Items {
 					if _, ok := node.Labels["node-role.kubernetes.io/master"]; !ok {
 						targetNodeName = node.Name

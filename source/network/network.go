@@ -17,111 +17,153 @@ limitations under the License.
 package network
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 
 	"k8s.io/klog/v2"
 
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/source"
 )
 
 const Name = "network"
 
-// Linux net iface flags (we only specify the first few)
-const (
-	flagUp = 1 << iota
-	_      // flagBroadcast
-	_      // flagDebug
-	flagLoopback
-)
+const DeviceFeature = "device"
 
 const sysfsBaseDir = "class/net"
 
-// Source implements FeatureSource.
-type Source struct{}
-
-// Name returns an identifier string for this feature source.
-func (s Source) Name() string { return Name }
-
-// NewConfig method of the FeatureSource interface
-func (s *Source) NewConfig() source.Config { return nil }
-
-// GetConfig method of the FeatureSource interface
-func (s *Source) GetConfig() source.Config { return nil }
-
-// SetConfig method of the FeatureSource interface
-func (s *Source) SetConfig(source.Config) {}
-
-// Discover returns feature names sriov-configured and sriov if SR-IOV capable NICs are present and/or SR-IOV virtual functions are configured on the node
-func (s Source) Discover() (source.Features, error) {
-	features := source.Features{}
-
-	netInterfaces, err := ioutil.ReadDir(source.SysfsDir.Path(sysfsBaseDir))
-	if err != nil {
-		return nil, fmt.Errorf("failed to list network interfaces: %s", err.Error())
-	}
-
-	// iterating through network interfaces to obtain their respective number of virtual functions
-	for _, netInterface := range netInterfaces {
-		name := netInterface.Name()
-		flags, err := readIfFlags(name)
-		if err != nil {
-			klog.Error(err)
-			continue
-		}
-
-		if flags&flagUp != 0 && flags&flagLoopback == 0 {
-			totalBytes, err := ioutil.ReadFile(source.SysfsDir.Path(sysfsBaseDir, name, "device/sriov_totalvfs"))
-			if err != nil {
-				klog.V(1).Infof("SR-IOV not supported for network interface: %s: %v", name, err)
-				continue
-			}
-			total := bytes.TrimSpace(totalBytes)
-			t, err := strconv.Atoi(string(total))
-			if err != nil {
-				klog.Errorf("Error in obtaining maximum supported number of virtual functions for network interface: %s: %v", name, err)
-				continue
-			}
-			if t > 0 {
-				klog.V(1).Infof("SR-IOV capability is detected on the network interface: %s", name)
-				klog.V(1).Infof("%d maximum supported number of virtual functions on network interface: %s", t, name)
-				features["sriov.capable"] = true
-				numBytes, err := ioutil.ReadFile(source.SysfsDir.Path(sysfsBaseDir, name, "device/sriov_numvfs"))
-				if err != nil {
-					klog.V(1).Infof("SR-IOV not configured for network interface: %s: %s", name, err)
-					continue
-				}
-				num := bytes.TrimSpace(numBytes)
-				n, err := strconv.Atoi(string(num))
-				if err != nil {
-					klog.Errorf("Error in obtaining the configured number of virtual functions for network interface: %s: %v", name, err)
-					continue
-				}
-				if n > 0 {
-					klog.V(1).Infof("%d virtual functions configured on network interface: %s", n, name)
-					features["sriov.configured"] = true
-					break
-				} else if n == 0 {
-					klog.V(1).Infof("SR-IOV not configured on network interface: %s", name)
-				}
-			}
-		}
-	}
-	return features, nil
+// networkSource implements the FeatureSource and LabelSource interfaces.
+type networkSource struct {
+	features *feature.DomainFeatures
 }
 
-func readIfFlags(name string) (uint64, error) {
-	raw, err := ioutil.ReadFile(source.SysfsDir.Path(sysfsBaseDir, name, "flags"))
-	if err != nil {
-		return 0, fmt.Errorf("failed to read flags for interface %q: %v", name, err)
+// Singleton source instance
+var (
+	src networkSource
+	_   source.FeatureSource = &src
+	_   source.LabelSource   = &src
+)
+
+var (
+	// ifaceAttrs is the list of files under /sys/class/net/<iface> that we're trying to read
+	ifaceAttrs = []string{"operstate", "speed"}
+	// devAttrs is the list of files under /sys/class/net/<iface>/device that we're trying to read
+	devAttrs = []string{"sriov_numvfs", "sriov_totalvfs"}
+)
+
+// Name returns an identifier string for this feature source.
+func (s *networkSource) Name() string { return Name }
+
+// Priority method of the LabelSource interface
+func (s *networkSource) Priority() int { return 0 }
+
+// GetLabels method of the LabelSource interface
+func (s *networkSource) GetLabels() (source.FeatureLabels, error) {
+	labels := source.FeatureLabels{}
+	features := s.GetFeatures()
+
+	for _, dev := range features.Instances[DeviceFeature].Elements {
+		attrs := dev.Attributes
+		if attrs["operstate"] != "up" {
+			continue
+		}
+		for attr, feature := range map[string]string{
+			"sriov_totalvfs": "sriov.capable",
+			"sriov_numvfs":   "sriov.configured"} {
+
+			if v, ok := attrs[attr]; ok {
+				t, err := strconv.Atoi(v)
+				if err != nil {
+					klog.Errorf("failed to parse %s of %s: %v", attr, attrs["name"])
+					continue
+				}
+				if t > 0 {
+					labels[feature] = true
+				}
+			}
+		}
 	}
-	flags, err := strconv.ParseUint(strings.TrimSpace(string(raw)), 0, 64)
+	return labels, nil
+}
+
+// Discover method of the FeatureSource interface.
+func (s *networkSource) Discover() error {
+	s.features = feature.NewDomainFeatures()
+
+	devs, err := detectNetDevices()
 	if err != nil {
-		return 0, fmt.Errorf("failed to parse flags for interface %q: %v", name, err)
+		return fmt.Errorf("failed to detect network devices: %w", err)
+	}
+	s.features.Instances[DeviceFeature] = feature.InstanceFeatureSet{Elements: devs}
+
+	utils.KlogDump(3, "discovered network features:", "  ", s.features)
+
+	return nil
+}
+
+// GetFeatures method of the FeatureSource Interface.
+func (s *networkSource) GetFeatures() *feature.DomainFeatures {
+	if s.features == nil {
+		s.features = feature.NewDomainFeatures()
+	}
+	return s.features
+}
+
+func detectNetDevices() ([]feature.InstanceFeature, error) {
+	sysfsBasePath := source.SysfsDir.Path(sysfsBaseDir)
+
+	ifaces, err := ioutil.ReadDir(sysfsBasePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list network interfaces: %w", err)
 	}
 
-	return flags, nil
+	// Iterate over devices
+	info := make([]feature.InstanceFeature, 0, len(ifaces))
+	for _, iface := range ifaces {
+		name := iface.Name()
+		if _, err := os.Stat(filepath.Join(sysfsBasePath, name, "device")); err == nil {
+			info = append(info, readIfaceInfo(filepath.Join(sysfsBasePath, name)))
+		} else if klog.V(3).Enabled() {
+			klog.Infof("skipping non-device iface %q", name)
+		}
+	}
+
+	return info, nil
+}
+
+func readIfaceInfo(path string) feature.InstanceFeature {
+	attrs := map[string]string{"name": filepath.Base(path)}
+	for _, attrName := range ifaceAttrs {
+		data, err := ioutil.ReadFile(filepath.Join(path, attrName))
+		if err != nil {
+			if !os.IsNotExist(err) {
+				klog.Errorf("failed to read net iface attribute %s: %v", attrName, err)
+			}
+			continue
+		}
+		attrs[attrName] = strings.TrimSpace(string(data))
+	}
+
+	for _, attrName := range devAttrs {
+		data, err := ioutil.ReadFile(filepath.Join(path, "device", attrName))
+		if err != nil {
+			if !os.IsNotExist(err) {
+				klog.Errorf("failed to read net device attribute %s: %v", attrName, err)
+			}
+			continue
+		}
+		attrs[attrName] = strings.TrimSpace(string(data))
+	}
+
+	return *feature.NewInstanceFeature(attrs)
+
+}
+
+func init() {
+	source.Register(&src)
 }

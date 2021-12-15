@@ -14,6 +14,22 @@ spec:
         app: nfd-worker
     spec:
       dnsPolicy: ClusterFirstWithHostNet
+      tolerations:
+        - operator: "Exists"
+          effect: "NoSchedule"
+      affinity:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/master
+                    operator: DoesNotExist
+              - matchExpressions:
+                  - key: node-role.kubernetes.io/worker
+                    operator: Exists
+      hostNetwork: true
+      serviceAccount: nfd-worker
+      readOnlyRootFilesystem: true
       containers:
         - name: nfd-worker
           image: gcr.io/k8s-staging-nfd/node-feature-discovery:master

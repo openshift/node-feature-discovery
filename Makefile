@@ -1,4 +1,4 @@
-.PHONY: all build verify verify-gofmt clean local-image local-image-push test-e2e yamls
+.PHONY: all test templates yamls
 .FORCE:
 
 GO_CMD ?= go
@@ -11,9 +11,11 @@ CONTAINER_RUN_CMD ?= podman run
 
 MDL ?= mdl
 
+K8S_CODE_GENERATOR ?= ../code-generator
+
 VERSION := $(shell git describe --tags --dirty --always)
 
-IMAGE_REGISTRY ?= quay.io/openshift-psap
+IMAGE_REGISTRY ?= k8s.gcr.io/nfd
 IMAGE_TAG_NAME ?= $(VERSION)
 IMAGE_EXTRA_TAG_NAMES ?=
 
@@ -22,9 +24,9 @@ IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
 IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 IMAGE_EXTRA_TAGS := $(foreach tag,$(IMAGE_EXTRA_TAG_NAMES),$(IMAGE_REPO):$(tag))
 
-K8S_NAMESPACE ?= openshift-nfd
+K8S_NAMESPACE ?= node-feature-discovery
 
-OPENSHIFT ?= yes
+OPENSHIFT ?=
 
 # We use different mount prefix for local and container builds.
 # Take CONTAINER_HOSTMOUNT_PREFIX from HOSTMOUNT_PREFIX if only the latter is specified
@@ -33,7 +35,7 @@ ifdef HOSTMOUNT_PREFIX
 else
     CONTAINER_HOSTMOUNT_PREFIX := /host-
 endif
-HOSTMOUNT_PREFIX := /host-
+HOSTMOUNT_PREFIX ?= /
 
 KUBECONFIG ?=
 E2E_TEST_CONFIG ?=
@@ -42,28 +44,33 @@ LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.versio
 
 all: image
 
-grpc-health-probe:
-	@CGO_ENABLED=0 $(GO_CMD) install -v -tags netgo -ldflags=-w ./vendor/github.com/grpc-ecosystem/grpc-health-probe/...
-
 build:
 	@mkdir -p bin
 	$(GO_CMD) build -v -o bin $(LDFLAGS) ./cmd/...
 
-install: grpc-health-probe
+install:
 	$(GO_CMD) install -v $(LDFLAGS) ./cmd/...
 
-local-image: yamls
+local-image: image
+image: yamls
 	$(IMAGE_BUILD_CMD) --build-arg VERSION=$(VERSION) \
-		--build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
-		-t $(IMAGE_TAG) \
-		$(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
-		$(IMAGE_BUILD_EXTRA_OPTS) ./
+	    --build-arg HOSTMOUNT_PREFIX=$(CONTAINER_HOSTMOUNT_PREFIX) \
+	    -t $(IMAGE_TAG) \
+	    $(foreach tag,$(IMAGE_EXTRA_TAGS),-t $(tag)) \
+	    $(IMAGE_BUILD_EXTRA_OPTS) ./
 
-local-image-push:
-	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)
+# clean NFD labels on all nodes
+# devel only
+deploy-prune:
+	kubectl apply --validate=false -k deployment/overlays/prune/
+	kubectl wait --for=condition=complete job -l app=nfd -n node-feature-discovery
+	kubectl delete -k deployment/overlays/prune/
 
 yamls:
 	@./scripts/kustomize.sh $(K8S_NAMESPACE) $(IMAGE_REPO) $(IMAGE_TAG_NAME)
+
+deploy: yamls
+	kubectl apply -k .
 
 templates:
 	@# Need to prepend each line in the sample config with spaces in order to
@@ -76,10 +83,21 @@ templates:
 	    -e "}; /$$end/p; d }" -i deployment/helm/node-feature-discovery/values.yaml
 	@rm nfd-worker.conf.tmp
 
-mock:
-	mockery --name=FeatureSource --dir=source --inpkg --note="Re-generate by running 'make mock'"
-	mockery --name=APIHelpers --dir=pkg/apihelper --inpkg --note="Re-generate by running 'make mock'"
-	mockery --name=LabelerClient --dir=pkg/labeler --inpkg --note="Re-generate by running 'make mock'"
+generate:
+	go mod vendor
+	go generate ./cmd/... ./pkg/... ./source/...
+	rm -rf vendor/
+	controller-gen object crd output:crd:stdout paths=./pkg/apis/... > deployment/base/nfd-crds/nodefeaturerule-crd.yaml
+	cp deployment/base/nfd-crds/nodefeaturerule-crd.yaml deployment/helm/node-feature-discovery/manifests/
+	rm -rf sigs.k8s.io
+	$(K8S_CODE_GENERATOR)/generate-groups.sh client,informer,lister \
+	    openshift/node-feature-discovery/pkg/generated \
+	    openshift/node-feature-discovery/pkg/apis \
+	    "nfd:v1alpha1" --output-base=. \
+	    --go-header-file hack/boilerplate.go.txt
+	rm -rf pkg/generated
+	mv openshift/node-feature-discovery/pkg/generated pkg/
+	rm -rf sigs.k8s.io
 
 verify:	verify-gofmt
 
@@ -94,11 +112,6 @@ else
 	@echo ""
 	@exit 1
 endif
-apigen:
-	protoc --go_opt=paths=source_relative --go_out=plugins=grpc:.  pkg/labeler/labeler.proto
-
-gofmt:
-	@$(GO_FMT) -w -l $$(find . -name '*.go')
 
 ci-lint:
 	golangci-lint run --timeout 7m0s
@@ -109,8 +122,11 @@ lint:
 mdlint:
 	find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs $(MDL) -s docs/mdl-style.rb
 
+helm-lint:
+	helm lint --strict deployment/helm/node-feature-discovery/
+
 test:
-	$(GO_CMD) test -x -v ./cmd/... ./pkg/...
+	$(GO_CMD) test ./cmd/... ./pkg/... ./source/...
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
@@ -120,3 +136,7 @@ e2e-test:
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
 	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[kubernetes-sigs\]" \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
+
+local-image-push: push
+push:
+	$(IMAGE_PUSH_CMD) $(IMAGE_TAG)

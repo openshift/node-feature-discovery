@@ -17,28 +17,44 @@ limitations under the License.
 package custom
 
 import (
+	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"openshift/node-feature-discovery/source/custom/rules"
 )
 
 // getStaticFeatures returns statically configured custom features to discover
 // e.g RMDA related features. NFD configuration file may extend these custom features by adding rules.
-func getStaticFeatureConfig() []FeatureSpec {
-	return []FeatureSpec{
+func getStaticFeatureConfig() []CustomRule {
+	return []CustomRule{
 		{
-			Name: "rdma.capable",
-			MatchOn: []MatchRule{
-				{
-					PciID: &rules.PciIDRule{
-						PciIDRuleInput: rules.PciIDRuleInput{Vendor: []string{"15b3"}},
+			LegacyRule: &LegacyRule{
+				Name: "rdma.capable",
+				MatchOn: []LegacyMatcher{
+					{
+						PciID: &rules.PciIDRule{
+							MatchExpressionSet: nfdv1alpha1.MatchExpressionSet{
+								Expressions: nfdv1alpha1.Expressions{
+									"vendor": nfdv1alpha1.MustCreateMatchExpression(nfdv1alpha1.MatchIn, "15b3"),
+								},
+							},
+						},
 					},
 				},
 			},
 		},
 		{
-			Name: "rdma.available",
-			MatchOn: []MatchRule{
-				{
-					LoadedKMod: &rules.LoadedKModRule{"ib_uverbs", "rdma_ucm"},
+			LegacyRule: &LegacyRule{
+				Name: "rdma.available",
+				MatchOn: []LegacyMatcher{
+					{
+						LoadedKMod: &rules.LoadedKModRule{
+							MatchExpressionSet: nfdv1alpha1.MatchExpressionSet{
+								Expressions: nfdv1alpha1.Expressions{
+									"ib_uverbs": nfdv1alpha1.MustCreateMatchExpression(nfdv1alpha1.MatchExists),
+									"rdma_ucm":  nfdv1alpha1.MustCreateMatchExpression(nfdv1alpha1.MatchExists),
+								},
+							},
+						},
+					},
 				},
 			},
 		},

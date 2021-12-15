@@ -24,57 +24,93 @@ import (
 
 	"k8s.io/klog/v2"
 
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/source"
 )
 
 var osReleaseFields = [...]string{
 	"ID",
 	"VERSION_ID",
-	"RHEL_VERSION",
-	"OPENSHIFT_VERSION",
+	"VERSION_ID.major",
+	"VERSION_ID.minor",
 	"OSTREE_VERSION",
 }
 
 const Name = "system"
 
-// Implement FeatureSource interface
-type Source struct{}
+const (
+	OsReleaseFeature = "osrelease"
+	NameFeature      = "name"
+)
 
-func (s Source) Name() string { return Name }
+// systemSource implements the FeatureSource and LabelSource interfaces.
+type systemSource struct {
+	features *feature.DomainFeatures
+}
 
-// NewConfig method of the FeatureSource interface
-func (s *Source) NewConfig() source.Config { return nil }
+// Singleton source instance
+var (
+	src systemSource
+	_   source.FeatureSource = &src
+	_   source.LabelSource   = &src
+)
 
-// GetConfig method of the FeatureSource interface
-func (s *Source) GetConfig() source.Config { return nil }
+func (s *systemSource) Name() string { return Name }
 
-// SetConfig method of the FeatureSource interface
-func (s *Source) SetConfig(source.Config) {}
+// Priority method of the LabelSource interface
+func (s *systemSource) Priority() int { return 0 }
 
-func (s Source) Discover() (source.Features, error) {
-	features := source.Features{}
+// GetLabels method of the LabelSource interface
+func (s *systemSource) GetLabels() (source.FeatureLabels, error) {
+	labels := source.FeatureLabels{}
+	features := s.GetFeatures()
 
+	for _, key := range osReleaseFields {
+		if value, exists := features.Values[OsReleaseFeature].Elements[key]; exists {
+			feature := "os_release." + key
+			labels[feature] = value
+		}
+	}
+	return labels, nil
+}
+
+// Discover method of the FeatureSource interface
+func (s *systemSource) Discover() error {
+	s.features = feature.NewDomainFeatures()
+
+	// Get node name
+	s.features.Values[NameFeature] = feature.NewValueFeatures(nil)
+	s.features.Values[NameFeature].Elements["nodename"] = os.Getenv("NODE_NAME")
+
+	// Get os-release information
 	release, err := parseOSRelease()
 	if err != nil {
 		klog.Errorf("failed to get os-release: %s", err)
 	} else {
-		for _, key := range osReleaseFields {
-			if value, exists := release[key]; exists {
-				feature := "os_release." + key
-				features[feature] = value
+		s.features.Values[OsReleaseFeature] = feature.NewValueFeatures(release)
 
-				if key == "VERSION_ID" {
-					versionComponents := splitVersion(value)
-					for subKey, subValue := range versionComponents {
-						if subValue != "" {
-							features[feature+"."+subKey] = subValue
-						}
-					}
+		if v, ok := release["VERSION_ID"]; ok {
+			versionComponents := splitVersion(v)
+			for subKey, subValue := range versionComponents {
+				if subValue != "" {
+					s.features.Values[OsReleaseFeature].Elements["VERSION_ID."+subKey] = subValue
 				}
 			}
 		}
 	}
-	return features, nil
+
+	utils.KlogDump(3, "discovered system features:", "  ", s.features)
+
+	return nil
+}
+
+// GetFeatures method of the FeatureSource Interface
+func (s *systemSource) GetFeatures() *feature.DomainFeatures {
+	if s.features == nil {
+		s.features = feature.NewDomainFeatures()
+	}
+	return s.features
 }
 
 // Read and parse os-release file
@@ -114,4 +150,8 @@ func splitVersion(version string) map[string]string {
 		}
 	}
 	return components
+}
+
+func init() {
+	source.Register(&src)
 }

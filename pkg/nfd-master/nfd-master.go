@@ -29,28 +29,41 @@ import (
 	"strings"
 	"time"
 
+	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/peer"
-	api "k8s.io/api/core/v1"
-	"k8s.io/klog/v2"
-
-	"openshift/node-feature-discovery/pkg/apihelper"
-	pb "openshift/node-feature-discovery/pkg/labeler"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
-
 	"google.golang.org/grpc/health"
 	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/peer"
+	api "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
+	restclient "k8s.io/client-go/rest"
+	"k8s.io/klog/v2"
+
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/apihelper"
+	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	pb "openshift/node-feature-discovery/pkg/labeler"
+	topologypb "openshift/node-feature-discovery/pkg/topologyupdater"
+	"openshift/node-feature-discovery/pkg/utils"
+	"openshift/node-feature-discovery/pkg/version"
 )
 
 const (
-	// LabelNs defines the namespace for feature labels
-	LabelNs = "feature.node.kubernetes.io"
+	// FeatureLabelNs is the namespace for feature labels
+	FeatureLabelNs = "feature.node.kubernetes.io"
 
-	// LabelSubNsSuffix is the suffix for allowed label sub-namespaces
-	LabelSubNsSuffix = "." + LabelNs
+	// FeatureLabelSubNsSuffix is the suffix for allowed feature label sub-namespaces
+	FeatureLabelSubNsSuffix = "." + FeatureLabelNs
+
+	// ProfileLabelNs is the namespace for profile labels
+	ProfileLabelNs = "profile.node.kubernetes.io"
+
+	// ProfileLabelSubNsSuffix is the suffix for allowed profile label sub-namespaces
+	ProfileLabelSubNsSuffix = "." + ProfileLabelNs
 
 	// AnnotationNsBase namespace for all NFD-related annotations
 	AnnotationNsBase = "nfd.node.kubernetes.io"
@@ -73,18 +86,19 @@ type Annotations map[string]string
 
 // Args holds command line arguments
 type Args struct {
-	CaFile         string
-	CertFile       string
-	ExtraLabelNs   utils.StringSetVal
-	Instance       string
-	KeyFile        string
-	Kubeconfig     string
-	LabelWhiteList utils.RegexpVal
-	NoPublish      bool
-	Port           int
-	Prune          bool
-	VerifyNodeName bool
-	ResourceLabels utils.StringSetVal
+	CaFile                 string
+	CertFile               string
+	ExtraLabelNs           utils.StringSetVal
+	Instance               string
+	KeyFile                string
+	Kubeconfig             string
+	LabelWhiteList         utils.RegexpVal
+	FeatureRulesController bool
+	NoPublish              bool
+	Port                   int
+	Prune                  bool
+	VerifyNodeName         bool
+	ResourceLabels         utils.StringSetVal
 }
 
 type NfdMaster interface {
@@ -94,6 +108,8 @@ type NfdMaster interface {
 }
 
 type nfdMaster struct {
+	*nfdController
+
 	args         Args
 	nodeName     string
 	annotationNs string
@@ -101,6 +117,7 @@ type nfdMaster struct {
 	stop         chan struct{}
 	ready        chan bool
 	apihelper    apihelper.APIHelpers
+	kubeconfig   *restclient.Config
 }
 
 // Create new NfdMaster server instance.
@@ -115,7 +132,7 @@ func NewNfdMaster(args *Args) (NfdMaster, error) {
 		nfd.annotationNs = AnnotationNsBase
 	} else {
 		if ok, _ := regexp.MatchString(`^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$`, args.Instance); !ok {
-			return nfd, fmt.Errorf("invalid --instance %q: instance name "+
+			return nfd, fmt.Errorf("invalid -instance %q: instance name "+
 				"must start and end with an alphanumeric character and may only contain "+
 				"alphanumerics, `-`, `_` or `.`", args.Instance)
 		}
@@ -125,18 +142,24 @@ func NewNfdMaster(args *Args) (NfdMaster, error) {
 	// Check TLS related args
 	if args.CertFile != "" || args.KeyFile != "" || args.CaFile != "" {
 		if args.CertFile == "" {
-			return nfd, fmt.Errorf("--cert-file needs to be specified alongside --key-file and --ca-file")
+			return nfd, fmt.Errorf("-cert-file needs to be specified alongside -key-file and -ca-file")
 		}
 		if args.KeyFile == "" {
-			return nfd, fmt.Errorf("--key-file needs to be specified alongside --cert-file and --ca-file")
+			return nfd, fmt.Errorf("-key-file needs to be specified alongside -cert-file and -ca-file")
 		}
 		if args.CaFile == "" {
-			return nfd, fmt.Errorf("--ca-file needs to be specified alongside --cert-file and --key-file")
+			return nfd, fmt.Errorf("-ca-file needs to be specified alongside -cert-file and -key-file")
 		}
 	}
 
 	// Initialize Kubernetes API helpers
-	nfd.apihelper = apihelper.K8sHelpers{Kubeconfig: args.Kubeconfig}
+	if !args.NoPublish {
+		kubeconfig, err := nfd.getKubeconfig()
+		if err != nil {
+			return nfd, err
+		}
+		nfd.apihelper = apihelper.K8sHelpers{Kubeconfig: kubeconfig}
+	}
 
 	return nfd, nil
 }
@@ -152,6 +175,15 @@ func (m *nfdMaster) Run() error {
 
 	if m.args.Prune {
 		return m.prune()
+	}
+
+	if m.args.FeatureRulesController {
+		kubeconfig, err := m.getKubeconfig()
+		if err != nil {
+			return err
+		}
+		klog.Info("starting nfd LabelRule controller")
+		m.nfdController = newNfdController(kubeconfig)
 	}
 
 	if !m.args.NoPublish {
@@ -177,7 +209,7 @@ func (m *nfdMaster) Run() error {
 	if err != nil {
 		return err
 	}
-	// Enable mutual TLS authentication if --cert-file, --key-file or --ca-file
+	// Enable mutual TLS authentication if -cert-file, -key-file or -ca-file
 	// is defined
 	if m.args.CertFile != "" || m.args.KeyFile != "" || m.args.CaFile != "" {
 		if err := tlsConfig.UpdateConfig(m.args.CertFile, m.args.KeyFile, m.args.CaFile); err != nil {
@@ -190,6 +222,7 @@ func (m *nfdMaster) Run() error {
 	m.server = grpc.NewServer(serverOpts...)
 	pb.RegisterLabelerServer(m.server, m)
 	grpc_health_v1.RegisterHealthServer(m.server, health.NewServer())
+	topologypb.RegisterNodeTopologyServer(m.server, m)
 	klog.Infof("gRPC server serving on port: %d", m.args.Port)
 
 	// Run gRPC server
@@ -222,6 +255,10 @@ func (m *nfdMaster) Run() error {
 // Stop NfdMaster
 func (m *nfdMaster) Stop() {
 	m.server.Stop()
+
+	if m.nfdController != nil {
+		m.nfdController.stop()
+	}
 
 	select {
 	case m.stop <- struct{}{}:
@@ -316,12 +353,13 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 
 	for label, value := range labels {
 		// Add possibly missing default ns
-		label := addNs(label, LabelNs)
+		label := addNs(label, FeatureLabelNs)
 
 		ns, name := splitNs(label)
 
 		// Check label namespace, filter out if ns is not whitelisted
-		if ns != LabelNs && !strings.HasSuffix(ns, LabelSubNsSuffix) {
+		if ns != FeatureLabelNs && ns != ProfileLabelNs &&
+			!strings.HasSuffix(ns, FeatureLabelSubNsSuffix) && !strings.HasSuffix(ns, ProfileLabelSubNsSuffix) {
 			if _, ok := extraLabelNs[ns]; !ok {
 				klog.Errorf("Namespace %q is not allowed. Ignoring label %q\n", ns, label)
 				continue
@@ -340,7 +378,7 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 	extendedResources := ExtendedResources{}
 	for extendedResourceName := range extendedResourceNames {
 		// Add possibly missing default ns
-		extendedResourceName = addNs(extendedResourceName, LabelNs)
+		extendedResourceName = addNs(extendedResourceName, FeatureLabelNs)
 		if value, ok := outLabels[extendedResourceName]; ok {
 			if _, err := strconv.Atoi(value); err != nil {
 				klog.Errorf("bad label value (%s: %s) encountered for extended resource: %s", extendedResourceName, value, err.Error())
@@ -369,38 +407,30 @@ func verifyNodeName(cert *x509.Certificate, nodeName string) error {
 
 // SetLabels implements LabelerServer
 func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.SetLabelsReply, error) {
-	if m.args.VerifyNodeName {
-		// Client authorization.
-		// Check that the node name matches the CN from the TLS cert
-		client, ok := peer.FromContext(c)
-		if !ok {
-			klog.Errorf("gRPC request error: failed to get peer (client)")
-			return &pb.SetLabelsReply{}, fmt.Errorf("failed to get peer (client)")
-		}
-		tlsAuth, ok := client.AuthInfo.(credentials.TLSInfo)
-		if !ok {
-			klog.Errorf("gRPC request error: incorrect client credentials from '%v'", client.Addr)
-			return &pb.SetLabelsReply{}, fmt.Errorf("incorrect client credentials")
-		}
-		if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
-			klog.Errorf("gRPC request error: client certificate verification for '%v' failed", client.Addr)
-			return &pb.SetLabelsReply{}, fmt.Errorf("client certificate verification failed")
-		}
-
-		err := verifyNodeName(tlsAuth.State.VerifiedChains[0][0], r.NodeName)
-		if err != nil {
-			klog.Errorf("gRPC request error: authorization for %v failed: %v", client.Addr, err)
-			return &pb.SetLabelsReply{}, err
-		}
+	err := authorizeClient(c, m.args.VerifyNodeName, r.NodeName)
+	if err != nil {
+		return &pb.SetLabelsReply{}, err
 	}
-	if klog.V(1).Enabled() {
+	switch {
+	case klog.V(4).Enabled():
+		utils.KlogDump(3, "REQUEST", "  ", r)
+	case klog.V(1).Enabled():
 		klog.Infof("REQUEST Node: %q NFD-version: %q Labels: %s", r.NodeName, r.NfdVersion, r.Labels)
-
-	} else {
+	default:
 		klog.Infof("received labeling request for node %q", r.NodeName)
 	}
 
-	labels, extendedResources := filterFeatureLabels(r.Labels, m.args.ExtraLabelNs, m.args.LabelWhiteList.Regexp, m.args.ResourceLabels)
+	// Mix in CR-originated labels
+	rawLabels := make(map[string]string)
+	if r.Labels != nil {
+		// NOTE: we effectively mangle the request struct by not creating a deep copy of the map
+		rawLabels = r.Labels
+	}
+	for k, v := range m.crLabels(r) {
+		rawLabels[k] = v
+	}
+
+	labels, extendedResources := filterFeatureLabels(rawLabels, m.args.ExtraLabelNs, m.args.LabelWhiteList.Regexp, m.args.ResourceLabels)
 
 	if !m.args.NoPublish {
 		// Advertise NFD worker version as an annotation
@@ -413,6 +443,100 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 		}
 	}
 	return &pb.SetLabelsReply{}, nil
+}
+
+func authorizeClient(c context.Context, checkNodeName bool, nodeName string) error {
+	if checkNodeName {
+		// Client authorization.
+		// Check that the node name matches the CN from the TLS cert
+		client, ok := peer.FromContext(c)
+		if !ok {
+			klog.Errorf("gRPC request error: failed to get peer (client)")
+			return fmt.Errorf("failed to get peer (client)")
+		}
+		tlsAuth, ok := client.AuthInfo.(credentials.TLSInfo)
+		if !ok {
+			klog.Errorf("gRPC request error: incorrect client credentials from '%v'", client.Addr)
+			return fmt.Errorf("incorrect client credentials")
+		}
+		if len(tlsAuth.State.VerifiedChains) == 0 || len(tlsAuth.State.VerifiedChains[0]) == 0 {
+			klog.Errorf("gRPC request error: client certificate verification for '%v' failed", client.Addr)
+			return fmt.Errorf("client certificate verification failed")
+		}
+
+		err := verifyNodeName(tlsAuth.State.VerifiedChains[0][0], nodeName)
+		if err != nil {
+			klog.Errorf("gRPC request error: authorization for %v failed: %v", client.Addr, err)
+			return err
+		}
+	}
+	return nil
+}
+
+func (m *nfdMaster) UpdateNodeTopology(c context.Context, r *topologypb.NodeTopologyRequest) (*topologypb.NodeTopologyResponse, error) {
+	err := authorizeClient(c, m.args.VerifyNodeName, r.NodeName)
+	if err != nil {
+		return &topologypb.NodeTopologyResponse{}, err
+	}
+	if klog.V(1).Enabled() {
+		klog.Infof("REQUEST Node: %s NFD-version: %s Topology Policy: %s", r.NodeName, r.NfdVersion, r.TopologyPolicies)
+		utils.KlogDump(1, "Zones received:", "  ", r.Zones)
+	} else {
+		klog.Infof("received CR updation request for node %q", r.NodeName)
+	}
+	if !m.args.NoPublish {
+		err := m.updateCR(r.NodeName, r.TopologyPolicies, r.Zones)
+		if err != nil {
+			klog.Errorf("failed to advertise NodeResourceTopology: %w", err)
+			return &topologypb.NodeTopologyResponse{}, err
+		}
+	}
+	return &topologypb.NodeTopologyResponse{}, nil
+}
+
+func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
+	if m.nfdController == nil {
+		return nil
+	}
+
+	l := make(map[string]string)
+	ruleSpecs, err := m.nfdController.lister.List(labels.Everything())
+	sort.Slice(ruleSpecs, func(i, j int) bool {
+		return ruleSpecs[i].Name < ruleSpecs[j].Name
+	})
+
+	if err != nil {
+		klog.Errorf("failed to list LabelRule resources: %w", err)
+		return nil
+	}
+
+	// Process all rule CRs
+	for _, spec := range ruleSpecs {
+		switch {
+		case klog.V(3).Enabled():
+			h := fmt.Sprintf("executing LabelRule \"%s/%s\":", spec.ObjectMeta.Namespace, spec.ObjectMeta.Name)
+			utils.KlogDump(3, h, "  ", spec.Spec)
+		case klog.V(1).Enabled():
+			klog.Infof("executing LabelRule \"%s/%s\"", spec.ObjectMeta.Namespace, spec.ObjectMeta.Name)
+		}
+		for _, rule := range spec.Spec.Rules {
+			ruleOut, err := rule.Execute(r.Features)
+			if err != nil {
+				klog.Errorf("failed to process Rule %q: %w", rule.Name, err)
+				continue
+			}
+
+			for k, v := range ruleOut.Labels {
+				l[k] = v
+			}
+
+			// Feed back rule output to features map for subsequent rules to match
+			feature.InsertFeatureValues(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
+			feature.InsertFeatureValues(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
+		}
+	}
+
+	return l
 }
 
 // updateNodeFeatures ensures the Kubernetes node object is up to date,
@@ -434,7 +558,7 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 	labelKeys := make([]string, 0, len(labels))
 	for key := range labels {
 		// Drop the ns part for labels in the default ns
-		labelKeys = append(labelKeys, strings.TrimPrefix(key, LabelNs+"/"))
+		labelKeys = append(labelKeys, strings.TrimPrefix(key, FeatureLabelNs+"/"))
 	}
 	sort.Strings(labelKeys)
 	annotations[m.annotationName(featureLabelAnnotation)] = strings.Join(labelKeys, ",")
@@ -443,13 +567,13 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 	extendedResourceKeys := make([]string, 0, len(extendedResources))
 	for key := range extendedResources {
 		// Drop the ns part if in the default ns
-		extendedResourceKeys = append(extendedResourceKeys, strings.TrimPrefix(key, LabelNs+"/"))
+		extendedResourceKeys = append(extendedResourceKeys, strings.TrimPrefix(key, FeatureLabelNs+"/"))
 	}
 	sort.Strings(extendedResourceKeys)
 	annotations[m.annotationName(extendedResourceAnnotation)] = strings.Join(extendedResourceKeys, ",")
 
 	// Create JSON patches for changes in labels and annotations
-	oldLabels := stringToNsNames(node.Annotations[m.annotationName(featureLabelAnnotation)], LabelNs)
+	oldLabels := stringToNsNames(node.Annotations[m.annotationName(featureLabelAnnotation)], FeatureLabelNs)
 	patches := createPatches(oldLabels, node.Labels, labels, "/metadata/labels")
 	patches = append(patches, createPatches(nil, node.Annotations, annotations, "/metadata/annotations")...)
 
@@ -475,6 +599,14 @@ func (m *nfdMaster) updateNodeFeatures(nodeName string, labels Labels, annotatio
 
 func (m *nfdMaster) annotationName(name string) string {
 	return path.Join(m.annotationNs, name)
+}
+
+func (m *nfdMaster) getKubeconfig() (*restclient.Config, error) {
+	var err error
+	if m.kubeconfig == nil {
+		m.kubeconfig, err = apihelper.GetKubeconfig(m.args.Kubeconfig)
+	}
+	return m.kubeconfig, err
 }
 
 // Remove any labels having the given prefix
@@ -523,7 +655,7 @@ func (m *nfdMaster) createExtendedResourcePatches(n *api.Node, extendedResources
 	patches := []apihelper.JsonPatch{}
 
 	// Form a list of namespaced resource names managed by us
-	oldResources := stringToNsNames(n.Annotations[m.annotationName(extendedResourceAnnotation)], LabelNs)
+	oldResources := stringToNsNames(n.Annotations[m.annotationName(extendedResourceAnnotation)], FeatureLabelNs)
 
 	// figure out which resources to remove
 	for _, resource := range oldResources {
@@ -583,4 +715,58 @@ func stringToNsNames(cslist, ns string) []string {
 		}
 	}
 	return names
+}
+
+func modifyCR(topoUpdaterZones []*v1alpha1.Zone) []v1alpha1.Zone {
+	zones := make([]v1alpha1.Zone, len(topoUpdaterZones))
+	// TODO: Avoid copying of data to allow returning the zone info
+	// directly in a compatible data type (i.e. []*v1alpha1.Zone).
+	for i, zone := range topoUpdaterZones {
+		zones[i] = v1alpha1.Zone{
+			Name:      zone.Name,
+			Type:      zone.Type,
+			Parent:    zone.Parent,
+			Costs:     zone.Costs,
+			Resources: zone.Resources,
+		}
+	}
+	return zones
+}
+
+func (m *nfdMaster) updateCR(hostname string, tmpolicy []string, topoUpdaterZones []*v1alpha1.Zone) error {
+	cli, err := m.apihelper.GetTopologyClient()
+	if err != nil {
+		return err
+	}
+
+	zones := modifyCR(topoUpdaterZones)
+
+	nrt, err := cli.TopologyV1alpha1().NodeResourceTopologies().Get(context.TODO(), hostname, metav1.GetOptions{})
+	if errors.IsNotFound(err) {
+		nrtNew := v1alpha1.NodeResourceTopology{
+			ObjectMeta: metav1.ObjectMeta{
+				Name: hostname,
+			},
+			Zones:            zones,
+			TopologyPolicies: tmpolicy,
+		}
+
+		_, err := cli.TopologyV1alpha1().NodeResourceTopologies().Create(context.TODO(), &nrtNew, metav1.CreateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to create v1alpha1.NodeResourceTopology!:%w", err)
+		}
+		return nil
+	} else if err != nil {
+		return err
+	}
+
+	nrtMutated := nrt.DeepCopy()
+	nrtMutated.Zones = zones
+
+	nrtUpdated, err := cli.TopologyV1alpha1().NodeResourceTopologies().Update(context.TODO(), nrtMutated, metav1.UpdateOptions{})
+	if err != nil {
+		return fmt.Errorf("failed to update v1alpha1.NodeResourceTopology!:%w", err)
+	}
+	utils.KlogDump(2, "CR instance updated resTopo:", "  ", nrtUpdated)
+	return nil
 }

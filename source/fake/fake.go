@@ -1,5 +1,5 @@
 /*
-Copyright 2017 The Kubernetes Authors.
+Copyright 2017-2021 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,15 +19,26 @@ package fake
 import (
 	"fmt"
 
+	"openshift/node-feature-discovery/pkg/api/feature"
+	"openshift/node-feature-discovery/pkg/utils"
 	"openshift/node-feature-discovery/source"
 )
 
 const Name = "fake"
 
+const FlagFeature = "flag"
+const AttributeFeature = "attribute"
+const InstanceFeature = "instance"
+
 // Configuration file options
 type Config struct {
-	Labels map[string]string `json:"labels"`
+	Labels            map[string]string `json:"labels"`
+	FlagFeatures      []string          `json:"flagFeatures"`
+	AttributeFeatures map[string]string `json:"attributeFeatures"`
+	InstanceFeatures  []FakeInstance    `json:"instanceFeatures"`
 }
+
+type FakeInstance map[string]string
 
 // newDefaultConfig returns a new config with defaults values
 func newDefaultConfig() *Config {
@@ -37,25 +48,58 @@ func newDefaultConfig() *Config {
 			"fakefeature2": "true",
 			"fakefeature3": "true",
 		},
+		FlagFeatures: []string{"flag_1", "flag_2", "flag_3"},
+		AttributeFeatures: map[string]string{
+			"attr_1": "true",
+			"attr_2": "false",
+			"attr_3": "10",
+		},
+		InstanceFeatures: []FakeInstance{
+			FakeInstance{
+				"name":   "instance_1",
+				"attr_1": "true",
+				"attr_2": "false",
+				"attr_3": "10",
+				"attr_4": "foobar",
+			},
+			FakeInstance{
+				"name":   "instance_2",
+				"attr_1": "true",
+				"attr_2": "true",
+				"attr_3": "100",
+			},
+			FakeInstance{
+				"name": "instance_3",
+			},
+		},
 	}
 }
 
-// Source implements FeatureSource.
-type Source struct {
-	config *Config
+// fakeSource implements the FeatureSource, LabelSource and ConfigurableSource interfaces.
+type fakeSource struct {
+	config   *Config
+	features *feature.DomainFeatures
 }
 
+// Singleton source instance
+var (
+	src fakeSource
+	_   source.FeatureSource      = &src
+	_   source.LabelSource        = &src
+	_   source.ConfigurableSource = &src
+)
+
 // Name returns an identifier string for this feature source.
-func (s Source) Name() string { return Name }
+func (s *fakeSource) Name() string { return Name }
 
-// NewConfig method of the FeatureSource interface
-func (s *Source) NewConfig() source.Config { return newDefaultConfig() }
+// NewConfig method of the ConfigurableSource interface
+func (s *fakeSource) NewConfig() source.Config { return newDefaultConfig() }
 
-// GetConfig method of the FeatureSource interface
-func (s *Source) GetConfig() source.Config { return s.config }
+// GetConfig method of the ConfigurableSource interface
+func (s *fakeSource) GetConfig() source.Config { return s.config }
 
-// SetConfig method of the FeatureSource interface
-func (s *Source) SetConfig(conf source.Config) {
+// SetConfig method of the ConfigurableSource interface
+func (s *fakeSource) SetConfig(conf source.Config) {
 	switch v := conf.(type) {
 	case *Config:
 		s.config = v
@@ -64,16 +108,49 @@ func (s *Source) SetConfig(conf source.Config) {
 	}
 }
 
-// Configure method of the FeatureSource interface
-func (s Source) Configure([]byte) error { return nil }
+// Discover method of the FeatureSource interface
+func (s *fakeSource) Discover() error {
+	s.features = feature.NewDomainFeatures()
 
-// Discover returns feature names for some fake features.
-func (s Source) Discover() (source.Features, error) {
-	// Adding three fake features.
-	features := make(source.Features, len(s.config.Labels))
+	s.features.Keys[AttributeFeature] = feature.NewKeyFeatures(s.config.FlagFeatures...)
+	s.features.Values[AttributeFeature] = feature.NewValueFeatures(s.config.AttributeFeatures)
+
+	instances := make([]feature.InstanceFeature, len(s.config.InstanceFeatures))
+	for i, instanceAttributes := range s.config.InstanceFeatures {
+		instances[i] = *feature.NewInstanceFeature(instanceAttributes)
+	}
+	s.features.Instances[InstanceFeature] = feature.NewInstanceFeatures(instances)
+
+	utils.KlogDump(3, "discovered fake features:", "  ", s.features)
+
+	return nil
+}
+
+// GetFeatures method of the FeatureSource Interface.
+func (s *fakeSource) GetFeatures() *feature.DomainFeatures {
+	if s.features == nil {
+		s.features = feature.NewDomainFeatures()
+	}
+	return s.features
+}
+
+// Priority method of the LabelSource interface
+func (s *fakeSource) Priority() int { return 0 }
+
+// GetLabels method of the LabelSource interface
+func (s *fakeSource) GetLabels() (source.FeatureLabels, error) {
+	labels := make(source.FeatureLabels, len(s.config.Labels))
+
 	for k, v := range s.config.Labels {
-		features[k] = v
+		labels[k] = v
 	}
 
-	return features, nil
+	return labels, nil
+}
+
+// IsTestSource method of the LabelSource interface
+func (s *fakeSource) IsTestSource() bool { return true }
+
+func init() {
+	source.Register(&src)
 }
