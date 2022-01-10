@@ -35,6 +35,7 @@ var osReleaseFields = [...]string{
 	"VERSION_ID.major",
 	"VERSION_ID.minor",
 	"OSTREE_VERSION",
+	"RHEL_VERSION",
 }
 
 const Name = "system"
