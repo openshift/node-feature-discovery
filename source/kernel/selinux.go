@@ -27,7 +27,7 @@ import (
 	"github.com/openshift/node-feature-discovery/source"
 )
 
-// Detect if selinux has been enabled in the kernel
+// SelinuxEnabled detects if selinux has been enabled in the kernel
 func SelinuxEnabled() (bool, error) {
 	sysfsBase := source.SysfsDir.Path("fs")
 	if _, err := os.Stat(sysfsBase); err != nil {

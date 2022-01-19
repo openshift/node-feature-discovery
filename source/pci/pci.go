@@ -27,6 +27,7 @@ import (
 	"github.com/openshift/node-feature-discovery/source"
 )
 
+// Name of this feature source
 const Name = "pci"
 
 // DeviceFeature is the name of the feature set that holds all discovered PCI devices.

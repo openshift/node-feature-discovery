@@ -32,6 +32,7 @@ import (
 	"github.com/openshift/node-feature-discovery/source"
 )
 
+// Name of this feature source
 const Name = "local"
 
 // LabelFeature of this feature source

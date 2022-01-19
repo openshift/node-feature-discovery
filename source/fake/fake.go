@@ -24,6 +24,7 @@ import (
 	"github.com/openshift/node-feature-discovery/source"
 )
 
+// Name of this feature source
 const Name = "fake"
 
 // FlagFeature of this feature source

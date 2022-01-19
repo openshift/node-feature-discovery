@@ -31,6 +31,7 @@ import (
 	"github.com/openshift/node-feature-discovery/source"
 )
 
+// Name of this feature source
 const Name = "network"
 
 const DeviceFeature = "device"
