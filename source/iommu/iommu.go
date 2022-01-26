@@ -20,7 +20,7 @@ import (
 	"fmt"
 	"io/ioutil"
 
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 const Name = "iommu"

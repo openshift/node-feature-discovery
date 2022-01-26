@@ -19,9 +19,9 @@ package fake
 import (
 	"fmt"
 
-	"openshift/node-feature-discovery/pkg/api/feature"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 const Name = "fake"

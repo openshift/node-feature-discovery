@@ -43,13 +43,13 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/pkg/api/feature"
-	"openshift/node-feature-discovery/pkg/apihelper"
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	pb "openshift/node-feature-discovery/pkg/labeler"
-	topologypb "openshift/node-feature-discovery/pkg/topologyupdater"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
+	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
+	topologypb "github.com/openshift/node-feature-discovery/pkg/topologyupdater"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
 const (

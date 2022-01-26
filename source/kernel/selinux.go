@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 // Detect if selinux has been enabled in the kernel

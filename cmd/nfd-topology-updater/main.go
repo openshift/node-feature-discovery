@@ -24,13 +24,13 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/pkg/kubeconf"
-	topology "openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
-	"openshift/node-feature-discovery/pkg/resourcemonitor"
-	"openshift/node-feature-discovery/pkg/topologypolicy"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/kubeconf"
+	topology "github.com/openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
+	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
+	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/version"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 const (
@@ -52,7 +52,7 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.Warningf("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Plug klog into grpc logging infrastructure

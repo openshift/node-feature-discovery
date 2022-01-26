@@ -20,7 +20,7 @@ limitations under the License.
 package cpu
 
 import (
-	"openshift/node-feature-discovery/pkg/cpuid"
+	"github.com/openshift/node-feature-discovery/pkg/cpuid"
 )
 
 const (

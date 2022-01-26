@@ -26,7 +26,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/pkg/api/feature"
+	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 )
 
 var matchOps = map[MatchOp]struct{}{

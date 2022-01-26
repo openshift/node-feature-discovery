@@ -24,7 +24,7 @@ import (
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
 )
 
 type Interface interface {

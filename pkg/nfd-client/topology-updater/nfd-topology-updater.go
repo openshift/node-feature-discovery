@@ -25,13 +25,13 @@ import (
 	v1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
 	"golang.org/x/net/context"
 
-	"openshift/node-feature-discovery/pkg/apihelper"
-	nfdclient "openshift/node-feature-discovery/pkg/nfd-client"
-	"openshift/node-feature-discovery/pkg/podres"
-	"openshift/node-feature-discovery/pkg/resourcemonitor"
-	pb "openshift/node-feature-discovery/pkg/topologyupdater"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
+	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	nfdclient "github.com/openshift/node-feature-discovery/pkg/nfd-client"
+	"github.com/openshift/node-feature-discovery/pkg/podres"
+	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
+	pb "github.com/openshift/node-feature-discovery/pkg/topologyupdater"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
 // Command line arguments

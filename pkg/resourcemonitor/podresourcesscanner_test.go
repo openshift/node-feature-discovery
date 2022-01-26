@@ -31,8 +31,8 @@ import (
 	k8sclient "k8s.io/client-go/kubernetes"
 	v1 "k8s.io/kubelet/pkg/apis/podresources/v1"
 
-	"openshift/node-feature-discovery/pkg/apihelper"
-	"openshift/node-feature-discovery/pkg/podres"
+	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	"github.com/openshift/node-feature-discovery/pkg/podres"
 )
 
 func TestPodScanner(t *testing.T) {

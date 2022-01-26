@@ -30,7 +30,7 @@ import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 	protoimpl "google.golang.org/protobuf/runtime/protoimpl"
 	reflect "reflect"
-	feature "openshift/node-feature-discovery/pkg/api/feature"
+	feature "github.com/openshift/node-feature-discovery/pkg/api/feature"
 	sync "sync"
 )
 

@@ -20,9 +20,9 @@ import (
 	"encoding/json"
 	"fmt"
 
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"openshift/node-feature-discovery/source"
-	"openshift/node-feature-discovery/source/system"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source/system"
 )
 
 // NodenameRule matches on nodenames configured in a ConfigMap

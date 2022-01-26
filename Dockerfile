@@ -9,9 +9,6 @@ ARG VERSION=v0.10.0
 ARG HOSTMOUNT_PREFIX=/host-
 RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 
-# Build the grpc_health_probe bin
-RUN go install -v github.com/grpc-ecosystem/grpc-health-probe
-
 # Create full variant of the production image
 FROM registry.ci.openshift.org/ocp/4.10:base
 

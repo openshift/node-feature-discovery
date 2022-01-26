@@ -25,7 +25,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 // Read gzipped kernel config
