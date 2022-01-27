@@ -24,9 +24,9 @@ import (
 	"k8s.io/client-go/discovery"
 	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/testing"
-	clientset "openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
-	fakenfdv1alpha1 "openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1/fake"
+	clientset "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1"
+	fakenfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/typed/nfd/v1alpha1/fake"
 )
 
 // NewSimpleClientset returns a clientset that will respond with the provided objects.

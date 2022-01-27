@@ -25,8 +25,8 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/pkg/cpuid"
-	"openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/cpuid"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 const (

@@ -22,7 +22,7 @@ syntax = "proto2";
 package feature;
 
 // Package-wide variables from generator "generated".
-option go_package = "openshift/node-feature-discovery/pkg/api/feature";
+option go_package = "github.com/openshift/node-feature-discovery/pkg/api/feature";
 
 // DomainFeatures is the collection of all discovered features of one domain.
 message DomainFeatures {

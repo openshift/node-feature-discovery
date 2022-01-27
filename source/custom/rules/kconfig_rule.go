@@ -19,8 +19,8 @@ package rules
 import (
 	"fmt"
 
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"openshift/node-feature-discovery/source/kernel"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/source/kernel"
 )
 
 // KconfigRule implements Rule for the custom source

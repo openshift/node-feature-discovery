@@ -20,8 +20,8 @@ package v1alpha1
 
 import (
 	rest "k8s.io/client-go/rest"
-	v1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
+	v1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
 )
 
 type NfdV1alpha1Interface interface {

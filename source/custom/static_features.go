@@ -17,8 +17,8 @@ limitations under the License.
 package custom
 
 import (
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"openshift/node-feature-discovery/source/custom/rules"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/source/custom/rules"
 )
 
 // getStaticFeatures returns statically configured custom features to discover

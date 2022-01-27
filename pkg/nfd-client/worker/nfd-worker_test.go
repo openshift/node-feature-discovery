@@ -25,11 +25,11 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	nfdclient "openshift/node-feature-discovery/pkg/nfd-client"
-	"openshift/node-feature-discovery/pkg/nfd-client/worker"
-	master "openshift/node-feature-discovery/pkg/nfd-master"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/test/data"
+	nfdclient "github.com/openshift/node-feature-discovery/pkg/nfd-client"
+	"github.com/openshift/node-feature-discovery/pkg/nfd-client/worker"
+	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/test/data"
 )
 
 type testContext struct {

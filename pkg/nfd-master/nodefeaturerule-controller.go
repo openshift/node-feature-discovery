@@ -24,11 +24,11 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	nfdv1alpha1 "openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclientset "openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	nfdscheme "openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
-	nfdinformers "openshift/node-feature-discovery/pkg/generated/informers/externalversions"
-	nfdlisters "openshift/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdclientset "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
+	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
+	nfdlisters "github.com/openshift/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
 )
 
 type nfdController struct {

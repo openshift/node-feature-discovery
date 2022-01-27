@@ -24,9 +24,9 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"openshift/node-feature-discovery/pkg/nfd-client/worker"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
+	"github.com/openshift/node-feature-discovery/pkg/nfd-client/worker"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -48,7 +48,7 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.Warningf("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Plug klog into grpc logging infrastructure
@@ -115,7 +115,7 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 	flagset.StringVar(&args.Options, "options", "",
 		"Specify config options from command line. Config options are specified "+
 			"in the same format as in the config file (i.e. json or yaml). These options")
-	flagset.StringVar(&args.Server, "server", "localhost:8080",
+	flagset.StringVar(&args.Server, "server", "nfd-master:12000",
 		"NFD server address to connecto to.")
 	flagset.StringVar(&args.ServerNameOverride, "server-name-override", "",
 		"Hostname expected from server certificate, useful in testing")

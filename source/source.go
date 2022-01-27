@@ -21,7 +21,7 @@ package source
 import (
 	"fmt"
 
-	"openshift/node-feature-discovery/pkg/api/feature"
+	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 )
 
 // Source is the base interface for all other source interfaces

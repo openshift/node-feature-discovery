@@ -12,5 +12,5 @@ go-to-protobuf \
 cd -
 
 # Mangle the go_package option to comply with newer versions protoc-gen-go
-sed s',go_package =.*,go_package = "openshift/node-feature-discovery/pkg/api/feature";,' \
+sed s',go_package =.*,go_package = "github.com/openshift/node-feature-discovery/pkg/api/feature";,' \
     -i generated.proto

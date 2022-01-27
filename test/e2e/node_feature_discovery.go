@@ -40,8 +40,8 @@ import (
 	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 
-	master "openshift/node-feature-discovery/pkg/nfd-master"
-	"openshift/node-feature-discovery/source/custom"
+	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
+	"github.com/openshift/node-feature-discovery/source/custom"
 	"sigs.k8s.io/yaml"
 )
 

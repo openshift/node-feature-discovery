@@ -22,21 +22,21 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	source "openshift/node-feature-discovery/source"
+	source "github.com/openshift/node-feature-discovery/source"
 
 	// Register all source packages
-	_ "openshift/node-feature-discovery/source/cpu"
-	_ "openshift/node-feature-discovery/source/custom"
-	_ "openshift/node-feature-discovery/source/fake"
-	_ "openshift/node-feature-discovery/source/iommu"
-	_ "openshift/node-feature-discovery/source/kernel"
-	_ "openshift/node-feature-discovery/source/local"
-	_ "openshift/node-feature-discovery/source/memory"
-	_ "openshift/node-feature-discovery/source/network"
-	_ "openshift/node-feature-discovery/source/pci"
-	_ "openshift/node-feature-discovery/source/storage"
-	_ "openshift/node-feature-discovery/source/system"
-	_ "openshift/node-feature-discovery/source/usb"
+	_ "github.com/openshift/node-feature-discovery/source/cpu"
+	_ "github.com/openshift/node-feature-discovery/source/custom"
+	_ "github.com/openshift/node-feature-discovery/source/fake"
+	_ "github.com/openshift/node-feature-discovery/source/iommu"
+	_ "github.com/openshift/node-feature-discovery/source/kernel"
+	_ "github.com/openshift/node-feature-discovery/source/local"
+	_ "github.com/openshift/node-feature-discovery/source/memory"
+	_ "github.com/openshift/node-feature-discovery/source/network"
+	_ "github.com/openshift/node-feature-discovery/source/pci"
+	_ "github.com/openshift/node-feature-discovery/source/storage"
+	_ "github.com/openshift/node-feature-discovery/source/system"
+	_ "github.com/openshift/node-feature-discovery/source/usb"
 )
 
 func TestLabelSources(t *testing.T) {

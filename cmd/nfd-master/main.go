@@ -24,9 +24,10 @@ import (
 
 	"k8s.io/klog/v2"
 
-	master "openshift/node-feature-discovery/pkg/nfd-master"
-	"openshift/node-feature-discovery/pkg/utils"
-	"openshift/node-feature-discovery/pkg/version"
+	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
+
+	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
 const (
@@ -57,7 +58,7 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.Warningf("version not set! Set -ldflags \"-X openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.Warningf("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
 
 	// Plug klog into grpc logging infrastructure
@@ -98,7 +99,7 @@ func initFlags(flagset *flag.FlagSet) *master.Args {
 		"Do not publish feature labels")
 	flagset.BoolVar(&args.FeatureRulesController, "featurerules-controller", true,
 		"Enable controller for NodeFeatureRule objects. Generates node labels based on the rules in these CRs.")
-	flagset.IntVar(&args.Port, "port", 8080,
+	flagset.IntVar(&args.Port, "port", 12000,
 		"Port on which to listen for connections.")
 	flagset.BoolVar(&args.Prune, "prune", false,
 		"Prune all NFD related attributes from all nodes of the cluaster and exit.")
