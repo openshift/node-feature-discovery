@@ -21,7 +21,7 @@ import (
 )
 
 var (
-	pathPrefix = "/"
+	pathPrefix = "/host-"
 	// BootPath is where the /boot directory of the system to be inspected is located
 	BootDir = HostDir(pathPrefix + "boot")
 	// EtcPath is where the /etc directory of the system to be inspected is located
