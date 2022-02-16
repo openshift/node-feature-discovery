@@ -24,7 +24,7 @@ import (
 
 var (
 	// SchemeGroupVersion is group version used to register these objects
-	SchemeGroupVersion = schema.GroupVersion{Group: "nfd.k8s-sigs.io", Version: "v1alpha1"}
+	SchemeGroupVersion = schema.GroupVersion{Group: "nfd.openshift.io", Version: "v1alpha1"}
 
 	// SchemeBuilder is the scheme builder for this API.
 	SchemeBuilder = runtime.NewSchemeBuilder(addKnownTypes)
