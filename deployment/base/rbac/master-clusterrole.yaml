@@ -21,7 +21,7 @@ rules:
   - get
   - update
 - apiGroups:
-  - nfd.k8s-sigs.io
+  - nfd.openshift.io
   resources:
   - nodefeaturerules
   verbs:

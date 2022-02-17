@@ -29,7 +29,7 @@ type NfdV1alpha1Interface interface {
 	NodeFeatureRulesGetter
 }
 
-// NfdV1alpha1Client is used to interact with features provided by the nfd.k8s-sigs.io group.
+// NfdV1alpha1Client is used to interact with features provided by the nfd.openshift.io group.
 type NfdV1alpha1Client struct {
 	restClient rest.Interface
 }
