@@ -35,9 +35,9 @@ type FakeNodeFeatureRules struct {
 	Fake *FakeNfdV1alpha1
 }
 
-var nodefeaturerulesResource = schema.GroupVersionResource{Group: "nfd.k8s-sigs.io", Version: "v1alpha1", Resource: "nodefeaturerules"}
+var nodefeaturerulesResource = schema.GroupVersionResource{Group: "nfd.openshift.io", Version: "v1alpha1", Resource: "nodefeaturerules"}
 
-var nodefeaturerulesKind = schema.GroupVersionKind{Group: "nfd.k8s-sigs.io", Version: "v1alpha1", Kind: "NodeFeatureRule"}
+var nodefeaturerulesKind = schema.GroupVersionKind{Group: "nfd.openshift.io", Version: "v1alpha1", Kind: "NodeFeatureRule"}
 
 // Get takes name of the nodeFeatureRule, and returns the corresponding nodeFeatureRule object, and an error if there is any.
 func (c *FakeNodeFeatureRules) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.NodeFeatureRule, err error) {

@@ -6,9 +6,9 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.7.0
   creationTimestamp: null
-  name: nodefeaturerules.nfd.k8s-sigs.io
+  name: nodefeaturerules.nfd.openshift.io
 spec:
-  group: nfd.k8s-sigs.io
+  group: nfd.openshift.io
   names:
     kind: NodeFeatureRule
     listKind: NodeFeatureRuleList
