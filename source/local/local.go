@@ -34,6 +34,7 @@ import (
 
 const Name = "local"
 
+// LabelFeature of this feature source
 const LabelFeature = "label"
 
 // Config

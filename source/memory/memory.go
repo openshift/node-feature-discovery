@@ -33,7 +33,10 @@ import (
 
 const Name = "memory"
 
+// NvFeature is the name of the feature set that holds all discovered NVDIMM devices.
 const NvFeature = "nv"
+
+// NumaFeature is the name of the feature set that holds all NUMA related features.
 const NumaFeature = "numa"
 
 // memorySource implements the FeatureSource and LabelSource interfaces.
