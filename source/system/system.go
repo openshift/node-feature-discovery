@@ -36,6 +36,7 @@ var osReleaseFields = [...]string{
 	"VERSION_ID.minor",
 	"OSTREE_VERSION",
 	"RHEL_VERSION",
+	"OPENSHIFT_VERSION",
 }
 
 const Name = "system"
