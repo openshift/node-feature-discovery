@@ -5,4 +5,5 @@ reviewers:
   - courtneypacheco
   - jmencak
   - ArangoGutierrez
+  - yevgeny-shnaidman 
 component: "Node Feature Discovery Operator"
