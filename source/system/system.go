@@ -39,6 +39,7 @@ var osReleaseFields = [...]string{
 	"OPENSHIFT_VERSION",
 }
 
+// Name of this feature source
 const Name = "system"
 
 const (

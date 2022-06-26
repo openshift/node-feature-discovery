@@ -120,7 +120,7 @@ type nfdMaster struct {
 	kubeconfig   *restclient.Config
 }
 
-// Create new NfdMaster server instance.
+// NewNfdMaster creates a new NfdMaster server instance.
 func NewNfdMaster(args *Args) (NfdMaster, error) {
 	nfd := &nfdMaster{args: *args,
 		nodeName: os.Getenv("NODE_NAME"),
@@ -241,8 +241,11 @@ func (m *nfdMaster) Run() error {
 				return err
 			}
 
-		case <-grpcErr:
-			return fmt.Errorf("gRPC server exited with an error: %v", err)
+		case err := <-grpcErr:
+			if err != nil {
+				return fmt.Errorf("gRPC server exited with an error: %v", err)
+			}
+			klog.Infof("gRPC server stopped")
 
 		case <-m.stop:
 			klog.Infof("shutting down nfd-master")
@@ -254,7 +257,7 @@ func (m *nfdMaster) Run() error {
 
 // Stop NfdMaster
 func (m *nfdMaster) Stop() {
-	m.server.Stop()
+	m.server.GracefulStop()
 
 	if m.nfdController != nil {
 		m.nfdController.stop()

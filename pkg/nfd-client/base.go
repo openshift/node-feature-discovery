@@ -64,7 +64,7 @@ func init() {
 // NodeName returns the name of the k8s node we're running on.
 func NodeName() string { return nodeName }
 
-// Create new NfdWorker instance.
+// NewNfdBaseClient creates a new NfdBaseClient instance.
 func NewNfdBaseClient(args *Args) (NfdBaseClient, error) {
 	nfd := NfdBaseClient{args: *args}
 
@@ -118,6 +118,7 @@ func (w *NfdBaseClient) Connect() error {
 			Certificates: []tls.Certificate{cert},
 			RootCAs:      caPool,
 			ServerName:   w.args.ServerNameOverride,
+			MinVersion:   tls.VersionTLS13,
 		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	} else {
@@ -133,7 +134,7 @@ func (w *NfdBaseClient) Connect() error {
 	return nil
 }
 
-// disconnect closes the connection to NFD master
+// Disconnect closes the connection to NFD master
 func (w *NfdBaseClient) Disconnect() {
 	if w.clientConn != nil {
 		klog.Infof("closing connection to nfd-master ...")
