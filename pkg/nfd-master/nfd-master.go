@@ -43,7 +43,6 @@ import (
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
@@ -523,8 +522,8 @@ func (m *nfdMaster) crLabels(r *pb.SetLabelsRequest) map[string]string {
 			}
 
 			// Feed back rule output to features map for subsequent rules to match
-			feature.InsertAttributeFeatures(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
-			feature.InsertAttributeFeatures(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
+			nfdv1alpha1.InsertAttributeFeatures(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
+			nfdv1alpha1.InsertAttributeFeatures(r.Features, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
 		}
 	}
 
