@@ -33,10 +33,16 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
-	nfdclient "github.com/openshift/node-feature-discovery/pkg/nfd-client"
+	clientcommon "github.com/openshift/node-feature-discovery/pkg/nfd-client"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 	"github.com/openshift/node-feature-discovery/source"
+	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
+	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
+	clientcommon "sigs.k8s.io/node-feature-discovery/pkg/nfd-client"
+	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"sigs.k8s.io/node-feature-discovery/pkg/version"
+	"sigs.k8s.io/node-feature-discovery/source"
 
 	// Register all source packages
 	_ "github.com/openshift/node-feature-discovery/source/cpu"
@@ -75,7 +81,7 @@ type Labels map[string]string
 
 // Args are the command line arguments of NfdWorker.
 type Args struct {
-	nfdclient.Args
+	clientcommon.Args
 
 	ConfigFile string
 	Oneshot    bool
@@ -97,13 +103,13 @@ type ConfigOverrideArgs struct {
 }
 
 type nfdWorker struct {
-	nfdclient.NfdBaseClient
+	clientcommon.NfdBaseClient
 
 	args           Args
 	certWatch      *utils.FsWatcher
-	client         pb.LabelerClient
 	configFilePath string
 	config         *NFDConfig
+	grpcClient     pb.LabelerClient
 	stop           chan struct{} // channel for signaling stop
 	featureSources []source.FeatureSource
 	labelSources   []source.LabelSource
@@ -114,8 +120,8 @@ type duration struct {
 }
 
 // NewNfdWorker creates new NfdWorker instance.
-func NewNfdWorker(args *Args) (nfdclient.NfdClient, error) {
-	base, err := nfdclient.NewNfdBaseClient(&args.Args)
+func NewNfdWorker(args *Args) (clientcommon.NfdClient, error) {
+	base, err := clientcommon.NewNfdBaseClient(&args.Args)
 	if err != nil {
 		return nil, err
 	}
@@ -151,7 +157,7 @@ func newDefaultConfig() *NFDConfig {
 // one request if OneShot is set to 'true' in the worker args.
 func (w *nfdWorker) Run() error {
 	klog.Infof("Node Feature Discovery Worker %s", version.Get())
-	klog.Infof("NodeName: '%s'", nfdclient.NodeName())
+	klog.Infof("NodeName: '%s'", clientcommon.NodeName())
 
 	// Create watcher for config file and read initial configuration
 	configWatch, err := utils.CreateFsWatcher(time.Second, w.configFilePath)
@@ -169,11 +175,11 @@ func (w *nfdWorker) Run() error {
 	}
 
 	// Connect to NFD master
-	err = w.Connect()
+	err = w.GrpcConnect()
 	if err != nil {
 		return fmt.Errorf("failed to connect: %v", err)
 	}
-	defer w.Disconnect()
+	defer w.GrpcDisconnect()
 
 	labelTrigger := time.After(0)
 	for {
@@ -191,7 +197,7 @@ func (w *nfdWorker) Run() error {
 			labels := createFeatureLabels(w.labelSources, w.config.Core.LabelWhiteList.Regexp)
 
 			// Update the node with the feature labels.
-			if w.client != nil {
+			if w.grpcClient != nil {
 				err := w.advertiseFeatureLabels(labels)
 				if err != nil {
 					return fmt.Errorf("failed to advertise labels: %s", err.Error())
@@ -213,9 +219,9 @@ func (w *nfdWorker) Run() error {
 			}
 			// Manage connection to master
 			if w.config.Core.NoPublish {
-				w.Disconnect()
+				w.GrpcDisconnect()
 			} else if w.ClientConn() == nil {
-				if err := w.Connect(); err != nil {
+				if err := w.GrpcConnect(); err != nil {
 					return err
 				}
 			}
@@ -225,8 +231,8 @@ func (w *nfdWorker) Run() error {
 
 		case <-w.certWatch.Events:
 			klog.Infof("TLS certificate update, renewing connection to nfd-master")
-			w.Disconnect()
-			if err := w.Connect(); err != nil {
+			w.GrpcDisconnect()
+			if err := w.GrpcConnect(); err != nil {
 				return err
 			}
 
@@ -247,8 +253,8 @@ func (w *nfdWorker) Stop() {
 	}
 }
 
-// Connect creates a client connection to the NFD master
-func (w *nfdWorker) Connect() error {
+// GrpcConnect creates a gRPC client connection to the NFD master
+func (w *nfdWorker) GrpcConnect() error {
 	// Return a dummy connection in case of dry-run
 	if w.config.Core.NoPublish {
 		return nil
@@ -258,15 +264,15 @@ func (w *nfdWorker) Connect() error {
 		return err
 	}
 
-	w.client = pb.NewLabelerClient(w.ClientConn())
+	w.grpcClient = pb.NewLabelerClient(w.ClientConn())
 
 	return nil
 }
 
-// Disconnect closes the connection to NFD master
-func (w *nfdWorker) Disconnect() {
+// GrpcDisconnect closes the gRPC connection to NFD master
+func (w *nfdWorker) GrpcDisconnect() {
 	w.NfdBaseClient.Disconnect()
-	w.client = nil
+	w.grpcClient = nil
 }
 func (c *coreConfig) sanitize() {
 	if c.SleepInterval.Duration > 0 && c.SleepInterval.Duration < time.Second {
@@ -565,8 +571,8 @@ func (w *nfdWorker) advertiseFeatureLabels(labels Labels) error {
 	labelReq := pb.SetLabelsRequest{Labels: labels,
 		Features:   getFeatures(),
 		NfdVersion: version.Get(),
-		NodeName:   nfdclient.NodeName()}
-	_, err := w.client.SetLabels(ctx, &labelReq)
+		NodeName:   clientcommon.NodeName()}
+	_, err := w.grpcClient.SetLabels(ctx, &labelReq)
 	if err != nil {
 		klog.Errorf("failed to set node labels: %v", err)
 		return err
