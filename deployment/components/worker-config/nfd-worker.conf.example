@@ -59,6 +59,8 @@
 #      - "class"
 #      - "vendor"
 #      - "device"
+#  local:
+#    hooksEnabled: true
 #  custom:
 #    - name: "my.kernel.feature"
 #      matchOn:
