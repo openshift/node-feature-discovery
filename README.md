@@ -11,7 +11,7 @@ features and system configuration!
 #### Quick-start – the short-short version
 
 ```bash
-$ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.11.1
+$ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.11.2
   namespace/node-feature-discovery created
 ...
 
