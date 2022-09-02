@@ -121,7 +121,12 @@ lint:
 	golint -set_exit_status ./...
 
 mdlint:
-	find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs $(MDL) -s docs/mdl-style.rb
+	${CONTAINER_RUN_CMD} \
+	--rm \
+	--volume "${PWD}:/workdir:ro,z" \
+	--workdir /workdir \
+	ruby:slim \
+	/workdir/scripts/test-infra/mdlint.sh
 
 helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
