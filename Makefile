@@ -15,7 +15,7 @@ K8S_CODE_GENERATOR ?= ../code-generator
 
 VERSION := $(shell git describe --tags --dirty --always)
 
-IMAGE_REGISTRY ?= k8s.gcr.io/nfd
+IMAGE_REGISTRY ?= registry.k8s.io/nfd
 IMAGE_TAG_NAME ?= $(VERSION)
 IMAGE_EXTRA_TAG_NAMES ?=
 
