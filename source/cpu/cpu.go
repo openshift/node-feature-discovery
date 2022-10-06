@@ -26,6 +26,7 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
 
@@ -282,14 +283,14 @@ func discoverTopology() map[string]string {
 // Check if any (online) CPUs have thread siblings
 func haveThreadSiblings() (bool, error) {
 
-	files, err := os.ReadDir(source.SysfsDir.Path("bus/cpu/devices"))
+	files, err := os.ReadDir(hostpath.SysfsDir.Path("bus/cpu/devices"))
 	if err != nil {
 		return false, err
 	}
 
 	for _, file := range files {
 		// Try to read siblings from topology
-		siblings, err := os.ReadFile(source.SysfsDir.Path("bus/cpu/devices", file.Name(), "topology/thread_siblings_list"))
+		siblings, err := os.ReadFile(hostpath.SysfsDir.Path("bus/cpu/devices", file.Name(), "topology/thread_siblings_list"))
 		if err != nil {
 			return false, err
 		}

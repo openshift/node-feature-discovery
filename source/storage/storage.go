@@ -26,6 +26,7 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
 
@@ -94,7 +95,7 @@ func (s *storageSource) GetFeatures() *feature.DomainFeatures {
 }
 
 func detectBlock() ([]feature.InstanceFeature, error) {
-	sysfsBasePath := source.SysfsDir.Path("block")
+	sysfsBasePath := hostpath.SysfsDir.Path("block")
 
 	blockdevices, err := os.ReadDir(sysfsBasePath)
 	if err != nil {

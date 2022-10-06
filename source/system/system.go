@@ -26,6 +26,7 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
 
@@ -120,7 +121,7 @@ func (s *systemSource) GetFeatures() *feature.DomainFeatures {
 func parseOSRelease() (map[string]string, error) {
 	release := map[string]string{}
 
-	f, err := os.Open(source.EtcDir.Path("os-release"))
+	f, err := os.Open(hostpath.EtcDir.Path("os-release"))
 	if err != nil {
 		return nil, err
 	}

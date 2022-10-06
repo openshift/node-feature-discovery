@@ -24,13 +24,13 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 // Discover p-state related features such as turbo boost.
 func detectPstate() (map[string]string, error) {
 	// Check that sysfs is available
-	sysfsBase := source.SysfsDir.Path("devices/system/cpu")
+	sysfsBase := hostpath.SysfsDir.Path("devices/system/cpu")
 	if _, err := os.Stat(sysfsBase); err != nil {
 		return nil, fmt.Errorf("unable to detect pstate status: %w", err)
 	}

@@ -27,6 +27,7 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
 
@@ -112,7 +113,7 @@ func (s *networkSource) GetFeatures() *feature.DomainFeatures {
 }
 
 func detectNetDevices() ([]feature.InstanceFeature, error) {
-	sysfsBasePath := source.SysfsDir.Path(sysfsBaseDir)
+	sysfsBasePath := hostpath.SysfsDir.Path(sysfsBaseDir)
 
 	ifaces, err := os.ReadDir(sysfsBasePath)
 	if err != nil {
