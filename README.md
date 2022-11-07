@@ -35,3 +35,8 @@ $ kubectl get no -o json | jq .items[].metadata.labels
 ```
 
 [documentation]: https://kubernetes-sigs.github.io/node-feature-discovery/v0.11
+
+## Building NFD operand for ARM locally
+
+Currently the build process must be run on the ARM server. In addition, before running the build process
+Dockerfile.arm must be copied into Dockerfile
