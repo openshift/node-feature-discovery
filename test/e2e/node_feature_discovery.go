@@ -38,9 +38,8 @@ import (
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
 	"github.com/openshift/node-feature-discovery/source/custom"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 )
