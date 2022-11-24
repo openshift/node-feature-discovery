@@ -37,10 +37,12 @@ import (
 	e2elog "k8s.io/kubernetes/test/e2e/framework/log"
 	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
+
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
 	"github.com/openshift/node-feature-discovery/source/custom"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
+	testds "github.com/openshift/node-feature-discovery/test/e2e/utils/daemonset"
 	testpod "github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
 )
 
@@ -206,7 +208,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 
 				By("Creating nfd-worker daemonset")
 				podSpecOpts := []testpod.SpecOption{testpod.SpecWithContainerImage(fmt.Sprintf("%s:%s", *dockerRepo, *dockerTag))}
-				workerDS := testpod.NFDWorkerDaemonSet(podSpecOpts...)
+				workerDS := testds.NFDWorker(podSpecOpts...)
 				workerDS, err = f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Create(context.TODO(), workerDS, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
@@ -340,7 +342,7 @@ var _ = SIGDescribe("Node Feature Discovery", func() {
 					testpod.SpecWithConfigMap(cm1.Name, filepath.Join(custom.Directory, "cm1")),
 					testpod.SpecWithConfigMap(cm2.Name, filepath.Join(custom.Directory, "cm2")),
 				}
-				workerDS := testpod.NFDWorkerDaemonSet(podSpecOpts...)
+				workerDS := testds.NFDWorker(podSpecOpts...)
 
 				workerDS, err = f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Create(context.TODO(), workerDS, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
@@ -422,7 +424,7 @@ core:
 					testpod.SpecWithContainerImage(fmt.Sprintf("%s:%s", *dockerRepo, *dockerTag)),
 					testpod.SpecWithConfigMap(cm.Name, "/etc/kubernetes/node-feature-discovery"),
 				}
-				workerDS := testpod.NFDWorkerDaemonSet(podSpecOpts...)
+				workerDS := testds.NFDWorker(podSpecOpts...)
 				workerDS, err = f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Create(context.TODO(), workerDS, metav1.CreateOptions{})
 				Expect(err).NotTo(HaveOccurred())
 
