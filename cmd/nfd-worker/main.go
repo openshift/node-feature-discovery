@@ -24,7 +24,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/nfd-client/worker"
+	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
