@@ -26,7 +26,7 @@ import (
 	"k8s.io/klog/v2"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
-	topology "github.com/openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
+	topology "github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
