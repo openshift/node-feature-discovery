@@ -1,5 +1,7 @@
 approvers:
+  - ybettan
   - yevgeny-shnaidman 
 reviewers:
+  - ybettan
   - yevgeny-shnaidman 
 component: "Node Feature Discovery Operator"
