@@ -37,7 +37,7 @@ import (
 	e2ekubelet "k8s.io/kubernetes/test/e2e/framework/kubelet"
 	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 
-	testutils "sigs.k8s.io/node-feature-discovery/test/e2e/utils"
+	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 )
 
 var _ = SIGDescribe("Node Feature Discovery topology updater", func() {

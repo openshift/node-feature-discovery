@@ -22,7 +22,7 @@ package cpu
 import (
 	"os"
 
-	"sigs.k8s.io/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 func discoverSecurity() map[string]string {
