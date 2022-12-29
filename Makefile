@@ -39,6 +39,7 @@ HOSTMOUNT_PREFIX ?= /host-
 
 KUBECONFIG ?=
 E2E_TEST_CONFIG ?=
+E2E_PULL_IF_NOT_PRESENT ?= false
 
 LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
@@ -131,10 +132,16 @@ test:
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) \
-	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -kubeconfig=$(KUBECONFIG) \
+	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
+	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
+	    -ginkgo.focus="\[kubernetes-sigs\]" \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
-	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -kubeconfig=$(KUBECONFIG) \
+	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
+	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
+	    -ginkgo.focus="\[kubernetes-sigs\]" \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 
 local-image-push: push
