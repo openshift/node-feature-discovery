@@ -20,9 +20,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
+
+	"golang.org/x/net/context"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
@@ -30,6 +32,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	"github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater/kubeletnotifier"
 	"github.com/openshift/node-feature-discovery/pkg/podres"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
@@ -88,23 +91,31 @@ type nfdTopologyUpdater struct {
 	apihelper           apihelper.APIHelpers
 	resourcemonitorArgs resourcemonitor.Args
 	stop                chan struct{} // channel for signaling stop
+	eventSource         <-chan kubeletnotifier.Info
 	configFilePath      string
 	config              *NFDConfig
 }
 
 // NewTopologyUpdater creates a new NfdTopologyUpdater instance.
-func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy, scope string) NfdTopologyUpdater {
+func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy, scope string) (NfdTopologyUpdater, error) {
+	eventSource := make(chan kubeletnotifier.Info)
+	ntf, err := kubeletnotifier.New(resourcemonitorArgs.SleepInterval, eventSource, args.KubeletStateDir)
+	if err != nil {
+		return nil, err
+	}
+	go ntf.Run()
 	nfd := &nfdTopologyUpdater{
 		args:                args,
 		resourcemonitorArgs: resourcemonitorArgs,
 		nodeInfo:            newStaticNodeInfo(policy, scope),
 		stop:                make(chan struct{}, 1),
+		eventSource:         eventSource,
 		config:              &NFDConfig{},
 	}
 	if args.ConfigFile != "" {
 		nfd.configFilePath = filepath.Clean(args.ConfigFile)
 	}
-	return nfd
+	return nfd, nil
 }
 
 // Run nfdTopologyUpdater. Returns if a fatal error is encountered, or, after
@@ -150,10 +161,9 @@ func (w *nfdTopologyUpdater) Run() error {
 
 	klog.V(2).Infof("resAggr is: %v\n", resAggr)
 
-	crTrigger := time.NewTicker(w.resourcemonitorArgs.SleepInterval)
 	for {
 		select {
-		case <-crTrigger.C:
+		case <-w.eventSource:
 			klog.Infof("Scanning")
 			scanResponse, err := resScan.Scan()
 			utils.KlogDump(1, "podResources are", "  ", scanResponse.PodResources)
