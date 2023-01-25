@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	nfdv1alpha1 "github.com/openshift//node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 )
