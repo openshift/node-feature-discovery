@@ -23,7 +23,7 @@ import (
 	"os"
 
 	"github.com/klauspost/cpuid/v2"
-	"sigs.k8s.io/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 func discoverSecurity() map[string]string {

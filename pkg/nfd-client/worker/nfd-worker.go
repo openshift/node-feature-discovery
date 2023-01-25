@@ -37,12 +37,6 @@ import (
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 	"github.com/openshift/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/pkg/api/feature"
-	pb "sigs.k8s.io/node-feature-discovery/pkg/labeler"
-	clientcommon "sigs.k8s.io/node-feature-discovery/pkg/nfd-client"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
-	"sigs.k8s.io/node-feature-discovery/source"
 
 	// Register all source packages
 	_ "github.com/openshift/node-feature-discovery/source/cpu"
