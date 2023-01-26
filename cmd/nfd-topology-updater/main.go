@@ -26,13 +26,13 @@ import (
 	"k8s.io/klog/v2"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
-	"github.com/openshift/node-feature-discovery/pkg/kubeconf"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/nfd-client"
 	topology "github.com/openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/kubeconf"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
