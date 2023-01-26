@@ -22,8 +22,8 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/uuid"
 
-	"sigs.k8s.io/node-feature-discovery/test/e2e/utils"
-	"sigs.k8s.io/node-feature-discovery/test/e2e/utils/pod"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
 )
 
 // NFDWorker provides the NFD daemon set worker definition

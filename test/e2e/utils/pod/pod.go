@@ -34,7 +34,7 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	"k8s.io/utils/pointer"
 
-	"sigs.k8s.io/node-feature-discovery/test/e2e/utils"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils"
 )
 
 var pullIfNotPresent = flag.Bool("nfd.pull-if-not-present", false, "Pull Images if not present - not always")
