@@ -19,7 +19,6 @@ package v1alpha1
 import (
 	"testing"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/stretchr/testify/assert"
 )
 
