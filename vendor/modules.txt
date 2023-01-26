@@ -456,7 +456,7 @@ github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/client
 # github.com/karrick/godirwalk v1.16.1
 ## explicit; go 1.13
 github.com/karrick/godirwalk
-# github.com/klauspost/cpuid/v2 v2.1.0
+# github.com/klauspost/cpuid/v2 v2.2.2
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
 # github.com/libopenstorage/openstorage v1.0.0
@@ -855,7 +855,7 @@ golang.org/x/oauth2/jwt
 # golang.org/x/sync v0.0.0-20220722155255-886fb9371eb4
 ## explicit
 golang.org/x/sync/singleflight
-# golang.org/x/sys v0.0.0-20220722155257-8c9f86f7a55f
+# golang.org/x/sys v0.3.0
 ## explicit; go 1.17
 golang.org/x/sys/cpu
 golang.org/x/sys/internal/unsafeheader
