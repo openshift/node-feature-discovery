@@ -26,10 +26,10 @@ import (
 	runtime "k8s.io/apimachinery/pkg/runtime"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	versioned "sigs.k8s.io/node-feature-discovery/pkg/generated/clientset/versioned"
-	internalinterfaces "sigs.k8s.io/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	versioned "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	internalinterfaces "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions/internalinterfaces"
+	v1alpha1 "github.com/openshift/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
 )
 
 // NodeFeatureInformer provides access to a shared informer and lister for
