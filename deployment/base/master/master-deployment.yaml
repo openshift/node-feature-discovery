@@ -22,13 +22,13 @@ spec:
           image: k8s.gcr.io/nfd/node-feature-discovery:v0.11.0
           imagePullPolicy: IfNotPresent
           livenessProbe:
-            exec:
-              command: ["/usr/bin/grpc_health_probe", "-addr=:8080"]
+            grpc:
+              port: 8080
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            exec:
-              command: ["/usr/bin/grpc_health_probe", "-addr=:8080"]
+            grpc:
+              port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 10
