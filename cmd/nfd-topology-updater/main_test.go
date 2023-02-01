@@ -36,7 +36,7 @@ func TestArgsParse(t *testing.T) {
 				So(args.Oneshot, ShouldBeTrue)
 				So(args.ConfigFile, ShouldEqual, "/etc/kubernetes/node-feature-discovery/nfd-topology-updater.conf")
 				So(finderArgs.SleepInterval, ShouldEqual, 60*time.Second)
-				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/var/lib/kubelet/pod-resources/kubelet.sock")
+				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
 
@@ -52,7 +52,7 @@ func TestArgsParse(t *testing.T) {
 				So(args.ConfigFile, ShouldEqual, "/path/nfd-topology-updater.conf")
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
 				So(finderArgs.KubeletConfigURI, ShouldEqual, "file:///path/testconfig.yaml")
-				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/var/lib/kubelet/pod-resources/kubelet.sock")
+				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
 
@@ -78,7 +78,7 @@ func TestArgsParse(t *testing.T) {
 				So(args.NoPublish, ShouldBeFalse)
 				So(args.Oneshot, ShouldBeFalse)
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
-				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/var/lib/kubelet/pod-resources/kubelet.sock")
+				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
 
