@@ -4,7 +4,8 @@
 GO_CMD ?= go
 GO_FMT ?= gofmt
 
-IMAGE_BUILD_CMD ?= podman build
+CONTAINER_COMMAND := $(or ${CONTAINER_COMMAND},podman)
+IMAGE_BUILD_CMD ?= ${CONTAINER_COMMAND} build
 IMAGE_BUILD_EXTRA_OPTS ?=
 IMAGE_PUSH_CMD ?= podman push
 CONTAINER_RUN_CMD ?= podman run
@@ -21,7 +22,7 @@ IMAGE_EXTRA_TAG_NAMES ?=
 
 IMAGE_NAME := node-feature-discovery
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
-IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
+IMAGE_TAG ?= $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 IMAGE_EXTRA_TAGS := $(foreach tag,$(IMAGE_EXTRA_TAG_NAMES),$(IMAGE_REPO):$(tag))
 
 K8S_NAMESPACE ?= node-feature-discovery
