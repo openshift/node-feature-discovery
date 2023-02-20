@@ -1,13 +1,11 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 reviewers:
-  - thockin
-  - brendandburns
-  - m1093782566
-  - islinwb
+  - sig-network-reviewers
 approvers:
-  - thockin
+  - sig-network-approvers
+labels:
+  - sig/network
+emeritus_approvers:
   - brendandburns
   - m1093782566
-labels:
-- sig/network

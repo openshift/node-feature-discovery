@@ -28,7 +28,6 @@ import (
 	_ "github.com/openshift/node-feature-discovery/source/cpu"
 	_ "github.com/openshift/node-feature-discovery/source/custom"
 	_ "github.com/openshift/node-feature-discovery/source/fake"
-	_ "github.com/openshift/node-feature-discovery/source/iommu"
 	_ "github.com/openshift/node-feature-discovery/source/kernel"
 	_ "github.com/openshift/node-feature-discovery/source/local"
 	_ "github.com/openshift/node-feature-discovery/source/memory"
@@ -74,8 +73,8 @@ func TestFeatureSources(t *testing.T) {
 
 		f := s.GetFeatures()
 		assert.NotNil(t, f, msg)
-		assert.Empty(t, (*f).Keys, msg)
-		assert.Empty(t, (*f).Values, msg)
+		assert.Empty(t, (*f).Flags, msg)
+		assert.Empty(t, (*f).Attributes, msg)
 		assert.Empty(t, (*f).Instances, msg)
 	}
 }

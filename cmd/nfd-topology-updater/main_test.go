@@ -29,33 +29,36 @@ func TestArgsParse(t *testing.T) {
 		flags := flag.NewFlagSet(ProgramName, flag.ExitOnError)
 
 		Convey("When -no-publish and -oneshot flags are passed", func() {
-			args, finderArgs := parseArgs(flags, "-oneshot", "-no-publish")
+			args, finderArgs := parseArgs(flags, "-oneshot", "-no-publish", "-kubelet-config-uri=https://%s:%d/configz")
 
 			Convey("noPublish is set and args.sources is set to the default value", func() {
 				So(args.NoPublish, ShouldBeTrue)
 				So(args.Oneshot, ShouldBeTrue)
+				So(args.ConfigFile, ShouldEqual, "/etc/kubernetes/node-feature-discovery/nfd-topology-updater.conf")
 				So(finderArgs.SleepInterval, ShouldEqual, 60*time.Second)
-				So(finderArgs.KubeletConfigFile, ShouldEqual, "/host-var/lib/kubelet/config.yaml")
 				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
 
-		Convey("When valid args are specified for -kubelet-config-file and -sleep-interval,", func() {
+		Convey("When valid args are specified for -kubelet-config-url, -sleep-interval and -config,", func() {
 			args, finderArgs := parseArgs(flags,
-				"-kubelet-config-file=/path/testconfig.yaml",
-				"-sleep-interval=30s")
+				"-kubelet-config-uri=file:///path/testconfig.yaml",
+				"-sleep-interval=30s",
+				"-config=/path/nfd-topology-updater.conf")
 
 			Convey("args.sources is set to appropriate values", func() {
 				So(args.NoPublish, ShouldBeFalse)
 				So(args.Oneshot, ShouldBeFalse)
+				So(args.ConfigFile, ShouldEqual, "/path/nfd-topology-updater.conf")
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
-				So(finderArgs.KubeletConfigFile, ShouldEqual, "/path/testconfig.yaml")
+				So(finderArgs.KubeletConfigURI, ShouldEqual, "file:///path/testconfig.yaml")
 				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
 
 		Convey("When valid args are specified for -podresources-socket flag and -sleep-interval is specified", func() {
 			args, finderArgs := parseArgs(flags,
+				"-kubelet-config-uri=https://%s:%d/configz",
 				"-podresources-socket=/path/testkubelet.sock",
 				"-sleep-interval=30s")
 
@@ -63,19 +66,18 @@ func TestArgsParse(t *testing.T) {
 				So(args.NoPublish, ShouldBeFalse)
 				So(args.Oneshot, ShouldBeFalse)
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
-				So(finderArgs.KubeletConfigFile, ShouldEqual, "/host-var/lib/kubelet/config.yaml")
 				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/path/testkubelet.sock")
 			})
 		})
 		Convey("When valid -sleep-inteval is specified", func() {
 			args, finderArgs := parseArgs(flags,
+				"-kubelet-config-uri=https://%s:%d/configz",
 				"-sleep-interval=30s")
 
 			Convey("args.sources is set to appropriate values", func() {
 				So(args.NoPublish, ShouldBeFalse)
 				So(args.Oneshot, ShouldBeFalse)
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
-				So(finderArgs.KubeletConfigFile, ShouldEqual, "/host-var/lib/kubelet/config.yaml")
 				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/host-var/lib/kubelet/pod-resources/kubelet.sock")
 			})
 		})
@@ -84,19 +86,13 @@ func TestArgsParse(t *testing.T) {
 			args, finderArgs := parseArgs(flags,
 				"-no-publish",
 				"-sleep-interval=30s",
-				"-kubelet-config-file=/path/testconfig.yaml",
-				"-podresources-socket=/path/testkubelet.sock",
-				"-ca-file=ca",
-				"-cert-file=crt",
-				"-key-file=key")
+				"-kubelet-config-uri=file:///path/testconfig.yaml",
+				"-podresources-socket=/path/testkubelet.sock")
 
 			Convey("-no-publish is set and args.sources is set to appropriate values", func() {
 				So(args.NoPublish, ShouldBeTrue)
-				So(args.CaFile, ShouldEqual, "ca")
-				So(args.CertFile, ShouldEqual, "crt")
-				So(args.KeyFile, ShouldEqual, "key")
 				So(finderArgs.SleepInterval, ShouldEqual, 30*time.Second)
-				So(finderArgs.KubeletConfigFile, ShouldEqual, "/path/testconfig.yaml")
+				So(finderArgs.KubeletConfigURI, ShouldEqual, "file:///path/testconfig.yaml")
 				So(finderArgs.PodResourceSocketPath, ShouldEqual, "/path/testkubelet.sock")
 			})
 		})

@@ -22,7 +22,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 )
@@ -50,7 +50,7 @@ func newDefaultConfig() *Config {
 // pciSource implements the FeatureSource, LabelSource and ConfigurableSource interfaces.
 type pciSource struct {
 	config   *Config
-	features *feature.DomainFeatures
+	features *nfdv1alpha1.Features
 }
 
 // Singleton source instance
@@ -140,13 +140,13 @@ func (s *pciSource) GetLabels() (source.FeatureLabels, error) {
 
 // Discover method of the FeatureSource interface
 func (s *pciSource) Discover() error {
-	s.features = feature.NewDomainFeatures()
+	s.features = nfdv1alpha1.NewFeatures()
 
 	devs, err := detectPci()
 	if err != nil {
 		return fmt.Errorf("failed to detect PCI devices: %s", err.Error())
 	}
-	s.features.Instances[DeviceFeature] = feature.NewInstanceFeatures(devs)
+	s.features.Instances[DeviceFeature] = nfdv1alpha1.NewInstanceFeatures(devs)
 
 	utils.KlogDump(3, "discovered pci features:", "  ", s.features)
 
@@ -154,9 +154,9 @@ func (s *pciSource) Discover() error {
 }
 
 // GetFeatures method of the FeatureSource Interface
-func (s *pciSource) GetFeatures() *feature.DomainFeatures {
+func (s *pciSource) GetFeatures() *nfdv1alpha1.Features {
 	if s.features == nil {
-		s.features = feature.NewDomainFeatures()
+		s.features = nfdv1alpha1.NewFeatures()
 	}
 	return s.features
 }

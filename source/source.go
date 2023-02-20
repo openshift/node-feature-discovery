@@ -21,7 +21,9 @@ package source
 import (
 	"fmt"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	"k8s.io/klog/v2"
+
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 )
 
 // Source is the base interface for all other source interfaces
@@ -38,7 +40,7 @@ type FeatureSource interface {
 	Discover() error
 
 	// GetFeatures returns discovered features in raw form
-	GetFeatures() *feature.DomainFeatures
+	GetFeatures() *nfdv1alpha1.Features
 }
 
 // LabelSource represents a source of node feature labels
@@ -150,4 +152,38 @@ func GetAllConfigurableSources() map[string]ConfigurableSource {
 		}
 	}
 	return all
+}
+
+// GetAllFeatures returns a combined set of all features from all feature
+// sources.
+func GetAllFeatures() *nfdv1alpha1.Features {
+	features := nfdv1alpha1.NewFeatures()
+	for n, s := range GetAllFeatureSources() {
+		f := s.GetFeatures()
+		for k, v := range f.Flags {
+			// Prefix feature with the name of the source
+			k = n + "." + k
+			if typ := features.Exists(k); typ != "" {
+				klog.Exitf("feature source %q returned flag feature %q which already exists (type %q)", n, k, typ)
+			}
+			features.Flags[k] = v
+		}
+		for k, v := range f.Attributes {
+			// Prefix feature with the name of the source
+			k = n + "." + k
+			if typ := features.Exists(k); typ != "" {
+				klog.Exitf("feature source %q returned attribute feature %q which already exists (type %q)", n, k, typ)
+			}
+			features.Attributes[k] = v
+		}
+		for k, v := range f.Instances {
+			// Prefix feature with the name of the source
+			k = n + "." + k
+			if typ := features.Exists(k); typ != "" {
+				klog.Exitf("feature source %q returned instance feature %q which already exists (type %q)", n, k, typ)
+			}
+			features.Instances[k] = v
+		}
+	}
+	return features
 }

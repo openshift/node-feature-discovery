@@ -18,21 +18,21 @@ package utils
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strconv"
 	"strings"
 
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
 	resourcehelper "k8s.io/kubernetes/pkg/apis/core/helper"
 
-	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 var (
-	sysBusNodeBasepath = source.SysfsDir.Path("bus/node/devices")
+	sysBusNodeBasepath = hostpath.SysfsDir.Path("bus/node/devices")
 )
 
 // NumaMemoryResources contains information of the memory resources per NUMA
@@ -40,11 +40,11 @@ var (
 type NumaMemoryResources map[int]MemoryResourceInfo
 
 // MemoryResourceInfo holds information of memory resources per resource type.
-type MemoryResourceInfo map[v1.ResourceName]int64
+type MemoryResourceInfo map[corev1.ResourceName]int64
 
 // GetNumaMemoryResources returns total amount of memory and hugepages under NUMA nodes
 func GetNumaMemoryResources() (NumaMemoryResources, error) {
-	nodes, err := ioutil.ReadDir(sysBusNodeBasepath)
+	nodes, err := os.ReadDir(sysBusNodeBasepath)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func GetNumaMemoryResources() (NumaMemoryResources, error) {
 		if err != nil {
 			return nil, err
 		}
-		info[v1.ResourceMemory] = nodeTotalMemory
+		info[corev1.ResourceMemory] = nodeTotalMemory
 
 		// Get hugepages
 		hugepageBytes, err := getHugepagesBytes(filepath.Join(sysBusNodeBasepath, numaNode, "hugepages"))
@@ -82,7 +82,7 @@ func GetNumaMemoryResources() (NumaMemoryResources, error) {
 }
 
 func getHugepagesBytes(path string) (MemoryResourceInfo, error) {
-	entries, err := ioutil.ReadDir(path)
+	entries, err := os.ReadDir(path)
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +101,7 @@ func getHugepagesBytes(path string) (MemoryResourceInfo, error) {
 			return nil, err
 		}
 
-		data, err := ioutil.ReadFile(filepath.Join(path, entry.Name(), "nr_hugepages"))
+		data, err := os.ReadFile(filepath.Join(path, entry.Name(), "nr_hugepages"))
 		if err != nil {
 			return nil, err
 		}
@@ -112,7 +112,7 @@ func getHugepagesBytes(path string) (MemoryResourceInfo, error) {
 		}
 
 		size, _ := q.AsInt64()
-		name := v1.ResourceName(resourcehelper.HugePageResourceName(q))
+		name := corev1.ResourceName(resourcehelper.HugePageResourceName(q))
 		hugepagesBytes[name] = nr * size
 	}
 
@@ -120,7 +120,7 @@ func getHugepagesBytes(path string) (MemoryResourceInfo, error) {
 }
 
 func readTotalMemoryFromMeminfo(path string) (int64, error) {
-	data, err := ioutil.ReadFile(path)
+	data, err := os.ReadFile(path)
 	if err != nil {
 		return -1, err
 	}

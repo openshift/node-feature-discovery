@@ -51,6 +51,14 @@ func main() {
 		os.Exit(2)
 	}
 
+	// Check deprecated flags
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "featurerules-controller":
+			klog.Warningf("-featurerules-controller is deprecated, use '-crd-controller' flag instead")
+		}
+	})
+
 	if *printVersion {
 		fmt.Println(ProgramName, version.Get())
 		os.Exit(0)
@@ -95,10 +103,16 @@ func initFlags(flagset *flag.FlagSet) *master.Args {
 	flagset.Var(&args.LabelWhiteList, "label-whitelist",
 		"Regular expression to filter label names to publish to the Kubernetes API server. "+
 			"NB: the label namespace is omitted i.e. the filter is only applied to the name part after '/'.")
+	flagset.BoolVar(&args.EnableNodeFeatureApi, "enable-nodefeature-api", false,
+		"Enable the NodeFeature CRD API for receiving node features. This will automatically disable the gRPC communication.")
 	flagset.BoolVar(&args.NoPublish, "no-publish", false,
 		"Do not publish feature labels")
-	flagset.BoolVar(&args.FeatureRulesController, "featurerules-controller", true,
-		"Enable controller for NodeFeatureRule objects. Generates node labels based on the rules in these CRs.")
+	flagset.BoolVar(&args.EnableTaints, "enable-taints", false,
+		"Enable node tainting feature")
+	flagset.BoolVar(&args.CrdController, "featurerules-controller", true,
+		"Enable NFD CRD API controller. DEPRECATED: use -crd-controller instead")
+	flagset.BoolVar(&args.CrdController, "crd-controller", true,
+		"Enable NFD CRD API controller for processing NodeFeature and NodeFeatureRule objects.")
 	flagset.IntVar(&args.Port, "port", 12000,
 		"Port on which to listen for connections.")
 	flagset.BoolVar(&args.Prune, "prune", false,

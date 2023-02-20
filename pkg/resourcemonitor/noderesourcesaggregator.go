@@ -25,13 +25,13 @@ import (
 
 	"github.com/jaypipes/ghw"
 	topologyv1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
-	v1 "k8s.io/api/core/v1"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/klog/v2"
-	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 
+	podresourcesapi "k8s.io/kubelet/pkg/apis/podresources/v1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
-	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 const (
@@ -40,12 +40,13 @@ const (
 )
 
 type nodeResources struct {
-	perNUMAAllocatable map[int]map[v1.ResourceName]int64
+	perNUMAAllocatable map[int]map[corev1.ResourceName]int64
 	// mapping: resourceName -> resourceID -> nodeID
 	resourceID2NUMAID              map[string]map[string]int
 	topo                           *ghw.TopologyInfo
 	reservedCPUIDPerNUMA           map[int][]string
 	memoryResourcesCapacityPerNUMA utils.NumaMemoryResources
+	excludeList                    ExcludeResourceList
 }
 
 type resourceData struct {
@@ -54,11 +55,11 @@ type resourceData struct {
 	capacity    int64
 }
 
-func NewResourcesAggregator(podResourceClient podresourcesapi.PodResourcesListerClient) (ResourcesAggregator, error) {
+func NewResourcesAggregator(podResourceClient podresourcesapi.PodResourcesListerClient, excludeList ExcludeResourceList) (ResourcesAggregator, error) {
 	var err error
 
 	topo, err := ghw.Topology(ghw.WithPathOverrides(ghw.PathOverrides{
-		"/sys": string(source.SysfsDir),
+		"/sys": string(hostpath.SysfsDir),
 	}))
 	if err != nil {
 		return nil, err
@@ -85,11 +86,11 @@ func NewResourcesAggregator(podResourceClient podresourcesapi.PodResourcesLister
 		return nil, fmt.Errorf("failed to get allocatable resources (ensure that KubeletPodResourcesGetAllocatable feature gate is enabled): %w", err)
 	}
 
-	return NewResourcesAggregatorFromData(topo, resp, memoryResourcesCapacityPerNUMA), nil
+	return NewResourcesAggregatorFromData(topo, resp, memoryResourcesCapacityPerNUMA, excludeList), nil
 }
 
 // NewResourcesAggregatorFromData is used to aggregate resource information based on the received data from underlying hardware and podresource API
-func NewResourcesAggregatorFromData(topo *ghw.TopologyInfo, resp *podresourcesapi.AllocatableResourcesResponse, memoryResourceCapacity utils.NumaMemoryResources) ResourcesAggregator {
+func NewResourcesAggregatorFromData(topo *ghw.TopologyInfo, resp *podresourcesapi.AllocatableResourcesResponse, memoryResourceCapacity utils.NumaMemoryResources, excludeList ExcludeResourceList) ResourcesAggregator {
 	allDevs := getContainerDevicesFromAllocatableResources(resp, topo)
 	return &nodeResources{
 		topo:                           topo,
@@ -97,17 +98,21 @@ func NewResourcesAggregatorFromData(topo *ghw.TopologyInfo, resp *podresourcesap
 		perNUMAAllocatable:             makeNodeAllocatable(allDevs, resp.GetMemory()),
 		reservedCPUIDPerNUMA:           makeReservedCPUMap(topo.Nodes, allDevs),
 		memoryResourcesCapacityPerNUMA: memoryResourceCapacity,
+		excludeList:                    excludeList,
 	}
 }
 
 // Aggregate provides the mapping (numa zone name) -> Zone from the given PodResources.
 func (noderesourceData *nodeResources) Aggregate(podResData []PodResources) topologyv1alpha1.ZoneList {
-	perNuma := make(map[int]map[v1.ResourceName]*resourceData)
+	perNuma := make(map[int]map[corev1.ResourceName]*resourceData)
 	for nodeID := range noderesourceData.topo.Nodes {
 		nodeRes, ok := noderesourceData.perNUMAAllocatable[nodeID]
 		if ok {
-			perNuma[nodeID] = make(map[v1.ResourceName]*resourceData)
+			perNuma[nodeID] = make(map[corev1.ResourceName]*resourceData)
 			for resName, allocatable := range nodeRes {
+				if noderesourceData.excludeList.IsExcluded(resName) {
+					continue
+				}
 				switch {
 				case resName == "cpu":
 					perNuma[nodeID][resName] = &resourceData{
@@ -115,7 +120,7 @@ func (noderesourceData *nodeResources) Aggregate(podResData []PodResources) topo
 						available:   allocatable,
 						capacity:    allocatable + int64(len(noderesourceData.reservedCPUIDPerNUMA[nodeID])),
 					}
-				case resName == v1.ResourceMemory, strings.HasPrefix(string(resName), v1.ResourceHugePagesPrefix):
+				case resName == corev1.ResourceMemory, strings.HasPrefix(string(resName), corev1.ResourceHugePagesPrefix):
 					var capacity int64
 					if _, ok := noderesourceData.memoryResourcesCapacityPerNUMA[nodeID]; !ok {
 						capacity = allocatable
@@ -141,7 +146,7 @@ func (noderesourceData *nodeResources) Aggregate(podResData []PodResources) topo
 			// NUMA node doesn't have any allocatable resources, but yet it exists in the topology
 			// thus all its CPUs are reserved
 		} else {
-			perNuma[nodeID] = make(map[v1.ResourceName]*resourceData)
+			perNuma[nodeID] = make(map[corev1.ResourceName]*resourceData)
 			perNuma[nodeID]["cpu"] = &resourceData{
 				allocatable: int64(0),
 				available:   int64(0),
@@ -153,7 +158,7 @@ func (noderesourceData *nodeResources) Aggregate(podResData []PodResources) topo
 	for _, podRes := range podResData {
 		for _, contRes := range podRes.Containers {
 			for _, res := range contRes.Resources {
-				if res.Name == v1.ResourceMemory || strings.HasPrefix(string(res.Name), v1.ResourceHugePagesPrefix) {
+				if res.Name == corev1.ResourceMemory || strings.HasPrefix(string(res.Name), corev1.ResourceHugePagesPrefix) {
 					noderesourceData.updateMemoryAvailable(perNuma, res)
 					continue
 				}
@@ -218,7 +223,7 @@ func getContainerDevicesFromAllocatableResources(availRes *podresourcesapi.Alloc
 
 	for nodeID, cpuList := range cpusPerNuma {
 		contDevs = append(contDevs, &podresourcesapi.ContainerDevices{
-			ResourceName: string(v1.ResourceCPU),
+			ResourceName: string(corev1.ResourceCPU),
 			DeviceIds:    cpuList,
 			Topology: &podresourcesapi.TopologyInfo{
 				Nodes: []*podresourcesapi.NUMANode{
@@ -233,7 +238,7 @@ func getContainerDevicesFromAllocatableResources(availRes *podresourcesapi.Alloc
 
 // updateAvailable computes the actually available resources.
 // This function assumes the available resources are initialized to be equal to the allocatable.
-func (noderesourceData *nodeResources) updateAvailable(numaData map[int]map[v1.ResourceName]*resourceData, ri ResourceInfo) {
+func (noderesourceData *nodeResources) updateAvailable(numaData map[int]map[corev1.ResourceName]*resourceData, ri ResourceInfo) {
 	for _, resID := range ri.Data {
 		resName := string(ri.Name)
 		resMap, ok := noderesourceData.resourceID2NUMAID[resName]
@@ -263,8 +268,8 @@ func makeZoneName(nodeID int) string {
 // makeNodeAllocatable computes the node allocatable as mapping (NUMA node ID) -> Resource -> Allocatable (amount, int).
 // The computation is done assuming all the resources to represent the allocatable for are represented on a slice
 // of ContainerDevices. No special treatment is done for CPU IDs. See getContainerDevicesFromAllocatableResources.
-func makeNodeAllocatable(devices []*podresourcesapi.ContainerDevices, memoryBlocks []*podresourcesapi.ContainerMemory) map[int]map[v1.ResourceName]int64 {
-	perNUMAAllocatable := make(map[int]map[v1.ResourceName]int64)
+func makeNodeAllocatable(devices []*podresourcesapi.ContainerDevices, memoryBlocks []*podresourcesapi.ContainerMemory) map[int]map[corev1.ResourceName]int64 {
+	perNUMAAllocatable := make(map[int]map[corev1.ResourceName]int64)
 	// initialize with the capacities
 	for _, device := range devices {
 		resourceName := device.GetResourceName()
@@ -272,15 +277,15 @@ func makeNodeAllocatable(devices []*podresourcesapi.ContainerDevices, memoryBloc
 			nodeID := int(node.GetID())
 			nodeRes, ok := perNUMAAllocatable[nodeID]
 			if !ok {
-				nodeRes = make(map[v1.ResourceName]int64)
+				nodeRes = make(map[corev1.ResourceName]int64)
 			}
-			nodeRes[v1.ResourceName(resourceName)] += int64(len(device.GetDeviceIds()))
+			nodeRes[corev1.ResourceName(resourceName)] += int64(len(device.GetDeviceIds()))
 			perNUMAAllocatable[nodeID] = nodeRes
 		}
 	}
 
 	for _, block := range memoryBlocks {
-		memoryType := v1.ResourceName(block.GetMemoryType())
+		memoryType := corev1.ResourceName(block.GetMemoryType())
 
 		blockTopology := block.GetTopology()
 		if blockTopology == nil {
@@ -290,7 +295,7 @@ func makeNodeAllocatable(devices []*podresourcesapi.ContainerDevices, memoryBloc
 		for _, node := range blockTopology.GetNodes() {
 			nodeID := int(node.GetID())
 			if _, ok := perNUMAAllocatable[nodeID]; !ok {
-				perNUMAAllocatable[nodeID] = make(map[v1.ResourceName]int64)
+				perNUMAAllocatable[nodeID] = make(map[corev1.ResourceName]int64)
 			}
 
 			if _, ok := perNUMAAllocatable[nodeID][memoryType]; !ok {
@@ -402,7 +407,7 @@ func getCPUs(devices []*podresourcesapi.ContainerDevices) map[string]int {
 
 // updateMemoryAvailable computes the actual amount of the available memory.
 // This function assumes the available resources are initialized to be equal to the capacity.
-func (noderesourceData *nodeResources) updateMemoryAvailable(numaData map[int]map[v1.ResourceName]*resourceData, ri ResourceInfo) {
+func (noderesourceData *nodeResources) updateMemoryAvailable(numaData map[int]map[corev1.ResourceName]*resourceData, ri ResourceInfo) {
 	if len(ri.NumaNodeIds) == 0 {
 		klog.Warningf("no NUMA nodes information is available for device %q", ri.Name)
 		return
@@ -415,7 +420,7 @@ func (noderesourceData *nodeResources) updateMemoryAvailable(numaData map[int]ma
 
 	requestedSize, err := strconv.ParseInt(ri.Data[0], 10, 64)
 	if err != nil {
-		klog.Errorf("failed to parse resource requested size: %w", err)
+		klog.Errorf("failed to parse resource requested size: %v", err)
 		return
 	}
 
@@ -469,7 +474,7 @@ func getMemoryResourcesCapacity() (utils.NumaMemoryResources, error) {
 	capacity := make(utils.NumaMemoryResources)
 	for numaID, resources := range memoryResources {
 		if _, ok := capacity[numaID]; !ok {
-			capacity[numaID] = map[v1.ResourceName]int64{}
+			capacity[numaID] = map[corev1.ResourceName]int64{}
 		}
 
 		for resourceName, value := range resources {

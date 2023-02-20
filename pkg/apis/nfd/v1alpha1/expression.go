@@ -25,35 +25,23 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
-
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 )
 
 var matchOps = map[MatchOp]struct{}{
-	MatchAny:          struct{}{},
-	MatchIn:           struct{}{},
-	MatchNotIn:        struct{}{},
-	MatchInRegexp:     struct{}{},
-	MatchExists:       struct{}{},
-	MatchDoesNotExist: struct{}{},
-	MatchGt:           struct{}{},
-	MatchLt:           struct{}{},
-	MatchGtLt:         struct{}{},
-	MatchIsTrue:       struct{}{},
-	MatchIsFalse:      struct{}{},
+	MatchAny:          {},
+	MatchIn:           {},
+	MatchNotIn:        {},
+	MatchInRegexp:     {},
+	MatchExists:       {},
+	MatchDoesNotExist: {},
+	MatchGt:           {},
+	MatchLt:           {},
+	MatchGtLt:         {},
+	MatchIsTrue:       {},
+	MatchIsFalse:      {},
 }
 
 type valueRegexpCache []*regexp.Regexp
-
-// NewMatchExpressionSet returns a new MatchExpressionSet instance.
-func NewMatchExpressionSet() *MatchExpressionSet {
-	return &MatchExpressionSet{Expressions: make(Expressions)}
-}
-
-// Len returns the number of expressions.
-func (e *Expressions) Len() int {
-	return len(*e)
-}
 
 // CreateMatchExpression creates a new MatchExpression instance. Returns an
 // error if validation fails.
@@ -90,44 +78,44 @@ func (m *MatchExpression) Validate() error {
 	switch m.Op {
 	case MatchExists, MatchDoesNotExist, MatchIsTrue, MatchIsFalse, MatchAny:
 		if len(m.Value) != 0 {
-			return fmt.Errorf("Value must be empty for Op %q (have %v)", m.Op, m.Value)
+			return fmt.Errorf("value must be empty for Op %q (have %v)", m.Op, m.Value)
 		}
 	case MatchGt, MatchLt:
 		if len(m.Value) != 1 {
-			return fmt.Errorf("Value must contain exactly one element for Op %q (have %v)", m.Op, m.Value)
+			return fmt.Errorf("value must contain exactly one element for Op %q (have %v)", m.Op, m.Value)
 		}
 		if _, err := strconv.Atoi(m.Value[0]); err != nil {
-			return fmt.Errorf("Value must be an integer for Op %q (have %v)", m.Op, m.Value[0])
+			return fmt.Errorf("value must be an integer for Op %q (have %v)", m.Op, m.Value[0])
 		}
 	case MatchGtLt:
 		if len(m.Value) != 2 {
-			return fmt.Errorf("Value must contain exactly two elements for Op %q (have %v)", m.Op, m.Value)
+			return fmt.Errorf("value must contain exactly two elements for Op %q (have %v)", m.Op, m.Value)
 		}
 		var err error
 		v := make([]int, 2)
 		for i := 0; i < 2; i++ {
 			if v[i], err = strconv.Atoi(m.Value[i]); err != nil {
-				return fmt.Errorf("Value must contain integers for Op %q (have %v)", m.Op, m.Value)
+				return fmt.Errorf("value must contain integers for Op %q (have %v)", m.Op, m.Value)
 			}
 		}
 		if v[0] >= v[1] {
-			return fmt.Errorf("Value[0] must be less than Value[1] for Op %q (have %v)", m.Op, m.Value)
+			return fmt.Errorf("value[0] must be less than Value[1] for Op %q (have %v)", m.Op, m.Value)
 		}
 	case MatchInRegexp:
 		if len(m.Value) == 0 {
-			return fmt.Errorf("Value must be non-empty for Op %q", m.Op)
+			return fmt.Errorf("value must be non-empty for Op %q", m.Op)
 		}
 		m.valueRe = make([]*regexp.Regexp, len(m.Value))
 		for i, v := range m.Value {
 			re, err := regexp.Compile(v)
 			if err != nil {
-				return fmt.Errorf("Value must only contain valid regexps for Op %q (have %v)", m.Op, m.Value)
+				return fmt.Errorf("value must only contain valid regexps for Op %q (have %v)", m.Op, m.Value)
 			}
 			m.valueRe[i] = re
 		}
 	default:
 		if len(m.Value) == 0 {
-			return fmt.Errorf("Value must be non-empty for Op %q", m.Op)
+			return fmt.Errorf("value must be non-empty for Op %q", m.Op)
 		}
 	}
 	return nil
@@ -207,7 +195,7 @@ func (m *MatchExpression) Match(valid bool, value interface{}) (bool, error) {
 }
 
 // MatchKeys evaluates the MatchExpression against a set of keys.
-func (m *MatchExpression) MatchKeys(name string, keys map[string]feature.Nil) (bool, error) {
+func (m *MatchExpression) MatchKeys(name string, keys map[string]Nil) (bool, error) {
 	matched := false
 
 	_, ok := keys[name]
@@ -313,7 +301,7 @@ func (m *MatchExpression) UnmarshalJSON(data []byte) error {
 }
 
 // MatchKeys evaluates the MatchExpressionSet against a set of keys.
-func (m *MatchExpressionSet) MatchKeys(keys map[string]feature.Nil) (bool, error) {
+func (m *MatchExpressionSet) MatchKeys(keys map[string]Nil) (bool, error) {
 	matched, _, err := m.MatchGetKeys(keys)
 	return matched, err
 }
@@ -328,10 +316,10 @@ type MatchedKey struct {
 // empty MatchExpressionSet returns all existing keys are returned. Note that
 // an empty MatchExpressionSet and an empty set of keys returns an empty slice
 // which is not nil and is treated as a match.
-func (m *MatchExpressionSet) MatchGetKeys(keys map[string]feature.Nil) (bool, []MatchedKey, error) {
-	ret := make([]MatchedKey, 0, m.Len())
+func (m *MatchExpressionSet) MatchGetKeys(keys map[string]Nil) (bool, []MatchedKey, error) {
+	ret := make([]MatchedKey, 0, len(*m))
 
-	for n, e := range (*m).Expressions {
+	for n, e := range *m {
 		match, err := e.MatchKeys(n, keys)
 		if err != nil {
 			return false, nil, err
@@ -364,9 +352,9 @@ type MatchedValue struct {
 // MatchExpressionSet and an empty set of values returns an empty non-nil map
 // which is treated as a match.
 func (m *MatchExpressionSet) MatchGetValues(values map[string]string) (bool, []MatchedValue, error) {
-	ret := make([]MatchedValue, 0, m.Len())
+	ret := make([]MatchedValue, 0, len(*m))
 
-	for n, e := range (*m).Expressions {
+	for n, e := range *m {
 		match, err := e.MatchValues(n, values)
 		if err != nil {
 			return false, nil, err
@@ -384,7 +372,7 @@ func (m *MatchExpressionSet) MatchGetValues(values map[string]string) (bool, []M
 // MatchInstances evaluates the MatchExpressionSet against a set of instance
 // features, each of which is an individual set of key-value pairs
 // (attributes).
-func (m *MatchExpressionSet) MatchInstances(instances []feature.InstanceFeature) (bool, error) {
+func (m *MatchExpressionSet) MatchInstances(instances []InstanceFeature) (bool, error) {
 	v, err := m.MatchGetInstances(instances)
 	return len(v) > 0, err
 }
@@ -396,7 +384,7 @@ type MatchedInstance map[string]string
 // features, each of which is an individual set of key-value pairs
 // (attributes). A slice containing all matching instances is returned. An
 // empty (non-nil) slice is returned if no matching instances were found.
-func (m *MatchExpressionSet) MatchGetInstances(instances []feature.InstanceFeature) ([]MatchedInstance, error) {
+func (m *MatchExpressionSet) MatchGetInstances(instances []InstanceFeature) ([]MatchedInstance, error) {
 	ret := []MatchedInstance{}
 
 	for _, i := range instances {
@@ -411,7 +399,7 @@ func (m *MatchExpressionSet) MatchGetInstances(instances []feature.InstanceFeatu
 
 // UnmarshalJSON implements the Unmarshaler interface of "encoding/json".
 func (m *MatchExpressionSet) UnmarshalJSON(data []byte) error {
-	*m = *NewMatchExpressionSet()
+	*m = MatchExpressionSet{}
 
 	names := make([]string, 0)
 	if err := json.Unmarshal(data, &names); err == nil {
@@ -419,9 +407,9 @@ func (m *MatchExpressionSet) UnmarshalJSON(data []byte) error {
 		for _, name := range names {
 			split := strings.SplitN(name, "=", 2)
 			if len(split) == 1 {
-				(*m).Expressions[split[0]] = newMatchExpression(MatchExists)
+				(*m)[split[0]] = newMatchExpression(MatchExists)
 			} else {
-				(*m).Expressions[split[0]] = newMatchExpression(MatchIn, split[1])
+				(*m)[split[0]] = newMatchExpression(MatchIn, split[1])
 			}
 		}
 	} else {
@@ -432,9 +420,9 @@ func (m *MatchExpressionSet) UnmarshalJSON(data []byte) error {
 		}
 		for k, v := range expressions {
 			if v != nil {
-				(*m).Expressions[k] = v
+				(*m)[k] = v
 			} else {
-				(*m).Expressions[k] = newMatchExpression(MatchExists)
+				(*m)[k] = newMatchExpression(MatchExists)
 			}
 		}
 	}
@@ -500,6 +488,7 @@ func (in *valueRegexpCache) DeepCopy() *valueRegexpCache {
 }
 
 // DeepCopyInto is a stub to augment the auto-generated code
+//
 //nolint:staticcheck  // re.Copy is deprecated but we want to use  it here
 func (in *valueRegexpCache) DeepCopyInto(out *valueRegexpCache) {
 	*out = make(valueRegexpCache, len(*in))

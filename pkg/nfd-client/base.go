@@ -20,13 +20,13 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"time"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/klog/v2"
 
 	"github.com/openshift/node-feature-discovery/pkg/utils"
@@ -49,20 +49,12 @@ type Args struct {
 	CaFile             string
 	CertFile           string
 	KeyFile            string
+	Kubeconfig         string
 	Server             string
 	ServerNameOverride string
 
 	Klog map[string]*utils.KlogFlagVal
 }
-
-var nodeName string
-
-func init() {
-	nodeName = os.Getenv("NODE_NAME")
-}
-
-// NodeName returns the name of the k8s node we're running on.
-func NodeName() string { return nodeName }
 
 // NewNfdBaseClient creates a new NfdBaseClient instance.
 func NewNfdBaseClient(args *Args) (NfdBaseClient, error) {
@@ -105,7 +97,7 @@ func (w *NfdBaseClient) Connect() error {
 			return fmt.Errorf("failed to load client certificate: %v", err)
 		}
 		// Load CA cert for server cert verification
-		caCert, err := ioutil.ReadFile(w.args.CaFile)
+		caCert, err := os.ReadFile(w.args.CaFile)
 		if err != nil {
 			return fmt.Errorf("failed to read root certificate file: %v", err)
 		}
@@ -122,7 +114,7 @@ func (w *NfdBaseClient) Connect() error {
 		}
 		dialOpts = append(dialOpts, grpc.WithTransportCredentials(credentials.NewTLS(tlsConfig)))
 	} else {
-		dialOpts = append(dialOpts, grpc.WithInsecure())
+		dialOpts = append(dialOpts, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	}
 	klog.Infof("connecting to nfd-master at %s ...", w.args.Server)
 	conn, err := grpc.DialContext(dialCtx, w.args.Server, dialOpts...)

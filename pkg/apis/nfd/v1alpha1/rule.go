@@ -22,9 +22,9 @@ import (
 	"strings"
 	"text/template"
 
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
@@ -33,10 +33,11 @@ import (
 type RuleOutput struct {
 	Labels map[string]string
 	Vars   map[string]string
+	Taints []corev1.Taint
 }
 
 // Execute the rule against a set of input features.
-func (r *Rule) Execute(features feature.Features) (RuleOutput, error) {
+func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 	labels := make(map[string]string)
 	vars := make(map[string]string)
 
@@ -50,11 +51,13 @@ func (r *Rule) Execute(features feature.Features) (RuleOutput, error) {
 				matched = true
 				utils.KlogDump(4, "matches for matchAny "+r.Name, "  ", matches)
 
-				if r.labelsTemplate == nil {
-					// No templating so we stop here (further matches would just
-					// produce the same labels)
+				if r.LabelsTemplate == "" && r.VarsTemplate == "" {
+					// there's no need to evaluate other matchers in MatchAny
+					// if there are no templates to be executed on them - so
+					// short-circuit and stop on first match here
 					break
 				}
+
 				if err := r.executeLabelsTemplate(matches, labels); err != nil {
 					return RuleOutput{}, err
 				}
@@ -93,9 +96,8 @@ func (r *Rule) Execute(features feature.Features) (RuleOutput, error) {
 		vars[k] = v
 	}
 
-	ret := RuleOutput{Labels: labels, Vars: vars}
+	ret := RuleOutput{Labels: labels, Vars: vars, Taints: r.Taints}
 	utils.KlogDump(2, fmt.Sprintf("rule %q matched with: ", r.Name), "  ", ret)
-
 	return ret, nil
 }
 
@@ -148,51 +150,47 @@ type matchedFeatures map[string]domainMatchedFeatures
 
 type domainMatchedFeatures map[string]interface{}
 
-func (e *MatchAnyElem) match(features map[string]*feature.DomainFeatures) (bool, matchedFeatures, error) {
+func (e *MatchAnyElem) match(features *Features) (bool, matchedFeatures, error) {
 	return e.MatchFeatures.match(features)
 }
 
-func (m *FeatureMatcher) match(features map[string]*feature.DomainFeatures) (bool, matchedFeatures, error) {
+func (m *FeatureMatcher) match(features *Features) (bool, matchedFeatures, error) {
 	matches := make(matchedFeatures, len(*m))
 
 	// Logical AND over the terms
 	for _, term := range *m {
-		split := strings.SplitN(term.Feature, ".", 2)
-		if len(split) != 2 {
-			return false, nil, fmt.Errorf("invalid feature %q: must be <domain>.<feature>", term.Feature)
-		}
-		domain := split[0]
 		// Ignore case
-		featureName := strings.ToLower(split[1])
+		featureName := strings.ToLower(term.Feature)
 
-		domainFeatures, ok := features[domain]
-		if !ok {
-			return false, nil, fmt.Errorf("unknown feature source/domain %q", domain)
+		nameSplit := strings.SplitN(term.Feature, ".", 2)
+		if len(nameSplit) != 2 {
+			klog.Warning("feature %q not of format <domain>.<feature>, cannot be used for templating", term.Feature)
+			nameSplit = []string{featureName, ""}
 		}
 
-		if _, ok := matches[domain]; !ok {
-			matches[domain] = make(domainMatchedFeatures)
+		if _, ok := matches[nameSplit[0]]; !ok {
+			matches[nameSplit[0]] = make(domainMatchedFeatures)
 		}
 
 		var isMatch bool
 		var err error
-		if f, ok := domainFeatures.Keys[featureName]; ok {
+		if f, ok := features.Flags[featureName]; ok {
 			m, v, e := term.MatchExpressions.MatchGetKeys(f.Elements)
 			isMatch = m
 			err = e
-			matches[domain][featureName] = v
-		} else if f, ok := domainFeatures.Values[featureName]; ok {
+			matches[nameSplit[0]][nameSplit[1]] = v
+		} else if f, ok := features.Attributes[featureName]; ok {
 			m, v, e := term.MatchExpressions.MatchGetValues(f.Elements)
 			isMatch = m
 			err = e
-			matches[domain][featureName] = v
-		} else if f, ok := domainFeatures.Instances[featureName]; ok {
+			matches[nameSplit[0]][nameSplit[1]] = v
+		} else if f, ok := features.Instances[featureName]; ok {
 			v, e := term.MatchExpressions.MatchGetInstances(f.Elements)
 			isMatch = len(v) > 0
 			err = e
-			matches[domain][featureName] = v
+			matches[nameSplit[0]][nameSplit[1]] = v
 		} else {
-			return false, nil, fmt.Errorf("%q feature of source/domain %q not available", featureName, domain)
+			return false, nil, fmt.Errorf("feature %q not available", featureName)
 		}
 
 		if err != nil {

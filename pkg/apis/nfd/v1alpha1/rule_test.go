@@ -19,12 +19,11 @@ package v1alpha1
 import (
 	"testing"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	"github.com/stretchr/testify/assert"
 )
 
 func TestRule(t *testing.T) {
-	f := map[string]*feature.DomainFeatures{}
+	f := &Features{}
 	r1 := Rule{Labels: map[string]string{"label-1": "", "label-2": "true"}}
 	r2 := Rule{
 		Labels: map[string]string{"label-1": "label-val-1"},
@@ -33,7 +32,7 @@ func TestRule(t *testing.T) {
 			FeatureMatcherTerm{
 				Feature: "domain-1.kf-1",
 				MatchExpressions: MatchExpressionSet{
-					Expressions: Expressions{"key-1": MustCreateMatchExpression(MatchExists)},
+					"key-1": MustCreateMatchExpression(MatchExists),
 				},
 			},
 		},
@@ -45,11 +44,10 @@ func TestRule(t *testing.T) {
 	assert.Equal(t, r1.Labels, m.Labels, "empty matcher should have matched empty features")
 
 	_, err = r2.Execute(f)
-	assert.Error(t, err, "matching against a missing domain should have returned an error")
+	assert.Error(t, err, "matching against a missing feature should have returned an error")
 
-	// Test empty domain
-	d := feature.NewDomainFeatures()
-	f["domain-1"] = d
+	// Test properly initialized empty features
+	f = NewFeatures()
 
 	m, err = r1.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
@@ -60,9 +58,9 @@ func TestRule(t *testing.T) {
 	assert.Error(t, err, "matching against a missing feature type should have returned an error")
 
 	// Test empty feature sets
-	d.Keys["kf-1"] = feature.NewKeyFeatures()
-	d.Values["vf-1"] = feature.NewValueFeatures(nil)
-	d.Instances["if-1"] = feature.NewInstanceFeatures(nil)
+	f.Flags["domain-1.kf-1"] = NewFlagFeatures()
+	f.Attributes["domain-1.vf-1"] = NewAttributeFeatures(nil)
+	f.Instances["domain-1.if-1"] = NewInstanceFeatures(nil)
 
 	m, err = r1.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
@@ -73,10 +71,10 @@ func TestRule(t *testing.T) {
 	assert.Nil(t, m.Labels, "unexpected match")
 
 	// Test non-empty feature sets
-	d.Keys["kf-1"].Elements["key-x"] = feature.Nil{}
-	d.Values["vf-1"].Elements["key-1"] = "val-x"
-	d.Instances["if-1"] = feature.NewInstanceFeatures([]feature.InstanceFeature{
-		*feature.NewInstanceFeature(map[string]string{"attr-1": "val-x"})})
+	f.Flags["domain-1.kf-1"].Elements["key-x"] = Nil{}
+	f.Attributes["domain-1.vf-1"].Elements["key-1"] = "val-x"
+	f.Instances["domain-1.if-1"] = NewInstanceFeatures([]InstanceFeature{
+		*NewInstanceFeature(map[string]string{"attr-1": "val-x"})})
 
 	m, err = r1.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
@@ -98,7 +96,7 @@ func TestRule(t *testing.T) {
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Nil(t, m.Labels, "keys should not have matched")
 
-	d.Keys["kf-1"].Elements["key-1"] = feature.Nil{}
+	f.Flags["domain-1.kf-1"].Elements["key-1"] = Nil{}
 	m, err = r2.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Equal(t, r2.Labels, m.Labels, "keys should have matched")
@@ -111,7 +109,7 @@ func TestRule(t *testing.T) {
 			FeatureMatcherTerm{
 				Feature: "domain-1.vf-1",
 				MatchExpressions: MatchExpressionSet{
-					Expressions: Expressions{"key-1": MustCreateMatchExpression(MatchIn, "val-1")},
+					"key-1": MustCreateMatchExpression(MatchIn, "val-1"),
 				},
 			},
 		},
@@ -120,7 +118,7 @@ func TestRule(t *testing.T) {
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Nil(t, m.Labels, "values should not have matched")
 
-	d.Values["vf-1"].Elements["key-1"] = "val-1"
+	f.Attributes["domain-1.vf-1"].Elements["key-1"] = "val-1"
 	m, err = r3.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Equal(t, r3.Labels, m.Labels, "values should have matched")
@@ -132,7 +130,7 @@ func TestRule(t *testing.T) {
 			FeatureMatcherTerm{
 				Feature: "domain-1.if-1",
 				MatchExpressions: MatchExpressionSet{
-					Expressions: Expressions{"attr-1": MustCreateMatchExpression(MatchIn, "val-1")},
+					"attr-1": MustCreateMatchExpression(MatchIn, "val-1"),
 				},
 			},
 		},
@@ -141,7 +139,7 @@ func TestRule(t *testing.T) {
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Nil(t, m.Labels, "instances should not have matched")
 
-	d.Instances["if-1"].Elements[0].Attributes["attr-1"] = "val-1"
+	f.Instances["domain-1.if-1"].Elements[0].Attributes["attr-1"] = "val-1"
 	m, err = r4.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Equal(t, r4.Labels, m.Labels, "instances should have matched")
@@ -153,13 +151,13 @@ func TestRule(t *testing.T) {
 			FeatureMatcherTerm{
 				Feature: "domain-1.vf-1",
 				MatchExpressions: MatchExpressionSet{
-					Expressions: Expressions{"key-1": MustCreateMatchExpression(MatchIn, "val-x")},
+					"key-1": MustCreateMatchExpression(MatchIn, "val-x"),
 				},
 			},
 			FeatureMatcherTerm{
 				Feature: "domain-1.if-1",
 				MatchExpressions: MatchExpressionSet{
-					Expressions: Expressions{"attr-1": MustCreateMatchExpression(MatchIn, "val-1")},
+					"attr-1": MustCreateMatchExpression(MatchIn, "val-1"),
 				},
 			},
 		},
@@ -168,19 +166,19 @@ func TestRule(t *testing.T) {
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Nil(t, m.Labels, "instances should not have matched")
 
-	r5.MatchFeatures[0].MatchExpressions.Expressions["key-1"] = MustCreateMatchExpression(MatchIn, "val-1")
+	r5.MatchFeatures[0].MatchExpressions["key-1"] = MustCreateMatchExpression(MatchIn, "val-1")
 	m, err = r5.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Equal(t, r5.Labels, m.Labels, "instances should have matched")
 
 	// Test MatchAny
 	r5.MatchAny = []MatchAnyElem{
-		MatchAnyElem{
+		{
 			MatchFeatures: FeatureMatcher{
 				FeatureMatcherTerm{
 					Feature: "domain-1.kf-1",
 					MatchExpressions: MatchExpressionSet{
-						Expressions: Expressions{"key-na": MustCreateMatchExpression(MatchExists)},
+						"key-na": MustCreateMatchExpression(MatchExists),
 					},
 				},
 			},
@@ -196,58 +194,56 @@ func TestRule(t *testing.T) {
 				FeatureMatcherTerm{
 					Feature: "domain-1.kf-1",
 					MatchExpressions: MatchExpressionSet{
-						Expressions: Expressions{"key-1": MustCreateMatchExpression(MatchExists)},
+						"key-1": MustCreateMatchExpression(MatchExists),
 					},
 				},
 			},
 		})
-	r5.MatchFeatures[0].MatchExpressions.Expressions["key-1"] = MustCreateMatchExpression(MatchIn, "val-1")
+	r5.MatchFeatures[0].MatchExpressions["key-1"] = MustCreateMatchExpression(MatchIn, "val-1")
 	m, err = r5.Execute(f)
 	assert.Nilf(t, err, "unexpected error: %v", err)
 	assert.Equal(t, r5.Labels, m.Labels, "instances should have matched")
 }
 
 func TestTemplating(t *testing.T) {
-	f := map[string]*feature.DomainFeatures{
-		"domain_1": &feature.DomainFeatures{
-			Keys: map[string]feature.KeyFeatureSet{
-				"kf_1": feature.KeyFeatureSet{
-					Elements: map[string]feature.Nil{
-						"key-a": feature.Nil{},
-						"key-b": feature.Nil{},
-						"key-c": feature.Nil{},
-					},
+	f := &Features{
+		Flags: map[string]FlagFeatureSet{
+			"domain_1.kf_1": {
+				Elements: map[string]Nil{
+					"key-a": {},
+					"key-b": {},
+					"key-c": {},
 				},
 			},
-			Values: map[string]feature.ValueFeatureSet{
-				"vf_1": feature.ValueFeatureSet{
-					Elements: map[string]string{
-						"key-1": "val-1",
-						"keu-2": "val-2",
-						"key-3": "val-3",
-					},
+		},
+		Attributes: map[string]AttributeFeatureSet{
+			"domain_1.vf_1": {
+				Elements: map[string]string{
+					"key-1": "val-1",
+					"keu-2": "val-2",
+					"key-3": "val-3",
 				},
 			},
-			Instances: map[string]feature.InstanceFeatureSet{
-				"if_1": feature.InstanceFeatureSet{
-					Elements: []feature.InstanceFeature{
-						feature.InstanceFeature{
-							Attributes: map[string]string{
-								"attr-1": "1",
-								"attr-2": "val-2",
-							},
+		},
+		Instances: map[string]InstanceFeatureSet{
+			"domain_1.if_1": {
+				Elements: []InstanceFeature{
+					{
+						Attributes: map[string]string{
+							"attr-1": "1",
+							"attr-2": "val-2",
 						},
-						feature.InstanceFeature{
-							Attributes: map[string]string{
-								"attr-1": "10",
-								"attr-2": "val-20",
-							},
+					},
+					{
+						Attributes: map[string]string{
+							"attr-1": "10",
+							"attr-2": "val-20",
 						},
-						feature.InstanceFeature{
-							Attributes: map[string]string{
-								"attr-1": "100",
-								"attr-2": "val-200",
-							},
+					},
+					{
+						Attributes: map[string]string{
+							"attr-1": "100",
+							"attr-2": "val-200",
 						},
 					},
 				},
@@ -275,30 +271,32 @@ var-2=
 		MatchFeatures: FeatureMatcher{
 			FeatureMatcherTerm{
 				Feature: "domain_1.kf_1",
-				MatchExpressions: MatchExpressionSet{Expressions: Expressions{
+				MatchExpressions: MatchExpressionSet{
 					"key-a": MustCreateMatchExpression(MatchExists),
 					"key-c": MustCreateMatchExpression(MatchExists),
 					"foo":   MustCreateMatchExpression(MatchDoesNotExist),
 				},
-				},
 			},
 			FeatureMatcherTerm{
 				Feature: "domain_1.vf_1",
-				MatchExpressions: MatchExpressionSet{Expressions: Expressions{
+				MatchExpressions: MatchExpressionSet{
 					"key-1": MustCreateMatchExpression(MatchIn, "val-1", "val-2"),
 					"bar":   MustCreateMatchExpression(MatchDoesNotExist),
-				},
 				},
 			},
 			FeatureMatcherTerm{
 				Feature: "domain_1.if_1",
-				MatchExpressions: MatchExpressionSet{Expressions: Expressions{
+				MatchExpressions: MatchExpressionSet{
 					"attr-1": MustCreateMatchExpression(MatchLt, "100"),
-				},
 				},
 			},
 		},
 	}
+
+	// test with empty MatchFeatures, but with MatchAny
+	r3 := r1.DeepCopy()
+	r3.MatchAny = []MatchAnyElem{{MatchFeatures: r3.MatchFeatures}}
+	r3.MatchFeatures = nil
 
 	expectedLabels := map[string]string{
 		"label-1": "label-val-1",
@@ -328,6 +326,11 @@ var-2=
 	assert.Equal(t, expectedLabels, m.Labels, "instances should have matched")
 	assert.Equal(t, expectedVars, m.Vars, "instances should have matched")
 
+	m, err = r3.Execute(f)
+	assert.Nilf(t, err, "unexpected error: %v", err)
+	assert.Equal(t, expectedLabels, m.Labels, "instances should have matched")
+	assert.Equal(t, expectedVars, m.Vars, "instances should have matched")
+
 	//
 	// Test error cases
 	//
@@ -337,9 +340,8 @@ var-2=
 			// Use a simple empty matchexpression set to match anything.
 			FeatureMatcherTerm{
 				Feature: "domain_1.kf_1",
-				MatchExpressions: MatchExpressionSet{Expressions: Expressions{
+				MatchExpressions: MatchExpressionSet{
 					"key-a": MustCreateMatchExpression(MatchExists),
-				},
 				},
 			},
 		},

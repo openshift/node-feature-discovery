@@ -17,8 +17,82 @@ limitations under the License.
 package v1alpha1
 
 import (
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
+
+// NodeFeatureList contains a list of NodeFeature objects.
+// +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type NodeFeatureList struct {
+	metav1.TypeMeta `json:",inline"`
+	metav1.ListMeta `json:"metadata"`
+
+	Items []NodeFeature `json:"items"`
+}
+
+// NodeFeature resource holds the features discovered for one node in the
+// cluster.
+// +kubebuilder:object:root=true
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+// +genclient
+type NodeFeature struct {
+	metav1.TypeMeta   `json:",inline"`
+	metav1.ObjectMeta `json:"metadata,omitempty"`
+
+	Spec NodeFeatureSpec `json:"spec"`
+}
+
+// NodeFeatureSpec describes a NodeFeature object.
+type NodeFeatureSpec struct {
+	// Features is the full "raw" features data that has been discovered.
+	Features Features `json:"features"`
+	// Labels is the set of node labels that are requested to be created.
+	// +optional
+	Labels map[string]string `json:"labels"`
+}
+
+// Features is the collection of all discovered features.
+//
+// +protobuf=true
+type Features struct {
+	Flags      map[string]FlagFeatureSet      `json:"flags" protobuf:"bytes,1,rep,name=flags"`
+	Attributes map[string]AttributeFeatureSet `json:"attributes" protobuf:"bytes,2,rep,name=vattributes"`
+	Instances  map[string]InstanceFeatureSet  `json:"instances" protobuf:"bytes,3,rep,name=instances"`
+}
+
+// FlagFeatureSet is a set of simple features only containing names without values.
+//
+// +protobuf=true
+type FlagFeatureSet struct {
+	Elements map[string]Nil `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+}
+
+// AttributeFeatureSet is a set of features having string value.
+//
+// +protobuf=true
+type AttributeFeatureSet struct {
+	Elements map[string]string `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+}
+
+// InstanceFeatureSet is a set of features each of which is an instance having multiple attributes.
+//
+// +protobuf=true
+type InstanceFeatureSet struct {
+	Elements []InstanceFeature `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+}
+
+// InstanceFeature represents one instance of a complex features, e.g. a device.
+//
+// +protobuf=true
+type InstanceFeature struct {
+	Attributes map[string]string `json:"attributes" protobuf:"bytes,1,rep,name=attributes"`
+}
+
+// Nil is a dummy empty struct for protobuf compatibility
+//
+// +protobuf=true
+type Nil struct{}
 
 // NodeFeatureRuleList contains a list of NodeFeatureRule objects.
 // +kubebuilder:object:root=true
@@ -33,7 +107,7 @@ type NodeFeatureRuleList struct {
 // NodeFeatureRule resource specifies a configuration for feature-based
 // customization of node objects, such as node labeling.
 // +kubebuilder:object:root=true
-// +kubebuilder:resource:scope=Cluster
+// +kubebuilder:resource:scope=Cluster,shortName=nfr
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
 // +genclient
 // +genclient:nonNamespaced
@@ -78,6 +152,10 @@ type Rule struct {
 	// +optional
 	VarsTemplate string `json:"varsTemplate"`
 
+	// Taints to create if the rule matches.
+	// +optional
+	Taints []corev1.Taint `json:"taints,omitempty"`
+
 	// MatchFeatures specifies a set of matcher terms all of which must match.
 	// +optional
 	MatchFeatures FeatureMatcher `json:"matchFeatures"`
@@ -111,21 +189,19 @@ type FeatureMatcherTerm struct {
 
 // MatchExpressionSet contains a set of MatchExpressions, each of which is
 // evaluated against a set of input values.
-type MatchExpressionSet struct {
-	Expressions `json:",inline"`
-}
+type MatchExpressionSet map[string]*MatchExpression
 
 // Expressions is a helper type to work around issues with k8s deepcopy-gen
-type Expressions map[string]*MatchExpression
 
 // MatchExpression specifies an expression to evaluate against a set of input
 // values. It contains an operator that is applied when matching the input and
 // an array of values that the operator evaluates the input against.
 //
 // NB: CreateMatchExpression or MustCreateMatchExpression() should be used for
-//     creating new instances.
+// creating new instances.
+//
 // NB: Validate() must be called if Op or Value fields are modified or if a new
-//     instance is created from scratch without using the helper functions.
+// instance is created from scratch without using the helper functions.
 type MatchExpression struct {
 	// Op is the operator to be applied.
 	Op MatchOp `json:"op"`

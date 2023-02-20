@@ -18,14 +18,14 @@ package pci
 
 import (
 	"fmt"
-	"io/ioutil"
+	"os"
 	"path/filepath"
 	"strings"
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
-	"github.com/openshift/node-feature-discovery/source"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 var mandatoryDevAttrs = []string{"class", "vendor", "device", "subsystem_vendor", "subsystem_device"}
@@ -34,7 +34,7 @@ var optionalDevAttrs = []string{"sriov_totalvfs", "iommu_group/type"}
 // Read a single PCI device attribute
 // A PCI attribute in this context, maps to the corresponding sysfs file
 func readSinglePciAttribute(devPath string, attrName string) (string, error) {
-	data, err := ioutil.ReadFile(filepath.Join(devPath, attrName))
+	data, err := os.ReadFile(filepath.Join(devPath, attrName))
 	if err != nil {
 		return "", fmt.Errorf("failed to read device attribute %s: %v", attrName, err)
 	}
@@ -50,7 +50,7 @@ func readSinglePciAttribute(devPath string, attrName string) (string, error) {
 }
 
 // Read information of one PCI device
-func readPciDevInfo(devPath string) (*feature.InstanceFeature, error) {
+func readPciDevInfo(devPath string) (*nfdv1alpha1.InstanceFeature, error) {
 	attrs := make(map[string]string)
 	for _, attr := range mandatoryDevAttrs {
 		attrVal, err := readSinglePciAttribute(devPath, attr)
@@ -65,21 +65,21 @@ func readPciDevInfo(devPath string) (*feature.InstanceFeature, error) {
 			attrs[attr] = attrVal
 		}
 	}
-	return feature.NewInstanceFeature(attrs), nil
+	return nfdv1alpha1.NewInstanceFeature(attrs), nil
 }
 
 // detectPci detects available PCI devices and retrieves their device attributes.
 // An error is returned if reading any of the mandatory attributes fails.
-func detectPci() ([]feature.InstanceFeature, error) {
-	sysfsBasePath := source.SysfsDir.Path("bus/pci/devices")
+func detectPci() ([]nfdv1alpha1.InstanceFeature, error) {
+	sysfsBasePath := hostpath.SysfsDir.Path("bus/pci/devices")
 
-	devices, err := ioutil.ReadDir(sysfsBasePath)
+	devices, err := os.ReadDir(sysfsBasePath)
 	if err != nil {
 		return nil, err
 	}
 
 	// Iterate over devices
-	devInfo := make([]feature.InstanceFeature, 0, len(devices))
+	devInfo := make([]nfdv1alpha1.InstanceFeature, 0, len(devices))
 	for _, device := range devices {
 		info, err := readPciDevInfo(filepath.Join(sysfsBasePath, device.Name()))
 		if err != nil {

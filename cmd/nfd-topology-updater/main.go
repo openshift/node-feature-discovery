@@ -19,23 +19,26 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/url"
 	"os"
 	"time"
 
 	"k8s.io/klog/v2"
+	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
-	"github.com/openshift/node-feature-discovery/pkg/kubeconf"
-	topology "github.com/openshift/node-feature-discovery/pkg/nfd-client/topology-updater"
+	topology "github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/kubeconf"
 	"github.com/openshift/node-feature-discovery/pkg/version"
-	"github.com/openshift/node-feature-discovery/source"
 )
 
 const (
 	// ProgramName is the canonical name of this program
-	ProgramName = "nfd-topology-updater"
+	ProgramName       = "nfd-topology-updater"
+	kubeletSecurePort = 10250
 )
 
 func main() {
@@ -58,18 +61,38 @@ func main() {
 	// Plug klog into grpc logging infrastructure
 	utils.ConfigureGrpcKlog()
 
-	klConfig, err := kubeconf.GetKubeletConfigFromLocalFile(resourcemonitorArgs.KubeletConfigFile)
+	u, err := url.ParseRequestURI(resourcemonitorArgs.KubeletConfigURI)
 	if err != nil {
-		klog.Exitf("error reading kubelet config: %v", err)
+		klog.Exitf("failed to parse args for kubelet-config-uri: %v", err)
 	}
+
+	// init kubelet API client
+	var klConfig *kubeletconfigv1beta1.KubeletConfiguration
+	switch u.Scheme {
+	case "file":
+		klConfig, err = kubeconf.GetKubeletConfigFromLocalFile(u.Path)
+		if err != nil {
+			klog.Exitf("failed to read kubelet config: %v", err)
+		}
+	case "https":
+		restConfig, err := kubeconf.InsecureConfig(u.String(), resourcemonitorArgs.APIAuthTokenFile)
+		if err != nil {
+			klog.Exitf("failed to initialize rest config for kubelet config uri: %v", err)
+		}
+
+		klConfig, err = kubeconf.GetKubeletConfiguration(restConfig)
+		if err != nil {
+			klog.Exitf("failed to get kubelet config from configz endpoint: %v", err)
+		}
+	default:
+		klog.Exitf("unsupported URI scheme: %v", u.Scheme)
+	}
+
 	tmPolicy := string(topologypolicy.DetectTopologyPolicy(klConfig.TopologyManagerPolicy, klConfig.TopologyManagerScope))
 	klog.Infof("detected kubelet Topology Manager policy %q", tmPolicy)
 
 	// Get new TopologyUpdater instance
-	instance, err := topology.NewTopologyUpdater(*args, *resourcemonitorArgs, tmPolicy)
-	if err != nil {
-		klog.Exitf("failed to initialize TopologyUpdater instance: %v", err)
-	}
+	instance := topology.NewTopologyUpdater(*args, *resourcemonitorArgs, tmPolicy)
 
 	if err = instance.Run(); err != nil {
 		klog.Exit(err)
@@ -86,6 +109,15 @@ func parseArgs(flags *flag.FlagSet, osArgs ...string) (*topology.Args, *resource
 		os.Exit(2)
 	}
 
+	if len(resourcemonitorArgs.KubeletConfigURI) == 0 {
+		if len(utils.NodeName()) == 0 {
+			fmt.Fprintf(flags.Output(), "unable to determine the default kubelet config endpoint 'https://${NODE_NAME}:%d/configz' due to empty NODE_NAME environment, "+
+				"please either define the NODE_NAME environment variable or specify endpoint with the -kubelet-config-uri flag\n", kubeletSecurePort)
+			os.Exit(1)
+		}
+		resourcemonitorArgs.KubeletConfigURI = fmt.Sprintf("https://%s:%d/configz", utils.NodeName(), kubeletSecurePort)
+	}
+
 	return args, resourcemonitorArgs
 }
 
@@ -93,12 +125,6 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 	args := &topology.Args{}
 	resourcemonitorArgs := &resourcemonitor.Args{}
 
-	flagset.StringVar(&args.CaFile, "ca-file", "",
-		"Root certificate for verifying connections")
-	flagset.StringVar(&args.CertFile, "cert-file", "",
-		"Certificate used for authenticating connections")
-	flagset.StringVar(&args.KeyFile, "key-file", "",
-		"Private key matching -cert-file")
 	flagset.BoolVar(&args.Oneshot, "oneshot", false,
 		"Update once and exit")
 	flagset.BoolVar(&args.NoPublish, "no-publish", false,
@@ -109,14 +135,14 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 		"Time to sleep between CR updates. Non-positive value implies no CR updatation (i.e. infinite sleep). [Default: 60s]")
 	flagset.StringVar(&resourcemonitorArgs.Namespace, "watch-namespace", "*",
 		"Namespace to watch pods (for testing/debugging purpose). Use * for all namespaces.")
-	flagset.StringVar(&resourcemonitorArgs.KubeletConfigFile, "kubelet-config-file", source.VarDir.Path("lib/kubelet/config.yaml"),
-		"Kubelet config file path.")
-	flagset.StringVar(&resourcemonitorArgs.PodResourceSocketPath, "podresources-socket", source.VarDir.Path("lib/kubelet/pod-resources/kubelet.sock"),
+	flagset.StringVar(&resourcemonitorArgs.KubeletConfigURI, "kubelet-config-uri", "",
+		"Kubelet config URI path. Default to kubelet configz endpoint.")
+	flagset.StringVar(&resourcemonitorArgs.APIAuthTokenFile, "api-auth-token-file", "/var/run/secrets/kubernetes.io/serviceaccount/token",
+		"API auth token file path. It is used to request kubelet configz endpoint, only takes effect when kubelet-config-uri is https. Default to /var/run/secrets/kubernetes.io/serviceaccount/token.")
+	flagset.StringVar(&resourcemonitorArgs.PodResourceSocketPath, "podresources-socket", hostpath.VarDir.Path("lib/kubelet/pod-resources/kubelet.sock"),
 		"Pod Resource Socket path to use.")
-	flagset.StringVar(&args.Server, "server", "localhost:8080",
-		"NFD server address to connecto to.")
-	flagset.StringVar(&args.ServerNameOverride, "server-name-override", "",
-		"Hostname expected from server certificate, useful in testing")
+	flagset.StringVar(&args.ConfigFile, "config", "/etc/kubernetes/node-feature-discovery/nfd-topology-updater.conf",
+		"Config file to use.")
 
 	klog.InitFlags(flagset)
 

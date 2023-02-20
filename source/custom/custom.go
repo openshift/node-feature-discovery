@@ -25,7 +25,6 @@ import (
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
@@ -108,10 +107,7 @@ func (s *customSource) Priority() int { return 10 }
 // GetLabels method of the LabelSource interface
 func (s *customSource) GetLabels() (source.FeatureLabels, error) {
 	// Get raw features from all sources
-	domainFeatures := make(map[string]*feature.DomainFeatures)
-	for n, s := range source.GetAllFeatureSources() {
-		domainFeatures[n] = s.GetFeatures()
-	}
+	features := source.GetAllFeatures()
 
 	labels := source.FeatureLabels{}
 	allFeatureConfig := append(getStaticFeatureConfig(), *s.config...)
@@ -119,7 +115,7 @@ func (s *customSource) GetLabels() (source.FeatureLabels, error) {
 	utils.KlogDump(2, "custom features configuration:", "  ", allFeatureConfig)
 	// Iterate over features
 	for _, rule := range allFeatureConfig {
-		ruleOut, err := rule.execute(domainFeatures)
+		ruleOut, err := rule.execute(features)
 		if err != nil {
 			klog.Error(err)
 			continue
@@ -129,15 +125,15 @@ func (s *customSource) GetLabels() (source.FeatureLabels, error) {
 			labels[n] = v
 		}
 		// Feed back rule output to features map for subsequent rules to match
-		feature.InsertFeatureValues(domainFeatures, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
-		feature.InsertFeatureValues(domainFeatures, nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
+		features.InsertAttributeFeatures(nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Labels)
+		features.InsertAttributeFeatures(nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
 	}
 	return labels, nil
 }
 
-func (r *CustomRule) execute(features map[string]*feature.DomainFeatures) (nfdv1alpha1.RuleOutput, error) {
+func (r *CustomRule) execute(features *nfdv1alpha1.Features) (nfdv1alpha1.RuleOutput, error) {
 	if r.LegacyRule != nil {
-		ruleOut, err := r.LegacyRule.execute(features)
+		ruleOut, err := r.LegacyRule.execute()
 		if err != nil {
 			return nfdv1alpha1.RuleOutput{}, fmt.Errorf("failed to execute legacy rule %s: %w", r.LegacyRule.Name, err)
 		}
@@ -155,7 +151,7 @@ func (r *CustomRule) execute(features map[string]*feature.DomainFeatures) (nfdv1
 	return nfdv1alpha1.RuleOutput{}, fmt.Errorf("BUG: an empty rule, this really should not happen")
 }
 
-func (r *LegacyRule) execute(features map[string]*feature.DomainFeatures) (map[string]string, error) {
+func (r *LegacyRule) execute() (map[string]string, error) {
 	if len(r.MatchOn) > 0 {
 		// Logical OR over the legacy rules
 		matched := false

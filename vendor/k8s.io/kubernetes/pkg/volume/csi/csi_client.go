@@ -28,6 +28,7 @@ import (
 	csipbv1 "github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	api "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -113,17 +114,14 @@ type csiDriverClient struct {
 }
 
 type csiResizeOptions struct {
-	volumeID string
-	// volumePath is path where volume is available. It could be:
-	//   - path where node is staged if NodeExpandVolume is called after NodeStageVolume
-	//   - path where volume is published if NodeExpandVolume is called after NodePublishVolume
-	// DEPRECATION NOTICE: in future NodeExpandVolume will be always called after NodePublish
+	volumeID          string
 	volumePath        string
 	stagingTargetPath string
 	fsType            string
 	accessMode        api.PersistentVolumeAccessMode
 	newSize           resource.Quantity
 	mountOptions      []string
+	secrets           map[string]string
 }
 
 var _ csiClient = &csiDriverClient{}
@@ -137,7 +135,7 @@ type nodeV1ClientCreator func(addr csiAddr, metricsManager *MetricsManager) (
 type nodeV1AccessModeMapper func(am api.PersistentVolumeAccessMode) csipbv1.VolumeCapability_AccessMode_Mode
 
 // newV1NodeClient creates a new NodeClient with the internally used gRPC
-// connection set up. It also returns a closer which must to be called to close
+// connection set up. It also returns a closer which must be called to close
 // the gRPC connection when the NodeClient is not used anymore.
 // This is the default implementation for the nodeV1ClientCreator, used in
 // newCsiDriverClient.
@@ -176,12 +174,12 @@ func (c *csiDriverClient) NodeGetInfo(ctx context.Context) (
 	maxVolumePerNode int64,
 	accessibleTopology map[string]string,
 	err error) {
-	klog.V(4).Info(log("calling NodeGetInfo rpc"))
+	klog.V(4).InfoS(log("calling NodeGetInfo rpc"))
 
 	var getNodeInfoError error
 	nodeID, maxVolumePerNode, accessibleTopology, getNodeInfoError = c.nodeGetInfoV1(ctx)
 	if getNodeInfoError != nil {
-		klog.Warningf("Error calling CSI NodeGetInfo(): %v", getNodeInfoError.Error())
+		klog.InfoS("Error calling CSI NodeGetInfo()", "err", getNodeInfoError.Error())
 	}
 	return nodeID, maxVolumePerNode, accessibleTopology, getNodeInfoError
 }
@@ -224,7 +222,7 @@ func (c *csiDriverClient) NodePublishVolume(
 	mountOptions []string,
 	fsGroup *int64,
 ) error {
-	klog.V(4).Info(log("calling NodePublishVolume rpc [volid=%s,target_path=%s]", volID, targetPath))
+	klog.V(4).InfoS(log("calling NodePublishVolume rpc"), "volID", volID, "targetPath", targetPath)
 	if volID == "" {
 		return errors.New("missing volume id")
 	}
@@ -324,6 +322,7 @@ func (c *csiDriverClient) NodeExpandVolume(ctx context.Context, opts csiResizeOp
 				Mode: accessModeMapper(opts.accessMode),
 			},
 		},
+		Secrets: opts.secrets,
 	}
 
 	// not all CSI drivers support NodeStageUnstage and hence the StagingTargetPath
@@ -358,7 +357,7 @@ func (c *csiDriverClient) NodeExpandVolume(ctx context.Context, opts csiResizeOp
 }
 
 func (c *csiDriverClient) NodeUnpublishVolume(ctx context.Context, volID string, targetPath string) error {
-	klog.V(4).Info(log("calling NodeUnpublishVolume rpc: [volid=%s, target_path=%s", volID, targetPath))
+	klog.V(4).InfoS(log("calling NodeUnpublishVolume rpc"), "volID", volID, "targetPath", targetPath)
 	if volID == "" {
 		return errors.New("missing volume id")
 	}
@@ -395,7 +394,7 @@ func (c *csiDriverClient) NodeStageVolume(ctx context.Context,
 	mountOptions []string,
 	fsGroup *int64,
 ) error {
-	klog.V(4).Info(log("calling NodeStageVolume rpc [volid=%s,staging_target_path=%s]", volID, stagingTargetPath))
+	klog.V(4).InfoS(log("calling NodeStageVolume rpc"), "volID", volID, "stagingTargetPath", stagingTargetPath)
 	if volID == "" {
 		return errors.New("missing volume id")
 	}
@@ -455,7 +454,7 @@ func (c *csiDriverClient) NodeStageVolume(ctx context.Context,
 }
 
 func (c *csiDriverClient) NodeUnstageVolume(ctx context.Context, volID, stagingTargetPath string) error {
-	klog.V(4).Info(log("calling NodeUnstageVolume rpc [volid=%s,staging_target_path=%s]", volID, stagingTargetPath))
+	klog.V(4).InfoS(log("calling NodeUnstageVolume rpc"), "volID", volID, "stagingTargetPath", stagingTargetPath)
 	if volID == "" {
 		return errors.New("missing volume id")
 	}
@@ -532,11 +531,12 @@ func asSingleNodeMultiWriterCapableCSIAccessModeV1(am api.PersistentVolumeAccess
 
 func newGrpcConn(addr csiAddr, metricsManager *MetricsManager) (*grpc.ClientConn, error) {
 	network := "unix"
-	klog.V(4).Infof(log("creating new gRPC connection for [%s://%s]", network, addr))
+	klog.V(4).InfoS(log("creating new gRPC connection"), "protocol", network, "endpoint", addr)
 
 	return grpc.Dial(
 		string(addr),
-		grpc.WithInsecure(),
+		grpc.WithAuthority("localhost"),
+		grpc.WithTransportCredentials(insecure.NewCredentials()),
 		grpc.WithContextDialer(func(ctx context.Context, target string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, network, target)
 		}),
@@ -586,7 +586,7 @@ func (c *csiDriverClient) NodeSupportsSingleNodeMultiWriterAccessMode(ctx contex
 }
 
 func (c *csiDriverClient) NodeGetVolumeStats(ctx context.Context, volID string, targetPath string) (*volume.Metrics, error) {
-	klog.V(4).Info(log("calling NodeGetVolumeStats rpc: [volid=%s, target_path=%s", volID, targetPath))
+	klog.V(4).InfoS(log("calling NodeGetVolumeStats rpc"), "volID", volID, "targetPath", targetPath)
 	if volID == "" {
 		return nil, errors.New("missing volume id")
 	}
@@ -652,7 +652,7 @@ func (c *csiDriverClient) NodeGetVolumeStats(ctx context.Context, volID string, 
 			metrics.Inodes = resource.NewQuantity(usage.GetTotal(), resource.BinarySI)
 			metrics.InodesUsed = resource.NewQuantity(usage.GetUsed(), resource.BinarySI)
 		default:
-			klog.Errorf("unknown key %s in usage", unit.String())
+			klog.ErrorS(nil, "unknown unit in VolumeUsage", "unit", unit.String())
 		}
 
 	}

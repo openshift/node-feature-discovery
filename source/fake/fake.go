@@ -19,7 +19,7 @@ package fake
 import (
 	"fmt"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 )
@@ -84,7 +84,7 @@ func newDefaultConfig() *Config {
 // fakeSource implements the FeatureSource, LabelSource and ConfigurableSource interfaces.
 type fakeSource struct {
 	config   *Config
-	features *feature.DomainFeatures
+	features *nfdv1alpha1.Features
 }
 
 // Singleton source instance
@@ -116,16 +116,16 @@ func (s *fakeSource) SetConfig(conf source.Config) {
 
 // Discover method of the FeatureSource interface
 func (s *fakeSource) Discover() error {
-	s.features = feature.NewDomainFeatures()
+	s.features = nfdv1alpha1.NewFeatures()
 
-	s.features.Keys[AttributeFeature] = feature.NewKeyFeatures(s.config.FlagFeatures...)
-	s.features.Values[AttributeFeature] = feature.NewValueFeatures(s.config.AttributeFeatures)
+	s.features.Flags[FlagFeature] = nfdv1alpha1.NewFlagFeatures(s.config.FlagFeatures...)
+	s.features.Attributes[AttributeFeature] = nfdv1alpha1.NewAttributeFeatures(s.config.AttributeFeatures)
 
-	instances := make([]feature.InstanceFeature, len(s.config.InstanceFeatures))
+	instances := make([]nfdv1alpha1.InstanceFeature, len(s.config.InstanceFeatures))
 	for i, instanceAttributes := range s.config.InstanceFeatures {
-		instances[i] = *feature.NewInstanceFeature(instanceAttributes)
+		instances[i] = *nfdv1alpha1.NewInstanceFeature(instanceAttributes)
 	}
-	s.features.Instances[InstanceFeature] = feature.NewInstanceFeatures(instances)
+	s.features.Instances[InstanceFeature] = nfdv1alpha1.NewInstanceFeatures(instances)
 
 	utils.KlogDump(3, "discovered fake features:", "  ", s.features)
 
@@ -133,9 +133,9 @@ func (s *fakeSource) Discover() error {
 }
 
 // GetFeatures method of the FeatureSource Interface.
-func (s *fakeSource) GetFeatures() *feature.DomainFeatures {
+func (s *fakeSource) GetFeatures() *nfdv1alpha1.Features {
 	if s.features == nil {
-		s.features = feature.NewDomainFeatures()
+		s.features = nfdv1alpha1.NewFeatures()
 	}
 	return s.features
 }

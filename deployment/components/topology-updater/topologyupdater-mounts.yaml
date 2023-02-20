@@ -10,6 +10,9 @@
   - name: kubelet-podresources-sock
     hostPath:
       path: /var/lib/kubelet/pod-resources/kubelet.sock
+  - name: nfd-topology-updater-conf
+    configMap:
+      name: nfd-topology-updater-conf
 
 - op: add
   path: /spec/template/spec/containers/0/volumeMounts
@@ -20,10 +23,9 @@
     mountPath: /host-var/lib/kubelet/pod-resources/kubelet.sock
   - name: host-sys
     mountPath: /host-sys
-
-- op: add
-  path: /spec/template/spec/containers/0/args/-
-  value: "-kubelet-config-file=/host-var/lib/kubelet/config.yaml"
+  - name: nfd-topology-updater-conf
+    mountPath: "/etc/kubernetes/node-feature-discovery"
+    readOnly: true
 
 - op: add
   path: /spec/template/spec/containers/0/args/-

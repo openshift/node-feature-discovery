@@ -17,6 +17,7 @@ limitations under the License.
 package container
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"hash/fnv"
@@ -39,13 +40,13 @@ import (
 
 // HandlerRunner runs a lifecycle handler for a container.
 type HandlerRunner interface {
-	Run(containerID ContainerID, pod *v1.Pod, container *v1.Container, handler *v1.LifecycleHandler) (string, error)
+	Run(ctx context.Context, containerID ContainerID, pod *v1.Pod, container *v1.Container, handler *v1.LifecycleHandler) (string, error)
 }
 
 // RuntimeHelper wraps kubelet to make container runtime
 // able to get necessary informations like the RunContainerOptions, DNS settings, Host IP.
 type RuntimeHelper interface {
-	GenerateRunContainerOptions(pod *v1.Pod, container *v1.Container, podIP string, podIPs []string) (contOpts *RunContainerOptions, cleanupAction func(), err error)
+	GenerateRunContainerOptions(ctx context.Context, pod *v1.Pod, container *v1.Container, podIP string, podIPs []string) (contOpts *RunContainerOptions, cleanupAction func(), err error)
 	GetPodDNS(pod *v1.Pod) (dnsConfig *runtimeapi.DNSConfig, err error)
 	// GetPodCgroupParent returns the CgroupName identifier, and its literal cgroupfs form on the host
 	// of a pod.
@@ -56,6 +57,9 @@ type RuntimeHelper interface {
 	// supplemental groups for the Pod. These extra supplemental groups come
 	// from annotations on persistent volumes that the pod depends on.
 	GetExtraSupplementalGroupsForPod(pod *v1.Pod) []int64
+
+	// GetOrCreateUserNamespaceMappings returns the configuration for the sandbox user namespace
+	GetOrCreateUserNamespaceMappings(pod *v1.Pod) (*runtimeapi.UserNamespace, error)
 }
 
 // ShouldContainerBeRestarted checks whether a container needs to be restarted.
@@ -277,14 +281,6 @@ func SandboxToContainerState(state runtimeapi.PodSandboxState) State {
 	return ContainerStateUnknown
 }
 
-// FormatPod returns a string representing a pod in a human readable format,
-// with pod UID as part of the string.
-func FormatPod(pod *Pod) string {
-	// Use underscore as the delimiter because it is not allowed in pod name
-	// (DNS subdomain format), while allowed in the container name format.
-	return fmt.Sprintf("%s_%s(%s)", pod.Name, pod.Namespace, pod.ID)
-}
-
 // GetContainerSpec gets the container spec by containerName.
 func GetContainerSpec(pod *v1.Pod, containerName string) *v1.Container {
 	var containerSpec *v1.Container
@@ -325,7 +321,7 @@ func HasWindowsHostProcessContainer(pod *v1.Pod) bool {
 	return hasHostProcess
 }
 
-// AllContainersAreWindowsHostProcess returns true if all containres in a pod are HostProcess containers.
+// AllContainersAreWindowsHostProcess returns true if all containers in a pod are HostProcess containers.
 func AllContainersAreWindowsHostProcess(pod *v1.Pod) bool {
 	allHostProcess := true
 	podutil.VisitContainers(&pod.Spec, podutil.AllFeatureEnabledContainers(), func(c *v1.Container, containerType podutil.ContainerType) bool {
@@ -362,7 +358,7 @@ func MakePortMappings(container *v1.Container) (ports []PortMapping) {
 			}
 		}
 
-		var name string = p.Name
+		var name = p.Name
 		if name == "" {
 			name = fmt.Sprintf("%s-%s-%s:%d:%d", family, p.Protocol, p.HostIP, p.ContainerPort, p.HostPort)
 		}

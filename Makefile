@@ -4,7 +4,8 @@
 GO_CMD ?= go
 GO_FMT ?= gofmt
 
-IMAGE_BUILD_CMD ?= podman build
+CONTAINER_COMMAND := $(or ${CONTAINER_COMMAND},podman)
+IMAGE_BUILD_CMD ?= ${CONTAINER_COMMAND} build
 IMAGE_BUILD_EXTRA_OPTS ?=
 IMAGE_PUSH_CMD ?= podman push
 CONTAINER_RUN_CMD ?= podman run
@@ -15,13 +16,13 @@ K8S_CODE_GENERATOR ?= ../code-generator
 
 VERSION := $(shell git describe --tags --dirty --always)
 
-IMAGE_REGISTRY ?= k8s.gcr.io/nfd
+IMAGE_REGISTRY ?= registry.k8s.io/nfd
 IMAGE_TAG_NAME ?= $(VERSION)
 IMAGE_EXTRA_TAG_NAMES ?=
 
 IMAGE_NAME := node-feature-discovery
 IMAGE_REPO := $(IMAGE_REGISTRY)/$(IMAGE_NAME)
-IMAGE_TAG := $(IMAGE_REPO):$(IMAGE_TAG_NAME)
+IMAGE_TAG ?= $(IMAGE_REPO):$(IMAGE_TAG_NAME)
 IMAGE_EXTRA_TAGS := $(foreach tag,$(IMAGE_EXTRA_TAG_NAMES),$(IMAGE_REPO):$(tag))
 
 K8S_NAMESPACE ?= node-feature-discovery
@@ -39,8 +40,9 @@ HOSTMOUNT_PREFIX ?= /host-
 
 KUBECONFIG ?=
 E2E_TEST_CONFIG ?=
+E2E_PULL_IF_NOT_PRESENT ?= false
 
-LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/source.pathPrefix=$(HOSTMOUNT_PREFIX)"
+LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/pkg/utils/hostpath.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
 all: image
 
@@ -67,7 +69,7 @@ deploy-prune:
 	kubectl delete -k deployment/overlays/prune/
 
 yamls:
-	@./scripts/kustomize.sh $(K8S_NAMESPACE) $(IMAGE_REPO) $(IMAGE_TAG_NAME)
+	@./hack/kustomize.sh $(K8S_NAMESPACE) $(IMAGE_REPO) $(IMAGE_TAG_NAME)
 
 deploy: yamls
 	kubectl apply -k .
@@ -120,7 +122,12 @@ lint:
 	golint -set_exit_status ./...
 
 mdlint:
-	find docs/ -path docs/vendor -prune -false -o -name '*.md' | xargs $(MDL) -s docs/mdl-style.rb
+	${CONTAINER_RUN_CMD} \
+	--rm \
+	--volume "${PWD}:/workdir:ro,z" \
+	--workdir /workdir \
+	ruby:slim \
+	/workdir/scripts/test-infra/mdlint.sh
 
 helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
@@ -131,10 +138,16 @@ test:
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) \
-	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -kubeconfig=$(KUBECONFIG) \
+	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
+	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
+	    -ginkgo.focus="\[kubernetes-sigs\]" \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
-	    -kubeconfig=$(KUBECONFIG) -nfd.e2e-config=$(E2E_TEST_CONFIG) -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -kubeconfig=$(KUBECONFIG) \
+	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
+	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
+	    -ginkgo.focus="\[kubernetes-sigs\]" \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 
 local-image-push: push

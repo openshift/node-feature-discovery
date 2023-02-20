@@ -38,8 +38,6 @@ type resourceAllocationScorer struct {
 	useRequested        bool
 	scorer              func(requested, allocable resourceToValueMap) int64
 	resourceToWeightMap resourceToWeightMap
-
-	enablePodOverhead bool
 }
 
 // resourceToValueMap is keyed with resource name and valued with quantity.
@@ -69,12 +67,10 @@ func (r *resourceAllocationScorer) score(
 
 	score := r.scorer(requested, allocatable)
 
-	if klog.V(10).Enabled() {
-		klog.InfoS("Listing internal info for allocatable resources, requested resources and score", "pod",
-			klog.KObj(pod), "node", klog.KObj(node), "resourceAllocationScorer", r.Name,
-			"allocatableResource", allocatable, "requestedResource", requested, "resourceScore", score,
-		)
-	}
+	klog.V(10).InfoS("Listing internal info for allocatable resources, requested resources and score", "pod",
+		klog.KObj(pod), "node", klog.KObj(node), "resourceAllocationScorer", r.Name,
+		"allocatableResource", allocatable, "requestedResource", requested, "resourceScore", score,
+	)
 
 	return score, nil
 }
@@ -107,14 +103,12 @@ func (r *resourceAllocationScorer) calculateResourceAllocatableRequest(nodeInfo 
 			return nodeInfo.Allocatable.ScalarResources[resource], (nodeInfo.Requested.ScalarResources[resource] + podRequest)
 		}
 	}
-	if klog.V(10).Enabled() {
-		klog.InfoS("Requested resource is omitted for node score calculation", "resourceName", resource)
-	}
+	klog.V(10).InfoS("Requested resource is omitted for node score calculation", "resourceName", resource)
 	return 0, 0
 }
 
-// calculatePodResourceRequest returns the total non-zero requests. If Overhead is defined for the pod and the
-// PodOverhead feature is enabled, the Overhead is added to the result.
+// calculatePodResourceRequest returns the total non-zero requests. If Overhead is defined for the pod
+// the Overhead is added to the result.
 // podResourceRequest = max(sum(podSpec.Containers), podSpec.InitContainers) + overHead
 func (r *resourceAllocationScorer) calculatePodResourceRequest(pod *v1.Pod, resource v1.ResourceName) int64 {
 	var podRequest int64
@@ -133,7 +127,7 @@ func (r *resourceAllocationScorer) calculatePodResourceRequest(pod *v1.Pod, reso
 	}
 
 	// If Overhead is being utilized, add to the total requests for the pod
-	if pod.Spec.Overhead != nil && r.enablePodOverhead {
+	if pod.Spec.Overhead != nil {
 		if quantity, found := pod.Spec.Overhead[resource]; found {
 			podRequest += quantity.Value()
 		}

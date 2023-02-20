@@ -1,13 +1,15 @@
 # See the OWNERS docs at https://go.k8s.io/owners
 
 approvers:
-- rootfs
-- jsafrane
+  - jsafrane
+  - humblec
 reviewers:
-- sjenning
-- saad-ali
-- jsafrane
-- rootfs
-- jingxu97
-- msau42
-- cofyc
+  - sjenning
+  - saad-ali
+  - jsafrane
+  - jingxu97
+  - msau42
+  - cofyc
+  - humblec
+emeritus_approvers:
+  - rootfs

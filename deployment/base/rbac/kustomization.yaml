@@ -11,3 +11,5 @@ resources:
 - worker-clusterrole.yaml
 - worker-clusterrolebinding.yaml
 - scc.yaml
+- worker-role.yaml
+- worker-rolebinding.yaml

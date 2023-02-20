@@ -18,18 +18,17 @@ package kernel
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 // SelinuxEnabled detects if selinux has been enabled in the kernel
 func SelinuxEnabled() (bool, error) {
-	sysfsBase := source.SysfsDir.Path("fs")
+	sysfsBase := hostpath.SysfsDir.Path("fs")
 	if _, err := os.Stat(sysfsBase); err != nil {
 		return false, fmt.Errorf("unable to detect selinux status: %w", err)
 	}
@@ -40,7 +39,7 @@ func SelinuxEnabled() (bool, error) {
 		return false, nil
 	}
 
-	status, err := ioutil.ReadFile(filepath.Join(selinuxBase, "enforce"))
+	status, err := os.ReadFile(filepath.Join(selinuxBase, "enforce"))
 	if err != nil {
 		return false, fmt.Errorf("failed to detect the status of selinux: %w", err)
 	}

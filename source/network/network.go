@@ -18,7 +18,6 @@ package network
 
 import (
 	"fmt"
-	"io/ioutil"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -26,8 +25,9 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"github.com/openshift/node-feature-discovery/pkg/api/feature"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
 
@@ -40,7 +40,7 @@ const sysfsBaseDir = "class/net"
 
 // networkSource implements the FeatureSource and LabelSource interfaces.
 type networkSource struct {
-	features *feature.DomainFeatures
+	features *nfdv1alpha1.Features
 }
 
 // Singleton source instance
@@ -91,13 +91,13 @@ func (s *networkSource) GetLabels() (source.FeatureLabels, error) {
 
 // Discover method of the FeatureSource interface.
 func (s *networkSource) Discover() error {
-	s.features = feature.NewDomainFeatures()
+	s.features = nfdv1alpha1.NewFeatures()
 
 	devs, err := detectNetDevices()
 	if err != nil {
 		return fmt.Errorf("failed to detect network devices: %w", err)
 	}
-	s.features.Instances[DeviceFeature] = feature.InstanceFeatureSet{Elements: devs}
+	s.features.Instances[DeviceFeature] = nfdv1alpha1.InstanceFeatureSet{Elements: devs}
 
 	utils.KlogDump(3, "discovered network features:", "  ", s.features)
 
@@ -105,23 +105,23 @@ func (s *networkSource) Discover() error {
 }
 
 // GetFeatures method of the FeatureSource Interface.
-func (s *networkSource) GetFeatures() *feature.DomainFeatures {
+func (s *networkSource) GetFeatures() *nfdv1alpha1.Features {
 	if s.features == nil {
-		s.features = feature.NewDomainFeatures()
+		s.features = nfdv1alpha1.NewFeatures()
 	}
 	return s.features
 }
 
-func detectNetDevices() ([]feature.InstanceFeature, error) {
-	sysfsBasePath := source.SysfsDir.Path(sysfsBaseDir)
+func detectNetDevices() ([]nfdv1alpha1.InstanceFeature, error) {
+	sysfsBasePath := hostpath.SysfsDir.Path(sysfsBaseDir)
 
-	ifaces, err := ioutil.ReadDir(sysfsBasePath)
+	ifaces, err := os.ReadDir(sysfsBasePath)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list network interfaces: %w", err)
 	}
 
 	// Iterate over devices
-	info := make([]feature.InstanceFeature, 0, len(ifaces))
+	info := make([]nfdv1alpha1.InstanceFeature, 0, len(ifaces))
 	for _, iface := range ifaces {
 		name := iface.Name()
 		if _, err := os.Stat(filepath.Join(sysfsBasePath, name, "device")); err == nil {
@@ -134,10 +134,10 @@ func detectNetDevices() ([]feature.InstanceFeature, error) {
 	return info, nil
 }
 
-func readIfaceInfo(path string) feature.InstanceFeature {
+func readIfaceInfo(path string) nfdv1alpha1.InstanceFeature {
 	attrs := map[string]string{"name": filepath.Base(path)}
 	for _, attrName := range ifaceAttrs {
-		data, err := ioutil.ReadFile(filepath.Join(path, attrName))
+		data, err := os.ReadFile(filepath.Join(path, attrName))
 		if err != nil {
 			if !os.IsNotExist(err) {
 				klog.Errorf("failed to read net iface attribute %s: %v", attrName, err)
@@ -148,7 +148,7 @@ func readIfaceInfo(path string) feature.InstanceFeature {
 	}
 
 	for _, attrName := range devAttrs {
-		data, err := ioutil.ReadFile(filepath.Join(path, "device", attrName))
+		data, err := os.ReadFile(filepath.Join(path, "device", attrName))
 		if err != nil {
 			if !os.IsNotExist(err) {
 				klog.Errorf("failed to read net device attribute %s: %v", attrName, err)
@@ -158,7 +158,7 @@ func readIfaceInfo(path string) feature.InstanceFeature {
 		attrs[attrName] = strings.TrimSpace(string(data))
 	}
 
-	return *feature.NewInstanceFeature(attrs)
+	return *nfdv1alpha1.NewInstanceFeature(attrs)
 
 }
 

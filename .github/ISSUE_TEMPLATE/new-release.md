@@ -17,7 +17,10 @@ Please do not remove items from the checklist
 - [ ] Prepare `release-0.$MAJ` release branch
   - [ ] An OWNER creates a vanilla release branch from master and pushes it with
         `git push release-0.$MAJ`
-- [ ] Run `scripts/prepare-release.sh $VERSION` to turn references to point to the upcoming release
+  - [ ] Create Prow pre-submit job configuration for the new release branch in K8s
+        [test-infra](https://github.com/kubernetes/test-infra), submit a PR
+  - [ ] Wait for the test-infra Prow config PR to be merged
+- [ ] Run `hack/prepare-release.sh $VERSION` to turn references to point to the upcoming release
       (README, deployment templates, docs configuration, test/e2e flags), submit a PR against the release branch
 - An OWNER prepares a draft release
   - [ ] Create a draft release at [Github releases page](https://github.com/kubernetes-sigs/node-feature-discovery/releases)
@@ -31,16 +34,16 @@ Please do not remove items from the checklist
   - Triggers prow to build and publish a staging container image
       `gcr.io/k8s-staging-nfd/node-feature-discovery:$VERSION`
   - Triggers build of the documentation and publish it at
-        https://kubernetes-sigs.github.io/node-feature
-- [ ] Submit a PR against [k8s.io](https://github.com/kubernetes/k8s.io), updating `k8s.gcr.io/images/k8s-staging-nfd/images.yaml` to promote the container images (both "full" and "minimal" variants) to production
-- [ ] Wait for the PR to be merged and verify that the image (`k8s.gcr.io/nfd/node-feature-discovery:$VERSION`) is available.
+        https://kubernetes-sigs.github.io/node-feature-discovery/0.$MAJ/
+- [ ] Submit a PR against [k8s.io](https://github.com/kubernetes/k8s.io), updating `registry.k8s.io/images/k8s-staging-nfd/images.yaml` to promote the container images (both "full" and "minimal" variants) to production
+- [ ] Wait for the PR to be merged and verify that the image (`registry.k8s.io/nfd/node-feature-discovery:$VERSION`) is available.
 - [ ] Publish the draft release prepared at the [Github releases page](https://github.com/kubernetes-sigs/node-feature-discovery/releases)
       which will also trigger a Helm repo index update to add the latest release
 - [ ] Add a link to the tagged release in this issue.
 - [ ] Send an announcement email to `kubernetes-dev@googlegroups.com` with the subject `[ANNOUNCE] node-feature-discovery $VERSION is released`
 - [ ] Add a link to the release announcement in this issue
 - [ ] For a major release (or a point release of the latest major release), update README in master branch
-  - [ ] Update references e.g. by running `scripts/prepare-release.sh $VERSION` but **only** committing README.md, and,
+  - [ ] Update references e.g. by running `hack/prepare-release.sh $VERSION` but **only** committing README.md, and,
         submit a PR
   - [ ] Wait for the PR to be merged
 - [ ] For a major release, create an unannotated *devel* tag in the master branch, on the first commit that gets merged after the release branch has been created (presumably the README update commit above), and, push the tag:
