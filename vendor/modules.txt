@@ -422,7 +422,7 @@ github.com/json-iterator/go
 # github.com/jtolds/gls v4.20.0+incompatible
 ## explicit
 github.com/jtolds/gls
-# github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.0.12
+# github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.0.13
 ## explicit; go 1.16
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1
