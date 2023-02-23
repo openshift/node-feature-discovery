@@ -25,7 +25,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	worker "github.com/openshift/node-feature-discovery/pkg/nfd-client/worker"
+	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/test/data"

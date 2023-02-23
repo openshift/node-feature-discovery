@@ -22,7 +22,7 @@ package cpu
 import (
 	"k8s.io/klog/v2"
 	"os"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"strconv"
 )
 

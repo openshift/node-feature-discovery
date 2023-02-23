@@ -227,7 +227,7 @@ func init() {
 }
 
 func init() {
-	proto.RegisterFile("sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1/generated.proto", fileDescriptor_6f67d44e41cfe439)
+	proto.RegisterFile("github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1/generated.proto", fileDescriptor_6f67d44e41cfe439)
 }
 
 var fileDescriptor_6f67d44e41cfe439 = []byte{
