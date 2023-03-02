@@ -63,6 +63,7 @@ type Annotations map[string]string
 type Args struct {
 	CaFile               string
 	CertFile             string
+	DenyLabelNs          utils.StringSetVal
 	ExtraLabelNs         utils.StringSetVal
 	Instance             string
 	KeyFile              string
@@ -76,6 +77,11 @@ type Args struct {
 	Prune                bool
 	VerifyNodeName       bool
 	ResourceLabels       utils.StringSetVal
+}
+
+type deniedNs struct {
+	normal   utils.StringSetVal
+	wildcard utils.StringSetVal
 }
 
 type NfdMaster interface {
@@ -95,6 +101,7 @@ type nfdMaster struct {
 	ready      chan bool
 	apihelper  apihelper.APIHelpers
 	kubeconfig *restclient.Config
+	deniedNs
 }
 
 // NewNfdMaster creates a new NfdMaster server instance.
@@ -126,6 +133,16 @@ func NewNfdMaster(args *Args) (NfdMaster, error) {
 			return nfd, fmt.Errorf("-ca-file needs to be specified alongside -cert-file and -key-file")
 		}
 	}
+	if args.DenyLabelNs == nil {
+		args.DenyLabelNs = make(utils.StringSetVal)
+	}
+	// Pre-process DenyLabelNS into 2 lists: one for normal ns, and the other for wildcard ns
+	normalDeniedNs, wildcardDeniedNs := preProcessDeniedNamespaces(args.DenyLabelNs)
+	nfd.deniedNs.normal = normalDeniedNs
+	nfd.deniedNs.wildcard = wildcardDeniedNs
+	// We forcibly deny kubernetes.io
+	nfd.deniedNs.normal["kubernetes.io"] = struct{}{}
+	nfd.deniedNs.wildcard[".kubernetes.io"] = struct{}{}
 
 	// Initialize Kubernetes API helpers
 	if !args.NoPublish {
@@ -174,9 +191,7 @@ func (m *nfdMaster) Run() error {
 
 	// Run gRPC server
 	grpcErr := make(chan error, 1)
-	if !m.args.EnableNodeFeatureApi {
-		go m.runGrpcServer(grpcErr)
-	}
+	go m.runGrpcServer(grpcErr)
 
 	// Run updater that handles events from the nfd CRD API.
 	if m.nfdController != nil {
@@ -228,7 +243,13 @@ func (m *nfdMaster) runGrpcServer(errChan chan<- error) {
 		serverOpts = append(serverOpts, grpc.Creds(credentials.NewTLS(tlsConfig)))
 	}
 	m.server = grpc.NewServer(serverOpts...)
-	pb.RegisterLabelerServer(m.server, m)
+
+	// If the NodeFeature API is enabled, don'tregister the labeler API
+	// server. Otherwise, register the labeler server.
+	if !m.args.EnableNodeFeatureApi {
+		pb.RegisterLabelerServer(m.server, m)
+	}
+
 	grpc_health_v1.RegisterHealthServer(m.server, health.NewServer())
 	klog.Infof("gRPC server serving on port: %d", m.args.Port)
 
@@ -388,7 +409,7 @@ func (m *nfdMaster) updateMasterNode() error {
 // into extended resources. This function also handles proper namespacing of
 // labels and ERs, i.e. adds the possibly missing default namespace for labels
 // arriving through the gRPC API.
-func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelWhiteList regexp.Regexp, extendedResourceNames map[string]struct{}) (Labels, ExtendedResources) {
+func (m *nfdMaster) filterFeatureLabels(labels Labels) (Labels, ExtendedResources) {
 	outLabels := Labels{}
 
 	for label, value := range labels {
@@ -400,15 +421,18 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 		// Check label namespace, filter out if ns is not whitelisted
 		if ns != nfdv1alpha1.FeatureLabelNs && ns != nfdv1alpha1.ProfileLabelNs &&
 			!strings.HasSuffix(ns, nfdv1alpha1.FeatureLabelSubNsSuffix) && !strings.HasSuffix(ns, nfdv1alpha1.ProfileLabelSubNsSuffix) {
-			if _, ok := extraLabelNs[ns]; !ok {
-				klog.Errorf("Namespace %q is not allowed. Ignoring label %q\n", ns, label)
-				continue
+			// If the namespace is denied, and not present in the extraLabelNs, label will be ignored
+			if isNamespaceDenied(ns, m.deniedNs.wildcard, m.deniedNs.normal) {
+				if _, ok := m.args.ExtraLabelNs[ns]; !ok {
+					klog.Errorf("Namespace %q is not allowed. Ignoring label %q\n", ns, label)
+					continue
+				}
 			}
 		}
 
 		// Skip if label doesn't match labelWhiteList
-		if !labelWhiteList.MatchString(name) {
-			klog.Errorf("%s (%s) does not match the whitelist (%s) and will not be published.", name, label, labelWhiteList.String())
+		if !m.args.LabelWhiteList.Regexp.MatchString(name) {
+			klog.Errorf("%s (%s) does not match the whitelist (%s) and will not be published.", name, label, m.args.LabelWhiteList.Regexp.String())
 			continue
 		}
 		outLabels[label] = value
@@ -416,7 +440,7 @@ func filterFeatureLabels(labels Labels, extraLabelNs map[string]struct{}, labelW
 
 	// Remove labels which are intended to be extended resources
 	extendedResources := ExtendedResources{}
-	for extendedResourceName := range extendedResourceNames {
+	for extendedResourceName := range m.args.ResourceLabels {
 		// Add possibly missing default ns
 		extendedResourceName = addNs(extendedResourceName, nfdv1alpha1.FeatureLabelNs)
 		if value, ok := outLabels[extendedResourceName]; ok {
@@ -443,6 +467,20 @@ func verifyNodeName(cert *x509.Certificate, nodeName string) error {
 		return fmt.Errorf("certificate %q not valid for node %q: %v", cert.Subject.CommonName, nodeName, err)
 	}
 	return nil
+}
+
+func isNamespaceDenied(labelNs string, wildcardDeniedNs map[string]struct{}, normalDeniedNs map[string]struct{}) bool {
+	for deniedNs := range normalDeniedNs {
+		if labelNs == deniedNs {
+			return true
+		}
+	}
+	for deniedNs := range wildcardDeniedNs {
+		if strings.HasSuffix(labelNs, deniedNs) {
+			return true
+		}
+	}
+	return false
 }
 
 // SetLabels implements LabelerServer
@@ -579,7 +617,7 @@ func (m *nfdMaster) refreshNodeFeatures(cli *kubernetes.Clientset, nodeName stri
 		labels[k] = v
 	}
 
-	labels, extendedResources := filterFeatureLabels(labels, m.args.ExtraLabelNs, m.args.LabelWhiteList.Regexp, m.args.ResourceLabels)
+	labels, extendedResources := m.filterFeatureLabels(labels)
 
 	var taints []corev1.Taint
 	if m.args.EnableTaints {
@@ -912,6 +950,22 @@ func stringToNsNames(cslist, ns string) []string {
 		}
 	}
 	return names
+}
+
+// Seperate denied namespaces into two lists:
+// one contains wildcard namespaces the other contains normal namespaces
+func preProcessDeniedNamespaces(deniedNs map[string]struct{}) (normalDeniedNs map[string]struct{}, wildcardDeniedNs map[string]struct{}) {
+	normalDeniedNs = map[string]struct{}{}
+	wildcardDeniedNs = map[string]struct{}{}
+	for ns := range deniedNs {
+		if strings.HasPrefix(ns, "*") {
+			trimedNs := strings.TrimLeft(ns, "*")
+			wildcardDeniedNs[trimedNs] = struct{}{}
+		} else {
+			normalDeniedNs[ns] = struct{}{}
+		}
+	}
+	return
 }
 
 func (m *nfdMaster) instanceAnnotation(name string) string {

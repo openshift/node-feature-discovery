@@ -28,7 +28,6 @@ import (
 
 	topology "github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
-	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/pkg/utils/kubeconf"
@@ -88,11 +87,8 @@ func main() {
 		klog.Exitf("unsupported URI scheme: %v", u.Scheme)
 	}
 
-	tmPolicy := string(topologypolicy.DetectTopologyPolicy(klConfig.TopologyManagerPolicy, klConfig.TopologyManagerScope))
-	klog.Infof("detected kubelet Topology Manager policy %q", tmPolicy)
-
 	// Get new TopologyUpdater instance
-	instance := topology.NewTopologyUpdater(*args, *resourcemonitorArgs, tmPolicy)
+	instance := topology.NewTopologyUpdater(*args, *resourcemonitorArgs, klConfig.TopologyManagerPolicy, klConfig.TopologyManagerScope)
 
 	if err = instance.Run(); err != nil {
 		klog.Exit(err)
@@ -143,6 +139,7 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 		"Pod Resource Socket path to use.")
 	flagset.StringVar(&args.ConfigFile, "config", "/etc/kubernetes/node-feature-discovery/nfd-topology-updater.conf",
 		"Config file to use.")
+	flagset.BoolVar(&resourcemonitorArgs.PodSetFingerprint, "pods-fingerprint", false, "Compute and report the pod set fingerprint")
 
 	klog.InitFlags(flagset)
 

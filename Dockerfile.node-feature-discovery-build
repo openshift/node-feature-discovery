@@ -11,4 +11,5 @@ RUN curl -L --retry 5 "https://github.com/kubernetes-sigs/kustomize/releases/dow
     tar -zx -C /usr/bin
 RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1
 RUN go install github.com/golang/mock/mockgen@v1.5.0
+RUN go install github.com/golang/protobuf/protoc-gen-go@v1.4.3
 COPY --from=quay.io/openshift/origin-cli:latest /usr/bin/oc /usr/bin

@@ -27,8 +27,9 @@ import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
-	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
+	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
 	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
+	"github.com/k8stopologyawareschedwg/podfingerprint"
 
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
@@ -46,7 +47,7 @@ import (
 	testpod "github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
 )
 
-var _ = SIGDescribe("Node Feature Discovery topology updater", func() {
+var _ = SIGDescribe("NFD topology updater", func() {
 	var (
 		extClient                *extclient.Clientset
 		topologyClient           *topologyclientset.Clientset
@@ -115,7 +116,7 @@ var _ = SIGDescribe("Node Feature Discovery topology updater", func() {
 			kcfg := cfg.GetKubeletConfig()
 			By(fmt.Sprintf("Using config (%#v)", kcfg))
 
-			podSpecOpts := []testpod.SpecOption{testpod.SpecWithContainerImage(dockerImage)}
+			podSpecOpts := []testpod.SpecOption{testpod.SpecWithContainerImage(dockerImage())}
 			topologyUpdaterDaemonSet = testds.NFDTopologyUpdater(kcfg, podSpecOpts...)
 		})
 
@@ -237,9 +238,9 @@ var _ = SIGDescribe("Node Feature Discovery topology updater", func() {
 			defer testpod.DeleteAsync(f, podMap)
 
 			By("checking the changes in the updated topology")
-			var finalNodeTopo *v1alpha1.NodeResourceTopology
+			var finalNodeTopo *v1alpha2.NodeResourceTopology
 			Eventually(func() bool {
-				finalNodeTopo, err = topologyClient.TopologyV1alpha1().NodeResourceTopologies().Get(context.TODO(), topologyUpdaterNode.Name, metav1.GetOptions{})
+				finalNodeTopo, err = topologyClient.TopologyV1alpha2().NodeResourceTopologies().Get(context.TODO(), topologyUpdaterNode.Name, metav1.GetOptions{})
 				if err != nil {
 					framework.Logf("failed to get the node topology resource: %v", err)
 					return false
@@ -281,7 +282,7 @@ excludeList:
 			By(fmt.Sprintf("Using config (%#v)", kcfg))
 
 			podSpecOpts := []testpod.SpecOption{
-				testpod.SpecWithContainerImage(dockerImage),
+				testpod.SpecWithContainerImage(dockerImage()),
 				testpod.SpecWithConfigMap(cm.Name, "/etc/kubernetes/node-feature-discovery"),
 			}
 			topologyUpdaterDaemonSet = testds.NFDTopologyUpdater(kcfg, podSpecOpts...)
@@ -304,7 +305,73 @@ excludeList:
 			}, 1*time.Minute, 10*time.Second).Should(BeFalse())
 		})
 	})
+	When("topology-updater configure to compute pod fingerprint", func() {
+		BeforeEach(func() {
+			cfg, err := testutils.GetConfig()
+			Expect(err).ToNot(HaveOccurred())
+
+			kcfg := cfg.GetKubeletConfig()
+			By(fmt.Sprintf("Using config (%#v)", kcfg))
+
+			podSpecOpts := []testpod.SpecOption{
+				testpod.SpecWithContainerImage(dockerImage()),
+				testpod.SpecWithContainerExtraArgs("-pods-fingerprint"),
+			}
+			topologyUpdaterDaemonSet = testds.NFDTopologyUpdater(kcfg, podSpecOpts...)
+		})
+		It("noderesourcetopology should advertise pod fingerprint in top-level attribute", func() {
+			Eventually(func() bool {
+				// get node topology
+				nodeTopology := testutils.GetNodeTopology(topologyClient, topologyUpdaterNode.Name)
+
+				// look for attribute
+				podFingerprintAttribute, err := findAttribute(nodeTopology.Attributes, podfingerprint.Attribute)
+				if err != nil {
+					framework.Logf("podFingerprint attributte %q not found:  %v", podfingerprint.Attribute, err)
+					return false
+				}
+				// get pods in node
+				pods, err := f.ClientSet.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{FieldSelector: "spec.nodeName=" + topologyUpdaterNode.Name})
+				if err != nil {
+					framework.Logf("podFingerprint error while recovering %q node pods: %v", topologyUpdaterNode.Name, err)
+					return false
+				}
+				if len(pods.Items) == 0 {
+					framework.Logf("podFingerprint No pods in node  %q", topologyUpdaterNode.Name)
+					return false
+				}
+
+				// compute expected value
+				pf := podfingerprint.NewFingerprint(len(pods.Items))
+				for _, pod := range pods.Items {
+					err = pf.Add(pod.Namespace, pod.Name)
+					if err != nil {
+						framework.Logf("error while computing expected podFingerprint %v", err)
+						return false
+					}
+				}
+				expectedPodFingerprint := pf.Sign()
+
+				if podFingerprintAttribute.Value != expectedPodFingerprint {
+					framework.Logf("podFingerprint attributte error expected: %q actual: %q", expectedPodFingerprint, podFingerprintAttribute.Value)
+					return false
+				}
+
+				return true
+
+			}, 1*time.Minute, 10*time.Second).Should(BeTrue())
+		})
+	})
 })
+
+func findAttribute(attributes v1alpha2.AttributeList, attributeName string) (v1alpha2.AttributeInfo, error) {
+	for _, attrInfo := range attributes {
+		if attrInfo.Name == attributeName {
+			return attrInfo, nil
+		}
+	}
+	return v1alpha2.AttributeInfo{}, fmt.Errorf("attribute %q not found", attributeName)
+}
 
 // lessAllocatableResources specialize CompareAllocatableResources for this specific e2e use case.
 func lessAllocatableResources(expected, got map[string]corev1.ResourceList) (string, string, bool) {

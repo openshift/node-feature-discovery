@@ -2,7 +2,7 @@
 
 # Install deps
 gobinpath="$(go env GOPATH)/bin"
-curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v1.49.0
+curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v1.51.1
 export PATH=$PATH:$(go env GOPATH)/bin
 
 curl -sfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash -s -- --version v3.7.1
@@ -20,6 +20,9 @@ make ci-lint
 
 echo "Running Helm lint"
 make helm-lint
+
+echo "Running unit tests"
+make test
 
 # Check that repo is clean
 if ! git diff --quiet; then

@@ -25,16 +25,24 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/klog/v2"
 
-	v1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
+	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
 	"golang.org/x/net/context"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	"github.com/openshift/node-feature-discovery/pkg/podres"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
+	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 	"sigs.k8s.io/yaml"
+)
+
+const (
+	// TopologyManagerPolicyAttributeName represents an attribute which defines Topology Manager Policy
+	TopologyManagerPolicyAttributeName = "topologyManagerPolicy"
+	// TopologyManagerScopeAttributeName represents an attribute which defines Topology Manager Policy Scope
+	TopologyManagerScopeAttributeName = "topologyManagerScope"
 )
 
 // Args are the command line arguments
@@ -60,10 +68,21 @@ type NfdTopologyUpdater interface {
 type staticNodeInfo struct {
 	nodeName string
 	tmPolicy string
+	tmScope  string
+}
+
+func newStaticNodeInfo(policy, scope string) staticNodeInfo {
+	nodeName := utils.NodeName()
+	klog.InfoS("detected kubelet Topology Manager configuration", "policy", policy, "scope", scope, "nodeName", nodeName)
+	return staticNodeInfo{
+		nodeName: nodeName,
+		tmPolicy: policy,
+		tmScope:  scope,
+	}
 }
 
 type nfdTopologyUpdater struct {
-	nodeInfo            *staticNodeInfo
+	nodeInfo            staticNodeInfo
 	args                Args
 	apihelper           apihelper.APIHelpers
 	resourcemonitorArgs resourcemonitor.Args
@@ -73,16 +92,13 @@ type nfdTopologyUpdater struct {
 }
 
 // NewTopologyUpdater creates a new NfdTopologyUpdater instance.
-func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy string) NfdTopologyUpdater {
+func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy, scope string) NfdTopologyUpdater {
 	nfd := &nfdTopologyUpdater{
 		args:                args,
 		resourcemonitorArgs: resourcemonitorArgs,
-		nodeInfo: &staticNodeInfo{
-			nodeName: utils.NodeName(),
-			tmPolicy: policy,
-		},
-		stop:   make(chan struct{}, 1),
-		config: &NFDConfig{},
+		nodeInfo:            newStaticNodeInfo(policy, scope),
+		stop:                make(chan struct{}, 1),
+		config:              &NFDConfig{},
 	}
 	if args.ConfigFile != "" {
 		nfd.configFilePath = filepath.Clean(args.ConfigFile)
@@ -114,7 +130,7 @@ func (w *nfdTopologyUpdater) Run() error {
 
 	var resScan resourcemonitor.ResourcesScanner
 
-	resScan, err = resourcemonitor.NewPodResourcesScanner(w.resourcemonitorArgs.Namespace, podResClient, w.apihelper)
+	resScan, err = resourcemonitor.NewPodResourcesScanner(w.resourcemonitorArgs.Namespace, podResClient, w.apihelper, w.resourcemonitorArgs.PodSetFingerprint)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ResourceMonitor instance: %w", err)
 	}
@@ -123,7 +139,7 @@ func (w *nfdTopologyUpdater) Run() error {
 	// So we are intentionally do this once during the process lifecycle.
 	// TODO: Obtain node resources dynamically from the podresource API
 	// zonesChannel := make(chan v1alpha1.ZoneList)
-	var zones v1alpha1.ZoneList
+	var zones v1alpha2.ZoneList
 
 	excludeList := resourcemonitor.NewExcludeResourceList(w.config.ExcludeList, w.nodeInfo.nodeName)
 	resAggr, err := resourcemonitor.NewResourcesAggregator(podResClient, excludeList)
@@ -138,16 +154,16 @@ func (w *nfdTopologyUpdater) Run() error {
 		select {
 		case <-crTrigger.C:
 			klog.Infof("Scanning")
-			podResources, err := resScan.Scan()
-			utils.KlogDump(1, "podResources are", "  ", podResources)
+			scanResponse, err := resScan.Scan()
+			utils.KlogDump(1, "podResources are", "  ", scanResponse.PodResources)
 			if err != nil {
 				klog.Warningf("Scan failed: %v", err)
 				continue
 			}
-			zones = resAggr.Aggregate(podResources)
+			zones = resAggr.Aggregate(scanResponse.PodResources)
 			utils.KlogDump(1, "After aggregating resources identified zones are", "  ", zones)
 			if !w.args.NoPublish {
-				if err = w.updateNodeResourceTopology(zones); err != nil {
+				if err = w.updateNodeResourceTopology(zones, scanResponse); err != nil {
 					return err
 				}
 			}
@@ -172,23 +188,26 @@ func (w *nfdTopologyUpdater) Stop() {
 	}
 }
 
-func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha1.ZoneList) error {
+func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneList, scanResponse resourcemonitor.ScanResponse) error {
 	cli, err := w.apihelper.GetTopologyClient()
 	if err != nil {
 		return err
 	}
 
-	nrt, err := cli.TopologyV1alpha1().NodeResourceTopologies().Get(context.TODO(), w.nodeInfo.nodeName, metav1.GetOptions{})
+	nrt, err := cli.TopologyV1alpha2().NodeResourceTopologies().Get(context.TODO(), w.nodeInfo.nodeName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
-		nrtNew := v1alpha1.NodeResourceTopology{
+		nrtNew := v1alpha2.NodeResourceTopology{
 			ObjectMeta: metav1.ObjectMeta{
 				Name: w.nodeInfo.nodeName,
 			},
 			Zones:            zoneInfo,
-			TopologyPolicies: []string{w.nodeInfo.tmPolicy},
+			TopologyPolicies: []string{string(topologypolicy.DetectTopologyPolicy(w.nodeInfo.tmPolicy, w.nodeInfo.tmScope))},
+			Attributes:       createTopologyAttributes(w.nodeInfo.tmPolicy, w.nodeInfo.tmScope),
 		}
 
-		_, err := cli.TopologyV1alpha1().NodeResourceTopologies().Create(context.TODO(), &nrtNew, metav1.CreateOptions{})
+		updateAttributes(&nrtNew.Attributes, scanResponse.Attributes)
+
+		_, err := cli.TopologyV1alpha2().NodeResourceTopologies().Create(context.TODO(), &nrtNew, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create NodeResourceTopology: %w", err)
 		}
@@ -199,8 +218,9 @@ func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha1.ZoneLi
 
 	nrtMutated := nrt.DeepCopy()
 	nrtMutated.Zones = zoneInfo
+	updateAttributes(&nrtMutated.Attributes, scanResponse.Attributes)
 
-	nrtUpdated, err := cli.TopologyV1alpha1().NodeResourceTopologies().Update(context.TODO(), nrtMutated, metav1.UpdateOptions{})
+	nrtUpdated, err := cli.TopologyV1alpha2().NodeResourceTopologies().Update(context.TODO(), nrtMutated, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update NodeResourceTopology: %w", err)
 	}
@@ -230,4 +250,36 @@ func (w *nfdTopologyUpdater) configure() error {
 	}
 	klog.Infof("configuration file %q parsed:\n %v", w.configFilePath, w.config)
 	return nil
+}
+
+func createTopologyAttributes(policy string, scope string) v1alpha2.AttributeList {
+	return v1alpha2.AttributeList{
+		{
+			Name:  TopologyManagerPolicyAttributeName,
+			Value: policy,
+		},
+		{
+			Name:  TopologyManagerScopeAttributeName,
+			Value: scope,
+		},
+	}
+}
+
+func updateAttribute(attrList *v1alpha2.AttributeList, attrInfo v1alpha2.AttributeInfo) {
+	if attrList == nil {
+		return
+	}
+
+	for idx := range *attrList {
+		if (*attrList)[idx].Name == attrInfo.Name {
+			(*attrList)[idx].Value = attrInfo.Value
+			return
+		}
+	}
+	*attrList = append(*attrList, attrInfo)
+}
+func updateAttributes(lhs *v1alpha2.AttributeList, rhs v1alpha2.AttributeList) {
+	for _, attr := range rhs {
+		updateAttribute(lhs, attr)
+	}
 }

@@ -21,7 +21,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	topologyv1alpha1 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1"
+	topologyv1alpha2 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
 )
 
 // Args stores commandline arguments used for resource monitoring
@@ -31,6 +31,7 @@ type Args struct {
 	Namespace             string
 	KubeletConfigURI      string
 	APIAuthTokenFile      string
+	PodSetFingerprint     bool
 }
 
 // ResourceInfo stores information of resources and their corresponding IDs obtained from PodResource API
@@ -53,12 +54,17 @@ type PodResources struct {
 	Containers []ContainerResources
 }
 
+type ScanResponse struct {
+	PodResources []PodResources
+	Attributes   topologyv1alpha2.AttributeList
+}
+
 // ResourcesScanner gathers all the PodResources from the system, using the podresources API client
 type ResourcesScanner interface {
-	Scan() ([]PodResources, error)
+	Scan() (ScanResponse, error)
 }
 
 // ResourcesAggregator aggregates resource information based on the received data from underlying hardware and podresource API
 type ResourcesAggregator interface {
-	Aggregate(podResData []PodResources) topologyv1alpha1.ZoneList
+	Aggregate(podResData []PodResources) topologyv1alpha2.ZoneList
 }
