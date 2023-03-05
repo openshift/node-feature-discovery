@@ -15,4 +15,4 @@ resources:
 components:
 - ../../components/worker-config
 - ../../components/common
-  
+- ../../components/master-config
