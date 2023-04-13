@@ -153,12 +153,14 @@ e2e-test:
 	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
 	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
 	    -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -test.timeout=1h \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
 	    -kubeconfig=$(KUBECONFIG) \
 	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
 	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
 	    -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -test.timeout=1h \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 
 local-image-push: push
