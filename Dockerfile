@@ -1,5 +1,5 @@
 # Build node feature discovery
-FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.19-openshift-4.14 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-8-golang-1.20-openshift-4.14 AS builder
 
 WORKDIR /go/node-feature-discovery
 COPY . .
