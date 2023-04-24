@@ -61,7 +61,7 @@
 #      - "vendor"
 #      - "device"
 #  local:
-#    hooksEnabled: true
+#    hooksEnabled: false
 #  custom:
 #    - name: "my.kernel.feature"
 #      matchOn:
