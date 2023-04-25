@@ -69,7 +69,7 @@ func main() {
 			args.Overrides.EnableTaints = overrides.EnableTaints
 		case "no-publish":
 			args.Overrides.NoPublish = overrides.NoPublish
-		case "-resync-period":
+		case "resync-period":
 			args.Overrides.ResyncPeriod = overrides.ResyncPeriod
 		}
 	})
