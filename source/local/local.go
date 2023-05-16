@@ -76,7 +76,7 @@ func (s *localSource) SetConfig(conf source.Config) {
 	case *Config:
 		s.config = v
 	default:
-		klog.Fatalf("invalid config type: %T", conf)
+		panic(fmt.Sprintf("invalid config type: %T", conf))
 	}
 }
 
@@ -107,23 +107,22 @@ func (s *localSource) Discover() error {
 
 	featuresFromFiles, err := getFeaturesFromFiles()
 	if err != nil {
-		klog.Error(err)
+		klog.ErrorS(err, "failed to read feature files")
 	}
 
 	if s.config.HooksEnabled {
 
-		klog.Info("starting hooks...")
+		klog.InfoS("starting hooks...")
 
 		featuresFromHooks, err := getFeaturesFromHooks()
 		if err != nil {
-			klog.Error(err)
+			klog.ErrorS(err, "failed to run hooks")
 		}
 
 		// Merge features from hooks and files
 		for k, v := range featuresFromHooks {
 			if old, ok := featuresFromFiles[k]; ok {
-				klog.Warningf("overriding '%s': value changed from '%s' to '%s'",
-					k, old, v)
+				klog.InfoS("overriding label value", "labelKey", k, "oldValue", old, "newValue", v)
 			}
 			featuresFromFiles[k] = v
 		}
@@ -183,20 +182,20 @@ func getFeaturesFromHooks() (map[string]string, error) {
 	files, err := os.ReadDir(hookDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			klog.Infof("hook directory %v does not exist", hookDir)
+			klog.InfoS("hook directory does not exist", "path", hookDir)
 			return features, nil
 		}
 		return features, fmt.Errorf("unable to access %v: %v", hookDir, err)
 	}
 	if len(files) > 0 {
-		klog.Warning("hooks are DEPRECATED since v0.12.0 and support will be removed in a future release; use feature files instead")
+		klog.InfoS("hooks are DEPRECATED since v0.12.0 and support will be removed in a future release; use feature files instead")
 	}
 
 	for _, file := range files {
 		fileName := file.Name()
 		lines, err := runHook(fileName)
 		if err != nil {
-			klog.Errorf("source local failed running hook '%v': %v", fileName, err)
+			klog.ErrorS(err, "failed to run hook", "fileName", fileName)
 			continue
 		}
 
@@ -205,8 +204,7 @@ func getFeaturesFromHooks() (map[string]string, error) {
 		utils.KlogDump(4, fmt.Sprintf("features from hook %q:", fileName), "  ", fileFeatures)
 		for k, v := range fileFeatures {
 			if old, ok := features[k]; ok {
-				klog.Warningf("overriding label '%s' from another hook (%s): value changed from '%s' to '%s'",
-					k, fileName, old, v)
+				klog.InfoS("overriding label value from another hook", "labelKey", k, "oldValue", old, "newValue", v, "fileName", fileName)
 			}
 			features[k] = v
 		}
@@ -222,7 +220,7 @@ func runHook(file string) ([][]byte, error) {
 	path := filepath.Join(hookDir, file)
 	filestat, err := os.Stat(path)
 	if err != nil {
-		klog.Errorf("skipping %v, failed to get stat: %v", path, err)
+		klog.ErrorS(err, "failed to get filestat, skipping hook", "path", path)
 		return lines, err
 	}
 
@@ -243,7 +241,7 @@ func runHook(file string) ([][]byte, error) {
 				// Don't print the last empty string
 				break
 			}
-			klog.Errorf("%v: %s", file, line)
+			klog.InfoS(fmt.Sprintf("%s: %s", file, line))
 		}
 
 		// Do not return any lines if an error occurred
@@ -263,7 +261,7 @@ func getFeaturesFromFiles() (map[string]string, error) {
 	files, err := os.ReadDir(featureFilesDir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			klog.Infof("features directory %v does not exist", featureFilesDir)
+			klog.InfoS("features directory does not exist", "path", featureFilesDir)
 			return features, nil
 		}
 		return features, fmt.Errorf("unable to access %v: %v", featureFilesDir, err)
@@ -273,7 +271,7 @@ func getFeaturesFromFiles() (map[string]string, error) {
 		fileName := file.Name()
 		lines, err := getFileContent(fileName)
 		if err != nil {
-			klog.Errorf("source local failed reading file '%v': %v", fileName, err)
+			klog.ErrorS(err, "failed to read file", "fileName", fileName)
 			continue
 		}
 
@@ -282,8 +280,7 @@ func getFeaturesFromFiles() (map[string]string, error) {
 		utils.KlogDump(4, fmt.Sprintf("features from feature file %q:", fileName), "  ", fileFeatures)
 		for k, v := range fileFeatures {
 			if old, ok := features[k]; ok {
-				klog.Warningf("overriding label '%s' from another features.d file (%s): value changed from '%s' to '%s'",
-					k, fileName, old, v)
+				klog.InfoS("overriding label value from another feature file", "labelKey", k, "oldValue", old, "newValue", v, "fileName", fileName)
 			}
 			features[k] = v
 		}
@@ -299,7 +296,7 @@ func getFileContent(fileName string) ([][]byte, error) {
 	path := filepath.Join(featureFilesDir, fileName)
 	filestat, err := os.Stat(path)
 	if err != nil {
-		klog.Errorf("skipping %v, failed to get stat: %v", path, err)
+		klog.ErrorS(err, "failed to get filestat, skipping features file", "path", path)
 		return lines, err
 	}
 
