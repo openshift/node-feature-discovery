@@ -438,6 +438,34 @@ func TestSetLabels(t *testing.T) {
 	})
 }
 
+func TestFilterLabels(t *testing.T) {
+	mockHelper := &apihelper.MockAPIHelpers{}
+	mockMaster := newMockMaster(mockHelper)
+
+	Convey("When using dynamic values", t, func() {
+		labelName := "testLabel"
+		labelValue := "@test.feature.LSM"
+		features := nfdv1alpha1.Features{
+			Attributes: map[string]nfdv1alpha1.AttributeFeatureSet{
+				"test.feature": nfdv1alpha1.AttributeFeatureSet{
+					Elements: map[string]string{
+						"LSM": "123",
+					},
+				},
+			},
+		}
+		labelValue, err := mockMaster.filterFeatureLabel(labelName, labelValue, &features)
+
+		Convey("Operation should succeed", func() {
+			So(err, ShouldBeNil)
+		})
+
+		Convey("Label value should change", func() {
+			So(labelValue, ShouldEqual, "123")
+		})
+	})
+}
+
 func TestCreatePatches(t *testing.T) {
 	Convey("When creating JSON patches", t, func() {
 		existingItems := map[string]string{"key-1": "val-1", "key-2": "val-2", "key-3": "val-3"}
