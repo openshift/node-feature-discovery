@@ -17,8 +17,8 @@ require (
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/stretchr/testify v1.8.0
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
-	golang.org/x/net v0.9.0
 	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
+	golang.org/x/net v0.9.0
 	google.golang.org/grpc v1.49.0
 	google.golang.org/protobuf v1.28.1
 	k8s.io/api v0.26.0
