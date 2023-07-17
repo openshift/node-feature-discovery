@@ -10,6 +10,8 @@ RUN install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 RUN curl -L --retry 5 "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv4.3.0/kustomize_v4.3.0_linux_amd64.tar.gz" | \
     tar -zx -C /usr/bin
 RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1
+RUN git clone https://github.com/kubernetes/code-generator -b v0.27.1 --depth 1
+RUN go install k8s.io/code-generator/cmd/go-to-protobuf/...@v0.27.1
 RUN go install github.com/golang/mock/mockgen@v1.5.0
 RUN go install github.com/golang/protobuf/protoc-gen-go@v1.4.3
 COPY --from=quay.io/openshift/origin-cli:latest /usr/bin/oc /usr/bin
