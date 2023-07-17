@@ -28,8 +28,6 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
-	"golang.org/x/net/context"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	"github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater/kubeletnotifier"
