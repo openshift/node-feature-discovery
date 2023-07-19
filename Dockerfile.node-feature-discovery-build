@@ -15,17 +15,9 @@ RUN go install github.com/vektra/mockery/v2@v2.25.1 && \
     go install k8s.io/code-generator/cmd/go-to-protobuf/...@v0.27.1 && \
     go install golang.org/x/tools/cmd/goimports@v0.8.0 && \
     go install github.com/golang/protobuf/protoc-gen-go@v1.4.3
-#RUN go install github.com/vektra/mockery/v2@v2.25.1
-#RUN go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.6.1
-#RUN git clone https://github.com/kubernetes/code-generator -b v0.27.1 --depth 1
-#RUN go install k8s.io/code-generator/cmd/go-to-protobuf/...@v0.27.1
-#RUN go install github.com/golang/mock/mockgen@v1.5.0
-#RUN go install github.com/golang/protobuf/protoc-gen-go@v1.4.3
 COPY --from=quay.io/openshift/origin-cli:latest /usr/bin/oc /usr/bin
 
 RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v22.3/protoc-22.3-linux-x86_64.zip
 RUN unzip protoc-22.3-linux-x86_64.zip -d /usr/local
 RUN rm protoc-22.3-linux-x86_64.zip
 RUN chmod a+x /usr/local/bin/protoc
-#RUN find /usr/local -type d | xargs chmod 755
-#RUN find /usr/local -type f | xargs chmod a+r
