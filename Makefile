@@ -78,11 +78,22 @@ templates:
 	@# Need to prepend each line in the sample config with spaces in order to
 	@# fit correctly in the configmap spec.
 	@sed s'/^/    /' deployment/components/worker-config/nfd-worker.conf.example > nfd-worker.conf.tmp
+	@sed s'/^/    /' deployment/components/master-config/nfd-master.conf.example > nfd-master.conf.tmp
+	@sed s'/^/    /' deployment/components/topology-updater-config/nfd-topology-updater.conf.example > nfd-topology-updater.conf.tmp
 	@# The sed magic below replaces the block of text between the lines with start and end markers
+	@start=NFD-MASTER-CONF-START-DO-NOT-REMOVE; \
+	end=NFD-MASTER-CONF-END-DO-NOT-REMOVE; \
+	sed -e "/$$start/,/$$end/{ /$$start/{ p; r nfd-master.conf.tmp" \
+	    -e "}; /$$end/p; d }" -i deployment/helm/node-feature-discovery/values.yaml
 	@start=NFD-WORKER-CONF-START-DO-NOT-REMOVE; \
 	end=NFD-WORKER-CONF-END-DO-NOT-REMOVE; \
 	sed -e "/$$start/,/$$end/{ /$$start/{ p; r nfd-worker.conf.tmp" \
 	    -e "}; /$$end/p; d }" -i deployment/helm/node-feature-discovery/values.yaml
+	@start=NFD-TOPOLOGY-UPDATER-CONF-START-DO-NOT-REMOVE; \
+	end=NFD-TOPOLOGY-UPDATER-CONF-END-DO-NOT-REMOVE; \
+	sed -e "/$$start/,/$$end/{ /$$start/{ p; r nfd-topology-updater.conf.tmp" \
+		-e "}; /$$end/p; d }" -i deployment/helm/node-feature-discovery/values.yaml
+	@rm nfd-master.conf.tmp
 	@rm nfd-worker.conf.tmp
 
 generate:
@@ -133,7 +144,7 @@ helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
 
 test:
-	$(GO_CMD) test ./cmd/... ./pkg/... ./source/...
+	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
@@ -142,12 +153,14 @@ e2e-test:
 	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
 	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
 	    -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -test.timeout=1h \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
 	    -kubeconfig=$(KUBECONFIG) \
 	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
 	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
 	    -ginkgo.focus="\[kubernetes-sigs\]" \
+	    -test.timeout=1h \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
 
 local-image-push: push

@@ -17,7 +17,7 @@ Options:
 
 Example:
 
-  $this v0.1.2 -k "Jane Doe <jane.doe@example.com>"
+  $this -k "Jane Doe <jane.doe@example.com>" v0.13.1
 
 
 NOTE: The GPG key should be associated with the signer's Github account.
@@ -140,7 +140,7 @@ if [ -z "$no_patching" ]; then
     echo Patching test/e2e/node_feature_discovery.go flag defaults to registry.k8s.io/nfd/node-feature-discovery and $release
     sed -e s'!"nfd\.repo",.*,!"nfd.repo", "registry.k8s.io/nfd/node-feature-discovery",!' \
         -e s"!\"nfd\.tag\",.*,!\"nfd.tag\", \"$release\",!" \
-      -i test/e2e/node_feature_discovery.go
+      -i test/e2e/node_feature_discovery_test.go
 fi
 
 #

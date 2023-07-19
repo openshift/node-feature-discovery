@@ -3,14 +3,13 @@ kind: Kustomization
 
 namespace: node-feature-discovery
 
-bases:
+resources:
 - ../../base/rbac
 - ../../base/nfd-crds
 - ../../base/master-worker-combined
-
-resources:
 - namespace.yaml
 
 components:
 - ../../components/worker-config
 - ../../components/common
+- ../../components/master-config

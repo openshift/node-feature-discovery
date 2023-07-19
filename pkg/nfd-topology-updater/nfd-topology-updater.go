@@ -20,16 +20,17 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
+
+	"golang.org/x/net/context"
 
 	"k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 
 	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
-	"golang.org/x/net/context"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	"github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater/kubeletnotifier"
 	"github.com/openshift/node-feature-discovery/pkg/podres"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
@@ -47,10 +48,11 @@ const (
 
 // Args are the command line arguments
 type Args struct {
-	NoPublish      bool
-	Oneshot        bool
-	KubeConfigFile string
-	ConfigFile     string
+	NoPublish       bool
+	Oneshot         bool
+	KubeConfigFile  string
+	ConfigFile      string
+	KubeletStateDir string
 
 	Klog map[string]*utils.KlogFlagVal
 }
@@ -87,30 +89,39 @@ type nfdTopologyUpdater struct {
 	apihelper           apihelper.APIHelpers
 	resourcemonitorArgs resourcemonitor.Args
 	stop                chan struct{} // channel for signaling stop
+	eventSource         <-chan kubeletnotifier.Info
 	configFilePath      string
 	config              *NFDConfig
 }
 
 // NewTopologyUpdater creates a new NfdTopologyUpdater instance.
-func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy, scope string) NfdTopologyUpdater {
+func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args, policy, scope string) (NfdTopologyUpdater, error) {
+	eventSource := make(chan kubeletnotifier.Info)
+	if args.KubeletStateDir != "" {
+		ntf, err := kubeletnotifier.New(resourcemonitorArgs.SleepInterval, eventSource, args.KubeletStateDir)
+		if err != nil {
+			return nil, err
+		}
+		go ntf.Run()
+	}
 	nfd := &nfdTopologyUpdater{
 		args:                args,
 		resourcemonitorArgs: resourcemonitorArgs,
 		nodeInfo:            newStaticNodeInfo(policy, scope),
 		stop:                make(chan struct{}, 1),
+		eventSource:         eventSource,
 		config:              &NFDConfig{},
 	}
 	if args.ConfigFile != "" {
 		nfd.configFilePath = filepath.Clean(args.ConfigFile)
 	}
-	return nfd
+	return nfd, nil
 }
 
 // Run nfdTopologyUpdater. Returns if a fatal error is encountered, or, after
 // one request if OneShot is set to 'true' in the updater args.
 func (w *nfdTopologyUpdater) Run() error {
-	klog.Infof("Node Feature Discovery Topology Updater %s", version.Get())
-	klog.Infof("NodeName: '%s'", w.nodeInfo.nodeName)
+	klog.InfoS("Node Feature Discovery Topology Updater", "version", version.Get(), "nodeName", w.nodeInfo.nodeName)
 
 	podResClient, err := podres.GetPodResClient(w.resourcemonitorArgs.PodResourceSocketPath)
 	if err != nil {
@@ -147,21 +158,18 @@ func (w *nfdTopologyUpdater) Run() error {
 		return fmt.Errorf("failed to obtain node resource information: %w", err)
 	}
 
-	klog.V(2).Infof("resAggr is: %v\n", resAggr)
-
-	crTrigger := time.NewTicker(w.resourcemonitorArgs.SleepInterval)
 	for {
 		select {
-		case <-crTrigger.C:
-			klog.Infof("Scanning")
+		case info := <-w.eventSource:
+			klog.V(4).InfoS("event received, scanning...", "event", info.Event)
 			scanResponse, err := resScan.Scan()
-			utils.KlogDump(1, "podResources are", "  ", scanResponse.PodResources)
+			klog.V(1).InfoS("received updated pod resources", "podResources", utils.DelayedDumper(scanResponse.PodResources))
 			if err != nil {
-				klog.Warningf("Scan failed: %v", err)
+				klog.ErrorS(err, "scan failed")
 				continue
 			}
 			zones = resAggr.Aggregate(scanResponse.PodResources)
-			utils.KlogDump(1, "After aggregating resources identified zones are", "  ", zones)
+			klog.V(1).InfoS("aggregated resources identified", "resourceZones", utils.DelayedDumper(zones))
 			if !w.args.NoPublish {
 				if err = w.updateNodeResourceTopology(zones, scanResponse); err != nil {
 					return err
@@ -173,7 +181,7 @@ func (w *nfdTopologyUpdater) Run() error {
 			}
 
 		case <-w.stop:
-			klog.Infof("shutting down nfd-topology-updater")
+			klog.InfoS("shutting down nfd-topology-updater")
 			return nil
 		}
 	}
@@ -224,13 +232,13 @@ func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneLi
 	if err != nil {
 		return fmt.Errorf("failed to update NodeResourceTopology: %w", err)
 	}
-	utils.KlogDump(4, "CR instance updated resTopo:", "  ", nrtUpdated)
+	klog.V(4).InfoS("NodeResourceTopology object updated", "nodeResourceTopology", utils.DelayedDumper(nrtUpdated))
 	return nil
 }
 
 func (w *nfdTopologyUpdater) configure() error {
 	if w.configFilePath == "" {
-		klog.Warningf("file path for nfd-topology-updater conf file is empty")
+		klog.InfoS("no configuration file specified")
 		return nil
 	}
 
@@ -238,7 +246,7 @@ func (w *nfdTopologyUpdater) configure() error {
 	if err != nil {
 		// config is optional
 		if os.IsNotExist(err) {
-			klog.Warningf("couldn't find conf file under %v", w.configFilePath)
+			klog.InfoS("configuration file not found", "path", w.configFilePath)
 			return nil
 		}
 		return err
@@ -248,7 +256,7 @@ func (w *nfdTopologyUpdater) configure() error {
 	if err != nil {
 		return fmt.Errorf("failed to parse configuration file %q: %w", w.configFilePath, err)
 	}
-	klog.Infof("configuration file %q parsed:\n %v", w.configFilePath, w.config)
+	klog.InfoS("configuration file parsed", "path", w.configFilePath, "config", w.config)
 	return nil
 }
 

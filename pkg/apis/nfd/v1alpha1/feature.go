@@ -16,6 +16,15 @@ limitations under the License.
 
 package v1alpha1
 
+// NewNodeFeatureSpec creates a new emprty instance of NodeFeatureSpec type,
+// initializing all fields to proper empty values.
+func NewNodeFeatureSpec() *NodeFeatureSpec {
+	return &NodeFeatureSpec{
+		Features: *NewFeatures(),
+		Labels:   make(map[string]string),
+	}
+}
+
 // NewFeatures creates a new instance of Features, initializing all feature
 // types (flags, attributes and instances) to empty values.
 func NewFeatures() *Features {
@@ -57,6 +66,9 @@ func NewInstanceFeature(attrs map[string]string) *InstanceFeature {
 
 // InsertAttributeFeatures inserts new values into a specific feature.
 func (f *Features) InsertAttributeFeatures(domain, feature string, values map[string]string) {
+	if f.Attributes == nil {
+		f.Attributes = make(map[string]AttributeFeatureSet)
+	}
 	key := domain + "." + feature
 	if _, ok := f.Attributes[key]; !ok {
 		f.Attributes[key] = NewAttributeFeatures(values)

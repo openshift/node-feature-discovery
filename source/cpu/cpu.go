@@ -17,9 +17,11 @@ limitations under the License.
 package cpu
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 
+	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
 
 	"github.com/klauspost/cpuid/v2"
@@ -87,6 +89,7 @@ func newDefaultConfig() *Config {
 				"SSE4",
 				"SSE42",
 				"SSSE3",
+				"TDX_GUEST",
 			},
 			AttributeWhitelist: []string{},
 		},
@@ -129,7 +132,7 @@ func (s *cpuSource) SetConfig(conf source.Config) {
 		s.config = v
 		s.initCpuidFilter()
 	default:
-		klog.Fatalf("invalid config type: %T", conf)
+		panic(fmt.Sprintf("invalid config type: %T", conf))
 	}
 }
 
@@ -164,13 +167,26 @@ func (s *cpuSource) GetLabels() (source.FeatureLabels, error) {
 	}
 
 	// RDT
-	for k := range features.Flags[RdtFeature].Elements {
-		labels["rdt."+k] = true
+	for k, v := range features.Attributes[RdtFeature].Elements {
+		if k == "RDTL3CA_NUM_CLOSID" {
+			continue
+		}
+
+		labels["rdt."+k] = v
 	}
 
 	// Security
+	// skipLabel lists features that will not have labels created but are only made available for
+	// NodeFeatureRules (e.g. to be published via extended resources instead)
+	skipLabel := sets.NewString(
+		"tdx.total_keys",
+		"sgx.epc",
+		"sev.encrypted_state_ids",
+		"sev.asids")
 	for k, v := range features.Attributes[SecurityFeature].Elements {
-		labels["security."+k] = v
+		if !skipLabel.Has(k) {
+			labels["security."+k] = v
+		}
 	}
 
 	// SGX
@@ -214,7 +230,7 @@ func (s *cpuSource) Discover() error {
 	// Detect cstate configuration
 	cstate, err := detectCstate()
 	if err != nil {
-		klog.Errorf("failed to detect cstate: %v", err)
+		klog.ErrorS(err, "failed to detect cstate")
 	} else {
 		s.features.Attributes[CstateFeature] = nfdv1alpha1.NewAttributeFeatures(cstate)
 	}
@@ -222,14 +238,14 @@ func (s *cpuSource) Discover() error {
 	// Detect pstate features
 	pstate, err := detectPstate()
 	if err != nil {
-		klog.Error(err)
+		klog.ErrorS(err, "failed to detect pstate")
 	}
 	s.features.Attributes[PstateFeature] = nfdv1alpha1.NewAttributeFeatures(pstate)
 
 	// Detect RDT features
-	s.features.Flags[RdtFeature] = nfdv1alpha1.NewFlagFeatures(discoverRDT()...)
+	s.features.Attributes[RdtFeature] = nfdv1alpha1.NewAttributeFeatures(discoverRDT())
 
-	// Detect SGX features
+	// Detect available guest protection(SGX,TDX,SEV) features
 	s.features.Attributes[SecurityFeature] = nfdv1alpha1.NewAttributeFeatures(discoverSecurity())
 
 	// Detect SGX features
@@ -255,7 +271,7 @@ func (s *cpuSource) Discover() error {
 	// Detect Coprocessor features
 	s.features.Attributes[CoprocessorFeature] = nfdv1alpha1.NewAttributeFeatures(discoverCoprocessor())
 
-	utils.KlogDump(3, "discovered cpu features:", "  ", s.features)
+	klog.V(3).InfoS("discovered features", "featureSource", s.Name(), "features", utils.DelayedDumper(s.features))
 
 	return nil
 }
@@ -281,7 +297,7 @@ func discoverTopology() map[string]string {
 	features := make(map[string]string)
 
 	if ht, err := haveThreadSiblings(); err != nil {
-		klog.Errorf("failed to detect hyper-threading: %v", err)
+		klog.ErrorS(err, "failed to detect hyper-threading")
 	} else {
 		features["hardware_multithreading"] = strconv.FormatBool(ht)
 	}

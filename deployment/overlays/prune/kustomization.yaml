@@ -3,15 +3,14 @@ kind: Kustomization
 
 namespace: node-feature-discovery
 
-bases:
-- ../../base/rbac
-
 resources:
+- ../../base/rbac
 - namespace.yaml
 - master-job.yaml
 
 components:
 - ../../components/common
+- ../../components/master-config
 
 patches:
 - path: master-clusterrole.yaml

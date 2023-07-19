@@ -20,7 +20,11 @@ limitations under the License.
 package cpu
 
 import (
+	"bufio"
+	"io"
 	"os"
+	"strconv"
+	"strings"
 
 	"github.com/klauspost/cpuid/v2"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
@@ -29,18 +33,55 @@ import (
 func discoverSecurity() map[string]string {
 	elems := make(map[string]string)
 
-	if sgxEnabled() {
+	// Set to 'true' based a non-zero sum value of SGX EPC section sizes. The
+	// kernel checks for IA32_FEATURE_CONTROL.SGX_ENABLE MSR bit but we can't
+	// do that as a normal user. Typically the BIOS, when enabling SGX,
+	// allocates "Processor Reserved Memory" for SGX EPC so we rely on > 0
+	// size here to set "SGX = enabled".
+	if epcSize := sgxEnabled(); epcSize > 0 {
 		elems["sgx.enabled"] = "true"
+		elems["sgx.epc"] = strconv.FormatUint(uint64(epcSize), 10)
 	}
 
 	if tdxEnabled() {
 		elems["tdx.enabled"] = "true"
+
+		tdxTotalKeys := getCgroupMiscCapacity("tdx")
+		if tdxTotalKeys > -1 {
+			elems["tdx.total_keys"] = strconv.FormatInt(int64(tdxTotalKeys), 10)
+		}
+	}
+
+	if tdxProtected() {
+		elems["tdx.protected"] = "true"
+	}
+
+	if sevParameterEnabled("sev") {
+		elems["sev.enabled"] = "true"
+
+		sevAddressSpaceIdentifiers := getCgroupMiscCapacity("sev")
+		if sevAddressSpaceIdentifiers > -1 {
+			elems["sev.asids"] = strconv.FormatInt(int64(sevAddressSpaceIdentifiers), 10)
+		}
+	}
+
+	if sevParameterEnabled("sev_es") {
+		elems["sev.es.enabled"] = "true"
+
+		sevEncryptedStateIDs := getCgroupMiscCapacity("sev_es")
+		if sevEncryptedStateIDs > -1 {
+			elems["sev.encrypted_state_ids"] = strconv.FormatInt(int64(sevEncryptedStateIDs), 10)
+		}
+	}
+
+	if sevParameterEnabled("sev_snp") {
+		elems["sev.snp.enabled"] = "true"
 	}
 
 	return elems
 }
 
-func sgxEnabled() bool {
+func sgxEnabled() uint64 {
 	var epcSize uint64
 	if cpuid.CPU.SGX.Available {
 		for _, s := range cpuid.CPU.SGX.EPCSections {
@@ -48,16 +89,7 @@ func sgxEnabled() bool {
 		}
 	}
 
-	// Set to 'true' based a non-zero sum value of SGX EPC section sizes. The
-	// kernel checks for IA32_FEATURE_CONTROL.SGX_ENABLE MSR bit but we can't
-	// do that as a normal user. Typically the BIOS, when enabling SGX,
-	// allocates "Processor Reserved Memory" for SGX EPC so we rely on > 0
-	// size here to set "SGX = enabled".
-	if epcSize > 0 {
-		return true
-	}
-
-	return false
+	return epcSize
 }
 
 func tdxEnabled() bool {
@@ -71,4 +103,57 @@ func tdxEnabled() bool {
 		}
 	}
 	return false
+}
+
+func tdxProtected() bool {
+	return cpuid.CPU.Has(cpuid.TDX_GUEST)
+}
+
+func sevParameterEnabled(parameter string) bool {
+	// SEV-SNP is supported and enabled when the kvm module `sev_snp` parameter is set to `Y`
+	// SEV-SNP support infers SEV (-ES) support
+	sevKvmParameterPath := hostpath.SysfsDir.Path("module/kvm_amd/parameters/", parameter)
+	if _, err := os.Stat(sevKvmParameterPath); err == nil {
+		if c, err := os.ReadFile(sevKvmParameterPath); err == nil && len(c) > 0 && (c[0] == '1' || c[0] == 'Y') {
+			return true
+		}
+	}
+	return false
+}
+
+func getCgroupMiscCapacity(resource string) int64 {
+	var totalResources int64 = -1
+
+	miscCgroups := hostpath.SysfsDir.Path("fs/cgroup/misc.capacity")
+	f, err := os.Open(miscCgroups)
+	if err != nil {
+		return totalResources
+	}
+	defer f.Close()
+
+	r := bufio.NewReader(f)
+	for {
+		line, _, err := r.ReadLine()
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			return totalResources
+		}
+
+		if !strings.HasPrefix(string(line), resource) {
+			continue
+		}
+
+		s := strings.Split(string(line), " ")
+		resources, err := strconv.ParseInt(s[1], 10, 64)
+		if err != nil {
+			return totalResources
+		}
+
+		totalResources = resources
+		break
+	}
+
+	return totalResources
 }

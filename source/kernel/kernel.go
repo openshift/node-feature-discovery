@@ -17,6 +17,7 @@ limitations under the License.
 package kernel
 
 import (
+	"fmt"
 	"strconv"
 
 	"k8s.io/klog/v2"
@@ -30,10 +31,11 @@ import (
 const Name = "kernel"
 
 const (
-	ConfigFeature       = "config"
-	LoadedModuleFeature = "loadedmodule"
-	SelinuxFeature      = "selinux"
-	VersionFeature      = "version"
+	ConfigFeature        = "config"
+	LoadedModuleFeature  = "loadedmodule"
+	SelinuxFeature       = "selinux"
+	VersionFeature       = "version"
+	EnabledModuleFeature = "enabledmodule"
 )
 
 // Configuration file options
@@ -86,7 +88,7 @@ func (s *kernelSource) SetConfig(conf source.Config) {
 	case *Config:
 		s.config = v
 	default:
-		klog.Fatalf("invalid config type: %T", conf)
+		panic(fmt.Sprintf("invalid config type: %T", conf))
 	}
 }
 
@@ -121,7 +123,7 @@ func (s *kernelSource) Discover() error {
 
 	// Read kernel version
 	if version, err := parseVersion(); err != nil {
-		klog.Errorf("failed to get kernel version: %s", err)
+		klog.ErrorS(err, "failed to get kernel version")
 	} else {
 		s.features.Attributes[VersionFeature] = nfdv1alpha1.NewAttributeFeatures(version)
 	}
@@ -129,26 +131,35 @@ func (s *kernelSource) Discover() error {
 	// Read kconfig
 	if realKconfig, legacyKconfig, err := parseKconfig(s.config.KconfigFile); err != nil {
 		s.legacyKconfig = nil
-		klog.Errorf("failed to read kconfig: %s", err)
+		klog.ErrorS(err, "failed to read kconfig")
 	} else {
 		s.features.Attributes[ConfigFeature] = nfdv1alpha1.NewAttributeFeatures(realKconfig)
 		s.legacyKconfig = legacyKconfig
 	}
 
+	var enabledModules []string
 	if kmods, err := getLoadedModules(); err != nil {
-		klog.Errorf("failed to get loaded kernel modules: %v", err)
+		klog.ErrorS(err, "failed to get loaded kernel modules")
 	} else {
+		enabledModules = append(enabledModules, kmods...)
 		s.features.Flags[LoadedModuleFeature] = nfdv1alpha1.NewFlagFeatures(kmods...)
 	}
 
+	if builtinMods, err := getBuiltinModules(); err != nil {
+		klog.ErrorS(err, "failed to get builtin kernel modules")
+	} else {
+		enabledModules = append(enabledModules, builtinMods...)
+		s.features.Flags[EnabledModuleFeature] = nfdv1alpha1.NewFlagFeatures(enabledModules...)
+	}
+
 	if selinux, err := SelinuxEnabled(); err != nil {
-		klog.Warning(err)
+		klog.ErrorS(err, "failed to detect selinux status")
 	} else {
 		s.features.Attributes[SelinuxFeature] = nfdv1alpha1.NewAttributeFeatures(nil)
 		s.features.Attributes[SelinuxFeature].Elements["enabled"] = strconv.FormatBool(selinux)
 	}
 
-	utils.KlogDump(3, "discovered kernel features:", "  ", s.features)
+	klog.V(3).InfoS("discovered features", "featureSource", s.Name(), "features", utils.DelayedDumper(s.features))
 
 	return nil
 }

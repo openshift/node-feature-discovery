@@ -17,8 +17,10 @@ limitations under the License.
 package nfdmaster
 
 import (
+	"fmt"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
@@ -29,6 +31,7 @@ import (
 	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
 	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
 	nfdlisters "github.com/openshift/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 type nfdController struct {
@@ -41,7 +44,12 @@ type nfdController struct {
 	updateOneNodeChan  chan string
 }
 
-func newNfdController(config *restclient.Config, disableNodeFeature bool) (*nfdController, error) {
+type nfdApiControllerOptions struct {
+	DisableNodeFeature bool
+	ResyncPeriod       time.Duration
+}
+
+func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiControllerOptions) (*nfdController, error) {
 	c := &nfdController{
 		stopChan:           make(chan struct{}, 1),
 		updateAllNodesChan: make(chan struct{}, 1),
@@ -49,27 +57,28 @@ func newNfdController(config *restclient.Config, disableNodeFeature bool) (*nfdC
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)
+	klog.V(2).InfoS("initializing new NFD API controller", "options", utils.DelayedDumper(nfdApiControllerOptions))
 
-	informerFactory := nfdinformers.NewSharedInformerFactory(nfdClient, 5*time.Minute)
+	informerFactory := nfdinformers.NewSharedInformerFactory(nfdClient, nfdApiControllerOptions.ResyncPeriod)
 
 	// Add informer for NodeFeature objects
-	if !disableNodeFeature {
+	if !nfdApiControllerOptions.DisableNodeFeature {
 		featureInformer := informerFactory.Nfd().V1alpha1().NodeFeatures()
 		if _, err := featureInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				key, _ := cache.MetaNamespaceKeyFunc(obj)
-				klog.V(2).Infof("NodeFeature %v added", key)
-				c.updateOneNode(obj)
+				nfr := obj.(*nfdv1alpha1.NodeFeature)
+				klog.V(2).InfoS("NodeFeature added", "nodefeature", klog.KObj(nfr))
+				c.updateOneNode("NodeFeature", nfr)
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
-				key, _ := cache.MetaNamespaceKeyFunc(newObj)
-				klog.V(2).Infof("NodeFeature %v updated", key)
-				c.updateOneNode(newObj)
+				nfr := newObj.(*nfdv1alpha1.NodeFeature)
+				klog.V(2).InfoS("NodeFeature updated", "nodefeature", klog.KObj(nfr))
+				c.updateOneNode("NodeFeature", nfr)
 			},
 			DeleteFunc: func(obj interface{}) {
-				key, _ := cache.MetaNamespaceKeyFunc(obj)
-				klog.V(2).Infof("NodeFeature %v deleted", key)
-				c.updateOneNode(obj)
+				nfr := obj.(*nfdv1alpha1.NodeFeature)
+				klog.V(2).InfoS("NodeFeature deleted", "nodefeature", klog.KObj(nfr))
+				c.updateOneNode("NodeFeature", nfr)
 			},
 		}); err != nil {
 			return nil, err
@@ -81,25 +90,22 @@ func newNfdController(config *restclient.Config, disableNodeFeature bool) (*nfdC
 	ruleInformer := informerFactory.Nfd().V1alpha1().NodeFeatureRules()
 	if _, err := ruleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(object interface{}) {
-			key, _ := cache.MetaNamespaceKeyFunc(object)
-			klog.V(2).Infof("NodeFeatureRule %v added", key)
-			if !disableNodeFeature {
+			klog.V(2).InfoS("NodeFeatureRule added", "nodefeaturerule", klog.KObj(object.(metav1.Object)))
+			if !nfdApiControllerOptions.DisableNodeFeature {
 				c.updateAllNodes()
 			}
 			// else: rules will be processed only when gRPC requests are received
 		},
 		UpdateFunc: func(oldObject, newObject interface{}) {
-			key, _ := cache.MetaNamespaceKeyFunc(newObject)
-			klog.V(2).Infof("NodeFeatureRule %v updated", key)
-			if !disableNodeFeature {
+			klog.V(2).InfoS("NodeFeatureRule updated", "nodefeaturerule", klog.KObj(newObject.(metav1.Object)))
+			if !nfdApiControllerOptions.DisableNodeFeature {
 				c.updateAllNodes()
 			}
 			// else: rules will be processed only when gRPC requests are received
 		},
 		DeleteFunc: func(object interface{}) {
-			key, _ := cache.MetaNamespaceKeyFunc(object)
-			klog.V(2).Infof("NodeFeatureRule %v deleted", key)
-			if !disableNodeFeature {
+			klog.V(2).InfoS("NodeFeatureRule deleted", "nodefeaturerule", klog.KObj(object.(metav1.Object)))
+			if !nfdApiControllerOptions.DisableNodeFeature {
 				c.updateAllNodes()
 			}
 			// else: rules will be processed only when gRPC requests are received
@@ -113,7 +119,6 @@ func newNfdController(config *restclient.Config, disableNodeFeature bool) (*nfdC
 	informerFactory.Start(c.stopChan)
 
 	utilruntime.Must(nfdv1alpha1.AddToScheme(nfdscheme.Scheme))
-
 	return c, nil
 }
 
@@ -124,26 +129,24 @@ func (c *nfdController) stop() {
 	}
 }
 
-func (c *nfdController) updateOneNode(obj interface{}) {
-	o, ok := obj.(*nfdv1alpha1.NodeFeature)
-	if !ok {
-		klog.Errorf("not a NodeFeature object (but of type %T): %v", obj, obj)
+func (c *nfdController) updateOneNode(typ string, obj metav1.Object) {
+	nodeName, err := getNodeNameForObj(obj)
+	if err != nil {
+		klog.ErrorS(err, "failed to determine node name for object", "type", typ, "object", klog.KObj(obj))
 		return
 	}
+	c.updateOneNodeChan <- nodeName
+}
 
-	nodeName, ok := o.Labels[nfdv1alpha1.NodeFeatureObjNodeNameLabel]
+func getNodeNameForObj(obj metav1.Object) (string, error) {
+	nodeName, ok := obj.GetLabels()[nfdv1alpha1.NodeFeatureObjNodeNameLabel]
 	if !ok {
-		klog.Errorf("no node name for NodeFeature object %s/%s: %q label is missing",
-			o.Namespace, o.Name, nfdv1alpha1.NodeFeatureObjNodeNameLabel)
-		return
+		return "", fmt.Errorf("%q label is missing", nfdv1alpha1.NodeFeatureObjNodeNameLabel)
 	}
 	if nodeName == "" {
-		klog.Errorf("no node name for NodeFeature object %s/%s: %q label is empty",
-			o.Namespace, o.Name, nfdv1alpha1.NodeFeatureObjNodeNameLabel)
-		return
+		return "", fmt.Errorf("%q label is empty", nfdv1alpha1.NodeFeatureObjNodeNameLabel)
 	}
-
-	c.updateOneNodeChan <- nodeName
+	return nodeName, nil
 }
 
 func (c *nfdController) updateAllNodes() {

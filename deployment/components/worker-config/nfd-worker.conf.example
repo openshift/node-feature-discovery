@@ -31,6 +31,7 @@
 #        - "SSE4"
 #        - "SSE42"
 #        - "SSSE3"
+#        - "TDX_GUEST"
 #      attributeWhitelist:
 #  kernel:
 #    kconfigFile: "/path/to/kconfig"
@@ -60,7 +61,7 @@
 #      - "vendor"
 #      - "device"
 #  local:
-#    hooksEnabled: true
+#    hooksEnabled: false
 #  custom:
 #    - name: "my.kernel.feature"
 #      matchOn:

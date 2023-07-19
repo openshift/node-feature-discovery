@@ -34,6 +34,6 @@ spec:
             failureThreshold: 10
           command:
             - "nfd-master"
-          args: []
-          volumeMounts: []
-      volumes: []
+          ports:
+            - name: grpc
+              containerPort: 8080

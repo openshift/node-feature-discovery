@@ -31,13 +31,15 @@ import (
 // RuleOutput contains the output out rule execution.
 // +k8s:deepcopy-gen=false
 type RuleOutput struct {
-	Labels map[string]string
-	Vars   map[string]string
-	Taints []corev1.Taint
+	ExtendedResources map[string]string
+	Labels            map[string]string
+	Vars              map[string]string
+	Taints            []corev1.Taint
 }
 
 // Execute the rule against a set of input features.
 func (r *Rule) Execute(features *Features) (RuleOutput, error) {
+	extendedResources := make(map[string]string)
 	labels := make(map[string]string)
 	vars := make(map[string]string)
 
@@ -49,7 +51,7 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 				return RuleOutput{}, err
 			} else if isMatch {
 				matched = true
-				utils.KlogDump(4, "matches for matchAny "+r.Name, "  ", matches)
+				klog.V(4).InfoS("matchAny matched", "ruleName", r.Name, "matchedFeatures", utils.DelayedDumper(matches))
 
 				if r.LabelsTemplate == "" && r.VarsTemplate == "" {
 					// there's no need to evaluate other matchers in MatchAny
@@ -67,7 +69,7 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 			}
 		}
 		if !matched {
-			klog.V(2).Infof("rule %q did not match", r.Name)
+			klog.V(2).InfoS("rule did not match", "ruleName", r.Name)
 			return RuleOutput{}, nil
 		}
 	}
@@ -76,10 +78,10 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 		if isMatch, matches, err := r.MatchFeatures.match(features); err != nil {
 			return RuleOutput{}, err
 		} else if !isMatch {
-			klog.V(2).Infof("rule %q did not match", r.Name)
+			klog.V(2).InfoS("rule did not match", "ruleName", r.Name)
 			return RuleOutput{}, nil
 		} else {
-			utils.KlogDump(4, "matches for matchFeatures "+r.Name, "  ", matches)
+			klog.V(4).InfoS("matchFeatures matched", "ruleName", r.Name, "matchedFeatures", utils.DelayedDumper(matches))
 			if err := r.executeLabelsTemplate(matches, labels); err != nil {
 				return RuleOutput{}, err
 			}
@@ -89,6 +91,10 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 		}
 	}
 
+	for k, v := range r.ExtendedResources {
+		extendedResources[k] = v
+	}
+
 	for k, v := range r.Labels {
 		labels[k] = v
 	}
@@ -96,8 +102,8 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 		vars[k] = v
 	}
 
-	ret := RuleOutput{Labels: labels, Vars: vars, Taints: r.Taints}
-	utils.KlogDump(2, fmt.Sprintf("rule %q matched with: ", r.Name), "  ", ret)
+	ret := RuleOutput{ExtendedResources: extendedResources, Labels: labels, Vars: vars, Taints: r.Taints}
+	klog.V(2).InfoS("rule matched", "ruleName", r.Name, "ruleOutput", utils.DelayedDumper(ret))
 	return ret, nil
 }
 
@@ -164,7 +170,7 @@ func (m *FeatureMatcher) match(features *Features) (bool, matchedFeatures, error
 
 		nameSplit := strings.SplitN(term.Feature, ".", 2)
 		if len(nameSplit) != 2 {
-			klog.Warning("feature %q not of format <domain>.<feature>, cannot be used for templating", term.Feature)
+			klog.InfoS("invalid feature name (not <domain>.<feature>), cannot be used for templating", "featureName", term.Feature)
 			nameSplit = []string{featureName, ""}
 		}
 
