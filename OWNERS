@@ -1,7 +1,9 @@
 approvers:
   - ybettan
   - yevgeny-shnaidman 
+  - chr15p
 reviewers:
   - ybettan
-  - yevgeny-shnaidman 
+  - yevgeny-shnaidman
+  - chr15p
 component: "Node Feature Discovery Operator"
