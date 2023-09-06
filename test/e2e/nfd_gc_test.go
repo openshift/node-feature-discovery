@@ -31,7 +31,6 @@ import (
 	"k8s.io/kubernetes/test/e2e/framework"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	"github.com/openshift/node-feature-discovery/test/e2e/utils"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 	testdeploy "github.com/openshift/node-feature-discovery/test/e2e/utils/deployment"
 	testpod "github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
@@ -87,10 +86,10 @@ var _ = SIGDescribe("NFD GC", func() {
 		// Helper functions
 		createCRs := func(ctx context.Context, nodeNames []string) error {
 			for _, name := range nodeNames {
-				if err := utils.CreateNodeFeature(ctx, nfdClient, f.Namespace.Name, name, name); err != nil {
+				if err := testutils.CreateNodeFeature(ctx, nfdClient, f.Namespace.Name, name, name); err != nil {
 					return err
 				}
-				if err := utils.CreateNodeResourceTopology(ctx, topologyClient, name); err != nil {
+				if err := testutils.CreateNodeResourceTopology(ctx, topologyClient, name); err != nil {
 					return err
 				}
 			}
