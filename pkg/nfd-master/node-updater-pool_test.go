@@ -24,8 +24,8 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
 	k8sclient "k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/node-feature-discovery/pkg/apihelper"
-	"sigs.k8s.io/node-feature-discovery/pkg/generated/clientset/versioned/fake"
+	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	"github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/fake"
 )
 
 func newMockNodeUpdaterPool(nfdMaster *nfdMaster) *nodeUpdaterPool {
