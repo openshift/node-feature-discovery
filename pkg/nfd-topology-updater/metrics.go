@@ -23,7 +23,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/node-feature-discovery/pkg/version"
+	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
 // When adding metric names, see https://prometheus.io/docs/practices/naming/#metric-names
