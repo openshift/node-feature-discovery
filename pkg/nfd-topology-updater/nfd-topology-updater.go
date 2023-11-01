@@ -37,6 +37,7 @@ import (
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/topologypolicy"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils/kubeconf"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 	"sigs.k8s.io/yaml"
 )
