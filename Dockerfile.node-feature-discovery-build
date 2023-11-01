@@ -9,15 +9,15 @@ RUN curl -L "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/st
 RUN install -o root -g root -m 0755 /tmp/kubectl /usr/local/bin/kubectl
 RUN curl -L --retry 5 "https://github.com/kubernetes-sigs/kustomize/releases/download/kustomize%2Fv4.3.0/kustomize_v4.3.0_linux_amd64.tar.gz" | \
     tar -zx -C /usr/bin
-RUN go install github.com/vektra/mockery/v2@v2.25.1 && \
-    go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.11.3 && \
-    git clone https://github.com/kubernetes/code-generator -b v0.27.1 --depth 1 && \
-    go install k8s.io/code-generator/cmd/go-to-protobuf/...@v0.27.1 && \
-    go install golang.org/x/tools/cmd/goimports@v0.8.0 && \
+RUN go install github.com/vektra/mockery/v2@v2.32.0 && \
+    go install sigs.k8s.io/controller-tools/cmd/controller-gen@v0.12.1 && \
+    git clone https://github.com/kubernetes/code-generator -b v0.27.4 --depth 1 && \
+    go install k8s.io/code-generator/cmd/go-to-protobuf/...@v0.27.4 && \
+    go install golang.org/x/tools/cmd/goimports@v0.11.0 && \
     go install github.com/golang/protobuf/protoc-gen-go@v1.4.3
 COPY --from=quay.io/openshift/origin-cli:latest /usr/bin/oc /usr/bin
 
-RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v22.3/protoc-22.3-linux-x86_64.zip
-RUN unzip protoc-22.3-linux-x86_64.zip -d /usr/local
-RUN rm protoc-22.3-linux-x86_64.zip
+RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v23.4/protoc-23.4-linux-x86_64.zip && \
+    unzip protoc-23.4-linux-x86_64.zip -d /usr/local && \
+    rm protoc-23.4-linux-x86_64.zip
 RUN chmod a+x /usr/local/bin/protoc
