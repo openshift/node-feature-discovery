@@ -29,12 +29,12 @@ import (
 	extclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/kubernetes/test/e2e/framework"
-	"sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclient "sigs.k8s.io/node-feature-discovery/pkg/generated/clientset/versioned"
-	"sigs.k8s.io/node-feature-discovery/test/e2e/utils"
-	testutils "sigs.k8s.io/node-feature-discovery/test/e2e/utils"
-	testdeploy "sigs.k8s.io/node-feature-discovery/test/e2e/utils/deployment"
-	testpod "sigs.k8s.io/node-feature-discovery/test/e2e/utils/pod"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils"
+	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
+	testdeploy "github.com/openshift/node-feature-discovery/test/e2e/utils/deployment"
+	testpod "github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
 )
 
 // Actual test suite

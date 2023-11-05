@@ -21,7 +21,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	"sigs.k8s.io/node-feature-discovery/test/e2e/utils/pod"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
 )
 
 // NFDGC returns a deplooyment for NFD Garbage Collector

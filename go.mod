@@ -34,7 +34,6 @@ require (
 	k8s.io/kubernetes v1.28.3
 	k8s.io/pod-security-admission v0.28.3
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
-	sigs.k8s.io/node-feature-discovery v0.14.3
 	sigs.k8s.io/yaml v1.3.0
 )
 
