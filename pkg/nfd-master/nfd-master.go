@@ -48,7 +48,6 @@ import (
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
 	controller "k8s.io/kubernetes/pkg/controller"
-	klogutils "sigs.k8s.io/node-feature-discovery/pkg/utils/klog"
 
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	"sigs.k8s.io/yaml"
@@ -57,6 +56,7 @@ import (
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 

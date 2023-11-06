@@ -22,7 +22,7 @@ import (
 	"strings"
 
 	"k8s.io/klog/v2"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 // KlogConfigOpts defines klog configuration options

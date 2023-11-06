@@ -22,7 +22,7 @@ import (
 	"os"
 
 	"k8s.io/klog/v2"
-	klogutils "sigs.k8s.io/node-feature-discovery/pkg/utils/klog"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 
 	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	"github.com/openshift/node-feature-discovery/pkg/utils"

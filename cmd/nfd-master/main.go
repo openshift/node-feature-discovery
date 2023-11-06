@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
-	klogutils "sigs.k8s.io/node-feature-discovery/pkg/utils/klog"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 
 	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
 
