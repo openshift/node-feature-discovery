@@ -39,7 +39,7 @@ func TestLocalSource(t *testing.T) {
 
 func TestGetExpirationDate(t *testing.T) {
 	expectedFeaturesLen := 7
-	expectedLabelsLen := 8
+	expectedLabelsLen := 9
 
 	pwd, _ := os.Getwd()
 	featureFilesDir = filepath.Join(pwd, "testdata/features.d")
