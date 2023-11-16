@@ -20,9 +20,9 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
 
 	"k8s.io/klog/v2"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 
 	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
@@ -50,6 +50,24 @@ func main() {
 	if version.Undefined() {
 		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
 	}
+
+	// Check deprecated flags
+	flags.Visit(func(f *flag.Flag) {
+		switch f.Name {
+		case "enable-nodefeature-api":
+			klog.InfoS("-enable-nodefeature-api is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "ca-file":
+			klog.InfoS("-ca-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "cert-file":
+			klog.InfoS("-cert-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "key-file":
+			klog.InfoS("-key-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "server":
+			klog.InfoS("-server is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "server-name-override":
+			klog.InfoS("-server-name-override is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		}
+	})
 
 	// Plug klog into grpc logging infrastructure
 	utils.ConfigureGrpcKlog()
@@ -96,28 +114,36 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 	args := &worker.Args{}
 
 	flagset.StringVar(&args.CaFile, "ca-file", "",
-		"Root certificate for verifying connections")
+		"Root certificate for verifying connections."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.StringVar(&args.CertFile, "cert-file", "",
-		"Certificate used for authenticating connections")
+		"Certificate used for authenticating connections."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.StringVar(&args.ConfigFile, "config", "/etc/kubernetes/node-feature-discovery/nfd-worker.conf",
 		"Config file to use.")
 	flagset.StringVar(&args.KeyFile, "key-file", "",
-		"Private key matching -cert-file")
-	flagset.BoolVar(&args.EnableNodeFeatureApi, "enable-nodefeature-api", false,
-		"Enable the NodeFeature CRD API for communicating with nfd-master. This will automatically disable the gRPC communication.")
+		"Private key matching -cert-file."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
+	flagset.BoolVar(&args.EnableNodeFeatureApi, "enable-nodefeature-api", true,
+		"Enable the NodeFeature CRD API for communicating with nfd-master. This will automatically disable the gRPC communication."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.StringVar(&args.Kubeconfig, "kubeconfig", "",
 		"Kubeconfig to use")
 	flagset.BoolVar(&args.Oneshot, "oneshot", false,
 		"Do not publish feature labels")
+	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
+		"Port on which to expose metrics.")
 	flagset.StringVar(&args.Options, "options", "",
 		"Specify config options from command line. Config options are specified "+
 			"in the same format as in the config file (i.e. json or yaml). These options")
 	flagset.StringVar(&args.Server, "server", "nfd-master:12000",
-		"NFD server address to connecto to.")
+		"NFD server address to connecto to."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.StringVar(&args.ServerNameOverride, "server-name-override", "",
-		"Hostname expected from server certificate, useful in testing")
+		"Hostname expected from server certificate, useful in testing."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 
-	initKlogFlags(flagset, args)
+	args.Klog = klogutils.InitKlogFlags(flagset)
 
 	// Flags overlapping with config file options
 	overrides := &worker.ConfigOverrideArgs{
@@ -134,25 +160,4 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 			"Prefix the source name with '-' to disable it.")
 
 	return args, overrides
-}
-
-func initKlogFlags(flagset *flag.FlagSet, args *worker.Args) {
-	args.Klog = make(map[string]*utils.KlogFlagVal)
-
-	flags := flag.NewFlagSet("klog flags", flag.ContinueOnError)
-	//flags.SetOutput(ioutil.Discard)
-	klog.InitFlags(flags)
-	flags.VisitAll(func(f *flag.Flag) {
-		name := klogConfigOptName(f.Name)
-		args.Klog[name] = utils.NewKlogFlagVal(f)
-		flagset.Var(args.Klog[name], f.Name, f.Usage)
-	})
-}
-
-func klogConfigOptName(flagName string) string {
-	split := strings.Split(flagName, "_")
-	for i, v := range split[1:] {
-		split[i+1] = strings.ToUpper(v[0:1]) + v[1:]
-	}
-	return strings.Join(split, "")
 }

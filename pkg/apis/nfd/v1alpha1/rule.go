@@ -33,6 +33,7 @@ import (
 type RuleOutput struct {
 	ExtendedResources map[string]string
 	Labels            map[string]string
+	Annotations       map[string]string
 	Vars              map[string]string
 	Taints            []corev1.Taint
 }
@@ -102,7 +103,7 @@ func (r *Rule) Execute(features *Features) (RuleOutput, error) {
 		vars[k] = v
 	}
 
-	ret := RuleOutput{ExtendedResources: extendedResources, Labels: labels, Vars: vars, Taints: r.Taints}
+	ret := RuleOutput{ExtendedResources: extendedResources, Labels: labels, Vars: vars, Taints: r.Taints, Annotations: r.Annotations}
 	klog.V(2).InfoS("rule matched", "ruleName", r.Name, "ruleOutput", utils.DelayedDumper(ret))
 	return ret, nil
 }

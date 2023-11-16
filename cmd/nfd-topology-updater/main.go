@@ -19,19 +19,16 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/url"
 	"os"
 	"path"
 	"time"
 
 	"k8s.io/klog/v2"
-	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
 	topology "github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
-	"github.com/openshift/node-feature-discovery/pkg/utils/kubeconf"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
 
@@ -46,14 +43,7 @@ var DefaultKubeletStateDir = path.Join(string(hostpath.VarDir), "lib", "kubelet"
 func main() {
 	flags := flag.NewFlagSet(ProgramName, flag.ExitOnError)
 
-	printVersion := flags.Bool("version", false, "Print version and exit.")
-
 	args, resourcemonitorArgs := parseArgs(flags, os.Args[1:]...)
-
-	if *printVersion {
-		fmt.Println(ProgramName, version.Get())
-		os.Exit(0)
-	}
 
 	// Assert that the version is known
 	if version.Undefined() {
@@ -63,14 +53,8 @@ func main() {
 	// Plug klog into grpc logging infrastructure
 	utils.ConfigureGrpcKlog()
 
-	klConfig, err := getKubeletConfig(resourcemonitorArgs.KubeletConfigURI, resourcemonitorArgs.APIAuthTokenFile)
-	if err != nil {
-		klog.ErrorS(err, "failed to get kubelet configuration")
-		os.Exit(1)
-	}
-
 	// Get new TopologyUpdater instance
-	instance, err := topology.NewTopologyUpdater(*args, *resourcemonitorArgs, klConfig.TopologyManagerPolicy, klConfig.TopologyManagerScope)
+	instance, err := topology.NewTopologyUpdater(*args, *resourcemonitorArgs)
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize topology updater instance")
 		os.Exit(1)
@@ -84,12 +68,18 @@ func main() {
 
 func parseArgs(flags *flag.FlagSet, osArgs ...string) (*topology.Args, *resourcemonitor.Args) {
 	args, resourcemonitorArgs := initFlags(flags)
+	printVersion := flags.Bool("version", false, "Print version and exit.")
 
 	_ = flags.Parse(osArgs)
 	if len(flags.Args()) > 0 {
 		fmt.Fprintf(flags.Output(), "unknown command line argument: %s\n", flags.Args()[0])
 		flags.Usage()
 		os.Exit(2)
+	}
+
+	if *printVersion {
+		fmt.Println(ProgramName, version.Get())
+		os.Exit(0)
 	}
 
 	if len(resourcemonitorArgs.KubeletConfigURI) == 0 {
@@ -115,6 +105,8 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 		"Do not publish discovered features to the cluster-local Kubernetes API server.")
 	flagset.StringVar(&args.KubeConfigFile, "kubeconfig", "",
 		"Kube config file.")
+	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
+		"Port on which to expose metrics.")
 	flagset.DurationVar(&resourcemonitorArgs.SleepInterval, "sleep-interval", time.Duration(60)*time.Second,
 		"Time to sleep between CR updates. zero means no CR updates on interval basis. [Default: 60s]")
 	flagset.StringVar(&resourcemonitorArgs.Namespace, "watch-namespace", "*",
@@ -133,35 +125,4 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 	klog.InitFlags(flagset)
 
 	return args, resourcemonitorArgs
-}
-
-func getKubeletConfig(uri, apiAuthTokenFile string) (*kubeletconfigv1beta1.KubeletConfiguration, error) {
-	u, err := url.ParseRequestURI(uri)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse -kubelet-config-uri: %w", err)
-	}
-
-	// init kubelet API client
-	var klConfig *kubeletconfigv1beta1.KubeletConfiguration
-	switch u.Scheme {
-	case "file":
-		klConfig, err = kubeconf.GetKubeletConfigFromLocalFile(u.Path)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read kubelet config: %w", err)
-		}
-		return klConfig, err
-	case "https":
-		restConfig, err := kubeconf.InsecureConfig(u.String(), apiAuthTokenFile)
-		if err != nil {
-			return nil, fmt.Errorf("failed to initialize rest config for kubelet config uri: %w", err)
-		}
-
-		klConfig, err = kubeconf.GetKubeletConfiguration(restConfig)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get kubelet config from configz endpoint: %w", err)
-		}
-		return klConfig, nil
-	}
-
-	return nil, fmt.Errorf("unsupported URI scheme: %v", u.Scheme)
 }

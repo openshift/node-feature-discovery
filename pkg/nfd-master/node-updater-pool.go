@@ -18,7 +18,9 @@ package nfdmaster
 
 import (
 	"sync"
+	"time"
 
+	"golang.org/x/time/rate"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
 )
@@ -38,7 +40,7 @@ func newNodeUpdaterPool(nfdMaster *nfdMaster) *nodeUpdaterPool {
 	}
 }
 
-func (u *nodeUpdaterPool) processNodeLabelRequest(queue workqueue.RateLimitingInterface) bool {
+func (u *nodeUpdaterPool) processNodeUpdateRequest(queue workqueue.RateLimitingInterface) bool {
 	nodeName, quit := queue.Get()
 	if quit {
 		return false
@@ -46,13 +48,15 @@ func (u *nodeUpdaterPool) processNodeLabelRequest(queue workqueue.RateLimitingIn
 
 	defer queue.Done(nodeName)
 
+	nodeUpdateRequests.Inc()
 	if err := u.nfdMaster.nfdAPIUpdateOneNode(nodeName.(string)); err != nil {
-		if queue.NumRequeues(nodeName) < 5 {
-			klog.InfoS("retrying labeling request for node", "nodeName", nodeName)
+		if queue.NumRequeues(nodeName) < 15 {
+			klog.InfoS("retrying node update", "nodeName", nodeName)
 			queue.AddRateLimited(nodeName)
 			return true
 		} else {
-			klog.ErrorS(err, "error labeling node", "nodeName", nodeName)
+			klog.ErrorS(err, "failed to update node", "nodeName", nodeName)
+			nodeUpdateFailures.Inc()
 		}
 	}
 	queue.Forget(nodeName)
@@ -60,7 +64,7 @@ func (u *nodeUpdaterPool) processNodeLabelRequest(queue workqueue.RateLimitingIn
 }
 
 func (u *nodeUpdaterPool) runNodeUpdater(queue workqueue.RateLimitingInterface) {
-	for u.processNodeLabelRequest(queue) {
+	for u.processNodeUpdateRequest(queue) {
 	}
 	u.wg.Done()
 }
@@ -75,7 +79,14 @@ func (u *nodeUpdaterPool) start(parallelism int) {
 	}
 
 	klog.InfoS("starting the NFD master node updater pool", "parallelism", parallelism)
-	u.queue = workqueue.NewRateLimitingQueue(workqueue.DefaultControllerRateLimiter())
+
+	// Create ratelimiter. Mimic workqueue.DefaultControllerRateLimiter() but
+	// with modified per-item (node) rate limiting parameters.
+	rl := workqueue.NewMaxOfRateLimiter(
+		workqueue.NewItemExponentialFailureRateLimiter(50*time.Millisecond, 100*time.Second),
+		&workqueue.BucketRateLimiter{Limiter: rate.NewLimiter(rate.Limit(10), 100)},
+	)
+	u.queue = workqueue.NewRateLimitingQueue(rl)
 
 	for i := 0; i < parallelism; i++ {
 		u.wg.Add(1)

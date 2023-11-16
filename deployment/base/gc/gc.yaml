@@ -1,0 +1,26 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: nfd
+  name: nfd-gc
+spec:
+  selector:
+    matchLabels:
+      app: nfd-gc
+  template:
+    metadata:
+      labels:
+        app: nfd-gc
+    spec:
+      dnsPolicy: ClusterFirstWithHostNet
+      serviceAccount: nfd-gc
+      containers:
+        - name: nfd-gc
+          image: gcr.io/k8s-staging-nfd/node-feature-discovery:master
+          imagePullPolicy: Always
+          command:
+            - "nfd-gc"
+          ports:
+            - name: metrics
+              containerPort: 8081

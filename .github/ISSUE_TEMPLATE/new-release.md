@@ -12,10 +12,10 @@ Please do not remove items from the checklist
 -->
 - [ ] All [OWNERS](https://github.com/kubernetes-sigs/node-feature-discovery/blob/master/OWNERS) must LGTM the release proposal
 - [ ] Verify that the changelog in this issue is up-to-date
-- [ ] For major releases (v0.$MAJ.0), an OWNER creates a release branch with
-      `git branch release-0.$MAJ master`
-- [ ] Prepare `release-0.$MAJ` release branch
-  - [ ] An OWNER creates a vanilla release branch from master and pushes it with
+- [ ] Create new release branch (release v0.$MAJ.0)
+  - [ ] an OWNER creates a vanilla release branch with
+        `git branch release-0.$MAJ master`
+  - [ ] An OWNER pushes the new release branch with
         `git push release-0.$MAJ`
   - [ ] Create Prow pre-submit job configuration for the new release branch in K8s
         [test-infra](https://github.com/kubernetes/test-infra), submit a PR
@@ -40,14 +40,13 @@ Please do not remove items from the checklist
 - [ ] Publish the draft release prepared at the [Github releases page](https://github.com/kubernetes-sigs/node-feature-discovery/releases)
       which will also trigger a Helm repo index update to add the latest release
 - [ ] Add a link to the tagged release in this issue.
-- [ ] For a major release
-  - [ ] Send an announcement email to `dev@kubernetes.io` with the subject `[ANNOUNCE] node-feature-discovery $VERSION is released`
+- [ ] Send an announcement email to `dev@kubernetes.io` with the subject `[ANNOUNCE] node-feature-discovery $VERSION is released`
   - [ ] Add a link to the release announcement in this issue
-- [ ] For a major release (or a point release of the latest major release), update README in master branch
+- [ ] Update README in master branch
   - [ ] Update references e.g. by running `hack/prepare-release.sh $VERSION` but **only** committing README.md, and,
         submit a PR
   - [ ] Wait for the PR to be merged
-- [ ] For a major release, create an unannotated *devel* tag in the master branch, on the first commit that gets merged after the release branch has been created (presumably the README update commit above), and, push the tag:
+- [ ] Create an unannotated *devel* tag in the master branch, on the first commit that gets merged after the release branch has been created (presumably the README update commit above), and, push the tag:
       `DEVEL=v0.$(($MAJ+1)).0-devel; git tag $DEVEL master && git push $DEVEL`
       This ensures that the devel builds on the master branch will have a meaningful version number.
 - [ ] Close this issue

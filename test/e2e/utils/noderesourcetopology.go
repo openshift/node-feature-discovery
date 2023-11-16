@@ -107,6 +107,16 @@ func CreateNodeResourceTopologies(ctx context.Context, extClient extclient.Inter
 	return extClient.ApiextensionsV1().CustomResourceDefinitions().Create(ctx, crd, metav1.CreateOptions{})
 }
 
+// CreateNodeResourceTopology creates a dummy NodeResourceTopology object for a node
+func CreateNodeResourceTopology(ctx context.Context, topologyClient *topologyclientset.Clientset, nodeName string) error {
+	nrt := &v1alpha2.NodeResourceTopology{
+		ObjectMeta: metav1.ObjectMeta{Name: nodeName},
+		Zones:      v1alpha2.ZoneList{},
+	}
+	_, err := topologyClient.TopologyV1alpha2().NodeResourceTopologies().Create(ctx, nrt, metav1.CreateOptions{})
+	return err
+}
+
 // GetNodeTopology returns the NodeResourceTopology data for the node identified by `nodeName`.
 func GetNodeTopology(ctx context.Context, topologyClient *topologyclientset.Clientset, nodeName string) *v1alpha2.NodeResourceTopology {
 	var nodeTopology *v1alpha2.NodeResourceTopology
@@ -118,7 +128,7 @@ func GetNodeTopology(ctx context.Context, topologyClient *topologyclientset.Clie
 			return false
 		}
 		return true
-	}, time.Minute, 5*time.Second).Should(gomega.BeTrue())
+	}).WithPolling(5 * time.Second).WithTimeout(1 * time.Minute).Should(gomega.BeTrue())
 	return nodeTopology
 }
 

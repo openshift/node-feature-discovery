@@ -139,6 +139,10 @@ type Rule struct {
 	// +optional
 	LabelsTemplate string `json:"labelsTemplate"`
 
+	// Annotations to create if the rule matches.
+	// +optional
+	Annotations map[string]string `json:"annotations"`
+
 	// Vars is the variables to store if the rule matches. Variables do not
 	// directly inflict any changes in the node object. However, they can be
 	// referenced from other rules enabling more complex rule hierarchies,
@@ -194,8 +198,6 @@ type FeatureMatcherTerm struct {
 // MatchExpressionSet contains a set of MatchExpressions, each of which is
 // evaluated against a set of input values.
 type MatchExpressionSet map[string]*MatchExpression
-
-// Expressions is a helper type to work around issues with k8s deepcopy-gen
 
 // MatchExpression specifies an expression to evaluate against a set of input
 // values. It contains an operator that is applied when matching the input and

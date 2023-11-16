@@ -44,6 +44,7 @@ import (
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"	
 	"github.com/openshift/node-feature-discovery/pkg/version"
 	"github.com/openshift/node-feature-discovery/source"
 
@@ -74,7 +75,7 @@ type NFDConfig struct {
 }
 
 type coreConfig struct {
-	Klog           map[string]string
+	Klog           klogutils.KlogConfigOpts
 	LabelWhiteList utils.RegexpVal
 	NoPublish      bool
 	FeatureSources []string
@@ -101,6 +102,7 @@ type Args struct {
 	Options              string
 	Server               string
 	ServerNameOverride   string
+	MetricsPort          int
 
 	Overrides ConfigOverrideArgs
 }
@@ -197,10 +199,10 @@ func (w *nfdWorker) runFeatureDiscovery() error {
 
 	discoveryDuration := time.Since(discoveryStart)
 	klog.V(2).InfoS("feature discovery of all sources completed", "duration", discoveryDuration)
+	featureDiscoveryDuration.WithLabelValues(utils.NodeName()).Observe(discoveryDuration.Seconds())
 	if w.config.Core.SleepInterval.Duration > 0 && discoveryDuration > w.config.Core.SleepInterval.Duration/2 {
 		klog.InfoS("feature discovery sources took over half of sleep interval ", "duration", discoveryDuration, "sleepInterval", w.config.Core.SleepInterval.Duration)
 	}
-
 	// Get the set of feature labels.
 	labels := createFeatureLabels(w.labelSources, w.config.Core.LabelWhiteList.Regexp)
 
@@ -238,6 +240,16 @@ func (w *nfdWorker) Run() error {
 	labelTrigger := infiniteTicker{Ticker: time.NewTicker(1)}
 	labelTrigger.Reset(w.config.Core.SleepInterval.Duration)
 	defer labelTrigger.Stop()
+
+	// Register to metrics server
+	if w.args.MetricsPort > 0 {
+		m := utils.CreateMetricsServer(w.args.MetricsPort,
+			buildInfo,
+			featureDiscoveryDuration)
+		go m.Run()
+		registerVersion(version.Get())
+		defer m.Stop()
+	}
 
 	err = w.runFeatureDiscovery()
 	if err != nil {
@@ -369,21 +381,9 @@ func (c *coreConfig) sanitize() {
 
 func (w *nfdWorker) configureCore(c coreConfig) error {
 	// Handle klog
-	for k, a := range w.args.Klog {
-		if !a.IsSetFromCmdline() {
-			v, ok := c.Klog[k]
-			if !ok {
-				v = a.DefValue()
-			}
-			if err := a.SetFromConfig(v); err != nil {
-				return fmt.Errorf("failed to set logger option klog.%s = %v: %v", k, v, err)
-			}
-		}
-	}
-	for k := range c.Klog {
-		if _, ok := w.args.Klog[k]; !ok {
-			klog.InfoS("unknown logger option in config", "optionName", k)
-		}
+	err := klogutils.MergeKlogConfiguration(w.args.Klog, c.Klog)
+	if err != nil {
+		return err
 	}
 
 	// Determine enabled feature sources
