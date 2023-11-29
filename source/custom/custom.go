@@ -23,6 +23,7 @@ import (
 	"k8s.io/klog/v2"
 
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nodefeaturerule "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1/nodefeaturerule"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 	api "github.com/openshift/node-feature-discovery/source/custom/api"
@@ -92,7 +93,7 @@ func (s *customSource) GetLabels() (source.FeatureLabels, error) {
 	klog.V(2).InfoS("resolving custom features", "configuration", utils.DelayedDumper(allFeatureConfig))
 	// Iterate over features
 	for _, rule := range allFeatureConfig {
-		ruleOut, err := rule.Execute(features)
+		ruleOut, err := nodefeaturerule.Execute(&rule, features)
 		if err != nil {
 			klog.ErrorS(err, "failed to execute rule")
 			continue

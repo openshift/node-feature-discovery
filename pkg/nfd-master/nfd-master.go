@@ -53,6 +53,7 @@ import (
 
 	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1/nodefeaturerule"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/validate"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
@@ -970,7 +971,7 @@ func (m *nfdMaster) processNodeFeatureRule(nodeName string, features *nfdv1alpha
 			klog.InfoS("executing NodeFeatureRule", "nodefeaturerule", klog.KObj(spec), "nodeName", nodeName)
 		}
 		for _, rule := range spec.Spec.Rules {
-			ruleOut, err := rule.Execute(features)
+			ruleOut, err := nodefeaturerule.Execute(&rule, features)
 			if err != nil {
 				klog.ErrorS(err, "failed to process rule", "ruleName", rule.Name, "nodefeaturerule", klog.KObj(spec), "nodeName", nodeName)
 				nfrProcessingErrors.Inc()
