@@ -1,8 +1,0 @@
-apiVersion: cert-manager.io/v1
-kind: Issuer
-metadata:
-  name: nfd-ca-issuer
-  namespace: node-feature-discovery
-spec:
-  ca:
-    secretName: nfd-ca-key-pair
