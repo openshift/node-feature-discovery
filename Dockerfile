@@ -16,4 +16,4 @@ FROM registry.ci.openshift.org/ocp/4.16:base-rhel9
 ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
 
 COPY --from=builder /go/node-feature-discovery/deployment/components/worker-config/nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
-COPY --from=builder /go/bin/* /usr/bin/
+COPY --from=builder /go/node-feature-discovery/bin/* /usr/bin/
