@@ -42,9 +42,9 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
 
-	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source/custom"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 	testds "github.com/openshift/node-feature-discovery/test/e2e/utils/daemonset"
@@ -974,8 +974,8 @@ resyncPeriod: "1s"
 					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchLabels(expectedLabels, nodes))
 
 					patches, err := json.Marshal(
-						[]apihelper.JsonPatch{
-							apihelper.NewJsonPatch(
+						[]utils.JsonPatch{
+							utils.NewJsonPatch(
 								"replace",
 								"/metadata/labels",
 								nfdv1alpha1.FeatureLabelNs+"/e2e-nodefeature-test-1",
