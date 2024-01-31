@@ -22,7 +22,7 @@ import (
 	"path"
 	"strings"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 const kmodProcfsPath = "/proc/modules"
