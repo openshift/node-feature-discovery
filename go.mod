@@ -4,6 +4,8 @@ go 1.22.0
 
 toolchain go1.22.5
 
+toolchain go1.22.0
+
 require (
 	github.com/fsnotify/fsnotify v1.7.0
 	github.com/golang/protobuf v1.5.4
