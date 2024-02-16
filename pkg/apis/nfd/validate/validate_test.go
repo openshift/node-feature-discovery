@@ -30,9 +30,8 @@ func TestAnnotation(t *testing.T) {
 		{
 			name:  "Invalid annotation value",
 			key:   "feature.node.kubernetes.io/feature",
-			value: "invalid value",
-			want:  fmt.Errorf("invalid value \"invalid value\": value must be a valid label value"),
-			fail:  true,
+			value: string(make([]byte, 1100)),
+			want:  "invalid value: too long:",
 		},
 		{
 			name:  "Denied annotation key",
