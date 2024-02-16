@@ -115,7 +115,7 @@ func Label(key, value string) error {
 
 	// Validate label value
 	if err := k8svalidation.IsValidLabelValue(value); len(err) > 0 {
-		return fmt.Errorf("invalid labelvalue %q: %s", value, strings.Join(err, "; "))
+		return fmt.Errorf("invalid value %q: %s", value, strings.Join(err, "; "))
 	}
 
 	return nil
@@ -236,10 +236,10 @@ func ExtendedResource(key, value string) error {
 		}
 	}
 
-	// Static Value (Pre-Defined at the NodeFeatureRule)
+	// Validate extended resource value
 	_, err := k8sQuantity.ParseQuantity(value)
 	if err != nil {
-		return fmt.Errorf("invalid value %s (from %s): %w", value, value, err)
+		return fmt.Errorf("invalid value %q: %w", value, err)
 	}
 
 	return nil
