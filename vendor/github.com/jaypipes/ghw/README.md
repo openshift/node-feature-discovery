@@ -1,6 +1,8 @@
 # `ghw` - Golang HardWare discovery/inspection library
 
-[![Build Status](https://github.com/jaypipes/ghw/actions/workflows/go.yml/badge.svg?branch=master)](https://github.com/jaypipes/ghw/actions)
+[![Build Status](https://github.com/jaypipes/ghw/actions/workflows/go.yml/badge.svg?branch=main)](https://github.com/jaypipes/ghw/actions)
+[![Go Report Card](https://goreportcard.com/badge/github.com/jaypipes/ghw)](https://goreportcard.com/report/github.com/jaypipes/ghw)
+[![Contributor Covenant](https://img.shields.io/badge/Contributor%20Covenant-2.1-4baaaa.svg)](CODE_OF_CONDUCT.md)
 
 ![ghw mascot](images/ghw-gopher.png)
 
@@ -260,10 +262,24 @@ function.
 
 ### Memory
 
+The basic building block of the memory support in ghw is the `ghw.MemoryArea` struct.
+A "memory area" is a block of memory which share common properties. In the simplest
+case, the whole system memory fits in a single memory area; in more complex scenarios,
+like multi-NUMA systems, many memory areas may be present in the system (e.g. one for
+each NUMA cell).
+
+The `ghw.MemoryArea` struct contains the following fields:
+
+* `ghw.MemoryInfo.TotalPhysicalBytes` contains the amount of physical memory on
+  the host
+* `ghw.MemoryInfo.TotalUsableBytes` contains the amount of memory the
+  system can actually use. Usable memory accounts for things like the kernel's
+  resident memory size and some reserved system bits
+
 Information about the host computer's memory can be retrieved using the
 `ghw.Memory()` function which returns a pointer to a `ghw.MemoryInfo` struct.
-
-The `ghw.MemoryInfo` struct contains three fields:
+`ghw.MemoryInfo` is a superset of `ghw.MemoryArea`. Thus, it contains all the
+fields found in the `ghw.MemoryArea` (replicated for clarity) plus some:
 
 * `ghw.MemoryInfo.TotalPhysicalBytes` contains the amount of physical memory on
   the host
@@ -392,12 +408,13 @@ A `ghw.ProcessorCore` has the following fields:
   core. Note that this does *not* necessarily equate to a zero-based index of
   the core within a physical package. For example, the core IDs for an Intel Core
   i7 are 0, 1, 2, 8, 9, and 10
-* `ghw.ProcessorCore.Index` is the zero-based index of the core on the physical
-  processor package
 * `ghw.ProcessorCore.NumThreads` is the number of hardware threads associated
   with the core
-* `ghw.ProcessorCore.LogicalProcessors` is an array of logical processor IDs
-  assigned to any processing unit for the core
+* `ghw.ProcessorCore.LogicalProcessors` is an array of ints representing the
+  logical processor IDs assigned to any processing unit for the core. These are
+  sometimes called the "thread siblings". Logical processor IDs are the
+  *zero-based* index of the processor on the host and are *not* related to the
+  core ID.
 
 ```go
 package main
@@ -514,6 +531,12 @@ Each `ghw.Partition` struct contains these fields:
 
 * `ghw.Partition.Name` contains a string with the short name of the partition,
   e.g. "sda1"
+* `ghw.Partition.Label` contains the label for the partition itself. On Linux
+  systems, this is derived from the `ID_PART_ENTRY_NAME` udev entry for the
+  partition.
+* `ghw.Partition.FilesystemLabel` contains the label for the filesystem housed
+  on the partition. On Linux systems, this is derived from the `ID_FS_NAME`
+  udev entry for the partition.
 * `ghw.Partition.SizeBytes` contains the amount of storage the partition
   provides
 * `ghw.Partition.MountPoint` contains a string with the partition's mount
@@ -524,8 +547,10 @@ Each `ghw.Partition` struct contains these fields:
 * `ghw.Partition.Disk` is a pointer to the `ghw.Disk` object associated with
   the partition. This will be `nil` if the `ghw.Partition` struct was returned
   by the `ghw.DiskPartitions()` library function.
-* `ghw.Partition.UUID` is a string containing the volume UUID on Linux, the
-  partition UUID on MacOS and nothing on Windows.
+* `ghw.Partition.UUID` is a string containing the partition UUID on Linux, the
+  partition UUID on MacOS and nothing on Windows. On Linux
+  systems, this is derived from the `ID_PART_ENTRY_UUID` udev entry for the
+  partition.
 
 ```go
 package main
@@ -598,6 +623,8 @@ Each `ghw.TopologyNode` struct contains the following fields:
   system
 * `ghw.TopologyNode.Distance` is an array of distances between NUMA nodes as reported
   by the system.
+* `ghw.TopologyNode.Memory` is a struct describing the memory attached to this node.
+   Please refer to the documentation of `ghw.MemoryArea`.
 
 See above in the [CPU](#cpu) section for information about the
 `ghw.ProcessorCore` struct and how to use and query it.
@@ -685,10 +712,25 @@ Each `ghw.NIC` struct contains the following fields:
   device
 * `ghw.NIC.Capabilities` is an array of pointers to `ghw.NICCapability` structs
   that can describe the things the NIC supports. These capabilities match the
-  returned values from the `ethtool -k <DEVICE>` call on Linux
+  returned values from the `ethtool -k <DEVICE>` call on Linux as well as the 
+  AutoNegotiation and PauseFrameUse capabilities from `ethtool`.
 * `ghw.NIC.PCIAddress` is the PCI device address of the device backing the NIC.
   this is not-nil only if the backing device is indeed a PCI device; more backing
   devices (e.g. USB) will be added in future versions.
+* `ghw.NIC.Speed` is a string showing the current link speed.  On Linux, this 
+  field will be present even if `ethtool` is not available.
+* `ghw.NIC.Duplex` is a string showing the current link duplex. On Linux, this 
+  field will be present even if `ethtool` is not available.
+* `ghw.NIC.SupportedLinkModes` is a string slice containing a list of
+  supported link modes
+* `ghw.NIC.SupportedPorts` is a string slice containing the list of 
+  supported port types (MII, TP, FIBRE)
+* `ghw.NIC.SupportedFECModes` is a string slice containing a list of 
+  supported FEC Modes.
+* `ghw.NIC.AdvertisedLinkModes` is a string slice containing the
+  link modes being advertised during auto negotiation.
+* `ghw.NIC.AdvertisedFECModes` is a string slice containing the FEC
+  modes advertised during auto negotiation.
 
 The `ghw.NICCapability` struct contains the following fields:
 
@@ -777,6 +819,7 @@ net (3 NICs)
    - rx-vlan-offload
    - tx-vlan-offload
    - highdma
+   - auto-negotiation
  wlp59s0
   enabled capabilities:
    - scatter-gather
@@ -1357,14 +1400,13 @@ The default behaviour of ghw is to call external tools when available.
 
 ## Developers
 
-Contributions to `ghw` are welcomed! Fork the repo on GitHub and submit a pull
-request with your proposed changes. Or, feel free to log an issue for a feature
-request or bug report.
+[Contributions](CONTRIBUTING.md) to `ghw` are welcomed! Fork the repo on GitHub
+and submit a pull request with your proposed changes. Or, feel free to log an
+issue for a feature request or bug report.
 
 ### Running tests
 
 You can run unit tests easily using the `make test` command, like so:
-
 
 ```
 [jaypipes@uberbox ghw]$ make test
