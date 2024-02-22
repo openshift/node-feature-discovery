@@ -17,13 +17,15 @@ package otelrestful // import "go.opentelemetry.io/contrib/instrumentation/githu
 import (
 	"github.com/emicklei/go-restful/v3"
 
+	"go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful/internal/semconvutil"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	semconv "go.opentelemetry.io/otel/semconv/v1.12.0"
+	semconv "go.opentelemetry.io/otel/semconv/v1.17.0"
 	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
-const tracerName = "go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful"
+// ScopeName is the instrumentation scope name.
+const ScopeName = "go.opentelemetry.io/contrib/instrumentation/github.com/emicklei/go-restful/otelrestful"
 
 // OTelFilter returns a restful.FilterFunction which will trace an incoming request.
 //
@@ -39,8 +41,8 @@ func OTelFilter(service string, opts ...Option) restful.FilterFunction {
 		cfg.TracerProvider = otel.GetTracerProvider()
 	}
 	tracer := cfg.TracerProvider.Tracer(
-		tracerName,
-		oteltrace.WithInstrumentationVersion(SemVersion()),
+		ScopeName,
+		oteltrace.WithInstrumentationVersion(Version()),
 	)
 	if cfg.Propagators == nil {
 		cfg.Propagators = otel.GetTextMapPropagator()
@@ -51,12 +53,24 @@ func OTelFilter(service string, opts ...Option) restful.FilterFunction {
 		route := req.SelectedRoutePath()
 		spanName := route
 
-		ctx, span := tracer.Start(ctx, spanName,
-			oteltrace.WithAttributes(semconv.NetAttributesFromHTTPRequest("tcp", r)...),
-			oteltrace.WithAttributes(semconv.EndUserAttributesFromHTTPRequest(r)...),
-			oteltrace.WithAttributes(semconv.HTTPServerAttributesFromHTTPRequest(service, route, r)...),
+		opts := []oteltrace.SpanStartOption{
+			oteltrace.WithAttributes(semconvutil.HTTPServerRequest(service, r)...),
 			oteltrace.WithSpanKind(oteltrace.SpanKindServer),
-		)
+		}
+		if route != "" {
+			rAttr := semconv.HTTPRoute(route)
+			opts = append(opts, oteltrace.WithAttributes(rAttr))
+		}
+
+		if cfg.PublicEndpoint || (cfg.PublicEndpointFn != nil && cfg.PublicEndpointFn(r.WithContext(ctx))) {
+			opts = append(opts, oteltrace.WithNewRoot())
+			// Linking incoming span context if any for public endpoint.
+			if s := oteltrace.SpanContextFromContext(ctx); s.IsValid() && s.IsRemote() {
+				opts = append(opts, oteltrace.WithLinks(oteltrace.Link{SpanContext: s}))
+			}
+		}
+
+		ctx, span := tracer.Start(ctx, spanName, opts...)
 		defer span.End()
 
 		// pass the span through the request context
@@ -64,9 +78,10 @@ func OTelFilter(service string, opts ...Option) restful.FilterFunction {
 
 		chain.ProcessFilter(req, resp)
 
-		attrs := semconv.HTTPAttributesFromHTTPStatusCode(resp.StatusCode())
-		spanStatus, spanMessage := semconv.SpanStatusFromHTTPStatusCodeAndSpanKind(resp.StatusCode(), oteltrace.SpanKindServer)
-		span.SetAttributes(attrs...)
-		span.SetStatus(spanStatus, spanMessage)
+		status := resp.StatusCode()
+		span.SetStatus(semconvutil.HTTPServerStatus(status))
+		if status > 0 {
+			span.SetAttributes(semconv.HTTPStatusCode(status))
+		}
 	}
 }
