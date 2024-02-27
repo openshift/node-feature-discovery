@@ -24,9 +24,9 @@ import (
 	k8sLabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/clientcmd"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclientset "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
+	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdinformers "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 
 	"sigs.k8s.io/yaml"
 )

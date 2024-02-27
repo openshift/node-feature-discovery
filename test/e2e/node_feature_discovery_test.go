@@ -42,8 +42,8 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	nfdclient "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source/custom"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"

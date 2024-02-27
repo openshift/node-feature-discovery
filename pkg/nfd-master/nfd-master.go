@@ -52,8 +52,8 @@ import (
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	"sigs.k8s.io/yaml"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1/nodefeaturerule"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/nodefeaturerule"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/validate"
 	"github.com/openshift/node-feature-discovery/pkg/features"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"

@@ -44,9 +44,9 @@ import (
 
         apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdclient "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/features"
-	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"	

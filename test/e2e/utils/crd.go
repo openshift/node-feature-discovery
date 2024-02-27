@@ -32,9 +32,9 @@ import (
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes/scheme"
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclientset "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdscheme "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned/scheme"
 )
 
 var packagePath string
