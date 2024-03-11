@@ -1,6 +1,6 @@
 package asm
 
-//go:generate stringer -output func_string.go -type=BuiltinFunc
+//go:generate go run golang.org/x/tools/cmd/stringer@latest -output func_string.go -type=BuiltinFunc
 
 // BuiltinFunc is a built-in eBPF function.
 type BuiltinFunc int32
@@ -14,7 +14,7 @@ func (_ BuiltinFunc) Max() BuiltinFunc {
 // You can regenerate this list using the following gawk script:
 //
 //	/FN\(.+\),/ {
-//	  match($1, /\((.+)\)/, r)
+//	  match($1, /\(([a-z_0-9]+),/, r)
 //	  split(r[1], p, "_")
 //	  printf "Fn"
 //	  for (i in p) {
@@ -229,6 +229,14 @@ const (
 	FnDynptrRead
 	FnDynptrWrite
 	FnDynptrData
+	FnTcpRawGenSyncookieIpv4
+	FnTcpRawGenSyncookieIpv6
+	FnTcpRawCheckSyncookieIpv4
+	FnTcpRawCheckSyncookieIpv6
+	FnKtimeGetTaiNs
+	FnUserRingbufDrain
+	FnCgrpStorageGet
+	FnCgrpStorageDelete
 
 	maxBuiltinFunc
 )

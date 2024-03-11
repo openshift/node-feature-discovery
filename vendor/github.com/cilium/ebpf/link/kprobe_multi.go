@@ -28,7 +28,7 @@ type KprobeMultiOptions struct {
 	// limits the attach point to the function entry or return.
 	//
 	// Mutually exclusive with Symbols.
-	Addresses []uint64
+	Addresses []uintptr
 
 	// Cookies specifies arbitrary values that can be fetched from an eBPF
 	// program via `bpf_get_attach_cookie()`.
@@ -82,10 +82,6 @@ func kprobeMulti(prog *ebpf.Program, opts KprobeMultiOptions, flags uint32) (Lin
 		return nil, fmt.Errorf("Cookies must be exactly Symbols or Addresses in length: %w", errInvalidInput)
 	}
 
-	if err := haveBPFLinkKprobeMulti(); err != nil {
-		return nil, err
-	}
-
 	attr := &sys.LinkCreateKprobeMultiAttr{
 		ProgFd:           uint32(prog.FD()),
 		AttachType:       sys.BPF_TRACE_KPROBE_MULTI,
@@ -113,7 +109,11 @@ func kprobeMulti(prog *ebpf.Program, opts KprobeMultiOptions, flags uint32) (Lin
 	if errors.Is(err, unix.EINVAL) {
 		return nil, fmt.Errorf("%w (missing kernel symbol or prog's AttachType not AttachTraceKprobeMulti?)", err)
 	}
+
 	if err != nil {
+		if haveFeatErr := haveBPFLinkKprobeMulti(); haveFeatErr != nil {
+			return nil, haveFeatErr
+		}
 		return nil, err
 	}
 
