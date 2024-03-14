@@ -30,6 +30,7 @@ import (
 
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	fakenfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/fake"
+	"github.com/openshift/node-feature-discovery/pkg/features"
 	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
 	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
 	"github.com/openshift/node-feature-discovery/pkg/labeler"
@@ -37,6 +38,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"
 
+	"k8s.io/klog/v2"
 	corev1 "k8s.io/api/core/v1"
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -684,6 +686,12 @@ extraLabelNs: ["added.ns.io"]
 `)
 
 		noPublish := true
+		// Add FeatureGates flag
+		if err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates); err != nil {
+			klog.ErrorS(err, "failed to add default feature gates")
+			os.Exit(1)
+		}
+		_ = features.NFDMutableFeatureGate.OverrideDefault(features.NodeFeatureAPI, false)
 		m, err := NewNfdMaster(&Args{
 			ConfigFile: configFile,
 			Overrides: ConfigOverrideArgs{
