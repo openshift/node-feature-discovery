@@ -20,9 +20,9 @@ require (
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/stretchr/testify v1.8.4
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
-	golang.org/x/exp v0.0.0-20230307190834-24139beb5833
-	golang.org/x/net v0.18.0
-	golang.org/x/time v0.4.0
+	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
+	golang.org/x/net v0.19.0
+	golang.org/x/time v0.5.0
 	google.golang.org/grpc v1.59.0
 	google.golang.org/protobuf v1.33.0
 	k8s.io/api v0.28.4
@@ -170,7 +170,7 @@ require (
 	golang.org/x/sys v0.15.0 // indirect
 	golang.org/x/term v0.15.0 // indirect
 	golang.org/x/text v0.14.0 // indirect
-	golang.org/x/tools v0.13.0 // indirect
+	golang.org/x/tools v0.16.0 // indirect
 	google.golang.org/api v0.128.0 // indirect
 	google.golang.org/appengine v1.6.7 // indirect
 	google.golang.org/genproto v0.0.0-20231030173426-d783a09b4405 // indirect
