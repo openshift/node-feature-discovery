@@ -21,7 +21,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	kubectlnfd "sigs.k8s.io/node-feature-discovery/pkg/kubectl-nfd"
+	kubectlnfd "github.com/openshift/node-feature-discovery/pkg/kubectl-nfd"
 )
 
 var dryrunCmd = &cobra.Command{

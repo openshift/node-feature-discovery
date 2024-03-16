@@ -24,8 +24,8 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	"sigs.k8s.io/yaml"
 
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/validate"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/validate"
 )
 
 // Given a file path, read the file and check if is a valid NodeFeatureRule file

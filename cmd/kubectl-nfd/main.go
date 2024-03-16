@@ -16,7 +16,7 @@ limitations under the License.
 
 package main
 
-import "sigs.k8s.io/node-feature-discovery/cmd/kubectl-nfd/subcmd"
+import "github.com/openshift/node-feature-discovery/cmd/kubectl-nfd/subcmd"
 
 const (
 	// ProgramName is the canonical name of this program
