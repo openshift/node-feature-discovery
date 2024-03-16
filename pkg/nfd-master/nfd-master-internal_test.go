@@ -33,7 +33,7 @@ import (
 	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
 	"github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
-	"github.com/smartystreets/assertions"
+	"github.com/smarty/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/mock"
 	"github.com/vektra/errors"
