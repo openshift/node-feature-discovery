@@ -22,7 +22,7 @@ import (
 	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
 	corev1 "k8s.io/api/core/v1"
 	k8sclient "k8s.io/client-go/kubernetes"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 // APIHelpers represents a set of API helpers for Kubernetes

@@ -6,7 +6,7 @@ import (
 	mock "github.com/stretchr/testify/mock"
 	kubernetes "k8s.io/client-go/kubernetes"
 
-	utils "sigs.k8s.io/node-feature-discovery/pkg/utils"
+	utils "github.com/openshift/node-feature-discovery/pkg/utils"
 
 	v1 "k8s.io/api/core/v1"
 

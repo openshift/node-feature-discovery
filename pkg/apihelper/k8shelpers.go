@@ -26,7 +26,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	k8sclient "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 // K8sHelpers implements APIHelpers
