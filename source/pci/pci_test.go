@@ -136,7 +136,6 @@ func TestPciSource(t *testing.T) {
 							Attributes: map[string]string{
 								"class":                     "0b40",
 								"device":                    "37c8",
-								"iommu/intel-iommu/version": "1:0",
 								"iommu_group/type":          "identity",
 								"sriov_totalvfs":            "16",
 								"subsystem_device":          "35cf",

@@ -29,12 +29,11 @@ import (
 	"time"
 
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/fake"
+	fakenfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/fake"
 	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
 	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
 	"github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
-	"github.com/smarty/assertions"
 	. "github.com/smartystreets/goconvey/convey"
 	"golang.org/x/net/context"
 
