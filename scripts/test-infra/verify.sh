@@ -4,10 +4,10 @@ this_dir=`dirname $0`
 
 # Install deps
 gobinpath="$(go env GOPATH)/bin"
-curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v1.55.1
+curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v1.56.1
 export PATH=$PATH:$(go env GOPATH)/bin
 
-curl -sfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash -s -- --version v3.7.1
+curl -sfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash -s -- --version v3.14.0
 
 kubectl="$gobinpath/kubectl"
 curl -L https://dl.k8s.io/release/v1.22.1/bin/linux/amd64/kubectl -o "$kubectl"
@@ -17,7 +17,7 @@ curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring 
 curl -Os https://uploader.codecov.io/latest/linux/codecov
 chmod +x codecov
 
-go install sigs.k8s.io/logtools/logcheck@v0.6.0
+go install sigs.k8s.io/logtools/logcheck@v0.8.1
 
 # Run verify steps
 echo "Checking gofmt"

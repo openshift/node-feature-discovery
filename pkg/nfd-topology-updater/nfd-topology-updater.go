@@ -26,12 +26,12 @@ import (
 
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
 
 	"github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
-
-	"github.com/openshift/node-feature-discovery/pkg/apihelper"
+	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
 	"github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater/kubeletnotifier"
 	"github.com/openshift/node-feature-discovery/pkg/podres"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
@@ -74,7 +74,7 @@ type NfdTopologyUpdater interface {
 type nfdTopologyUpdater struct {
 	nodeName            string
 	args                Args
-	apihelper           apihelper.APIHelpers
+	topoClient          topologyclientset.Interface
 	resourcemonitorArgs resourcemonitor.Args
 	stop                chan struct{} // channel for signaling stop
 	eventSource         <-chan kubeletnotifier.Info
@@ -132,13 +132,21 @@ func (w *nfdTopologyUpdater) Run() error {
 		return fmt.Errorf("failed to get PodResource Client: %w", err)
 	}
 
-	if !w.args.NoPublish {
-		kubeconfig, err := apihelper.GetKubeconfig(w.args.KubeConfigFile)
-		if err != nil {
-			return err
-		}
-		w.apihelper = apihelper.K8sHelpers{Kubeconfig: kubeconfig}
+	kubeconfig, err := utils.GetKubeconfig(w.args.KubeConfigFile)
+	if err != nil {
+		return err
 	}
+	topoClient, err := topologyclientset.NewForConfig(kubeconfig)
+	if err != nil {
+		return nil
+	}
+	w.topoClient = topoClient
+
+	k8sClient, err := k8sclient.NewForConfig(kubeconfig)
+	if err != nil {
+		return err
+	}
+
 	if err := w.configure(); err != nil {
 		return fmt.Errorf("faild to configure Node Feature Discovery Topology Updater: %w", err)
 	}
@@ -155,7 +163,7 @@ func (w *nfdTopologyUpdater) Run() error {
 
 	var resScan resourcemonitor.ResourcesScanner
 
-	resScan, err = resourcemonitor.NewPodResourcesScanner(w.resourcemonitorArgs.Namespace, podResClient, w.apihelper, w.resourcemonitorArgs.PodSetFingerprint)
+	resScan, err = resourcemonitor.NewPodResourcesScanner(w.resourcemonitorArgs.Namespace, podResClient, k8sClient, w.resourcemonitorArgs.PodSetFingerprint)
 	if err != nil {
 		return fmt.Errorf("failed to initialize ResourceMonitor instance: %w", err)
 	}
@@ -210,19 +218,11 @@ func (w *nfdTopologyUpdater) Run() error {
 
 // Stop NFD Topology Updater
 func (w *nfdTopologyUpdater) Stop() {
-	select {
-	case w.stop <- struct{}{}:
-	default:
-	}
+	close(w.stop)
 }
 
 func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneList, scanResponse resourcemonitor.ScanResponse, readKubeletConfig bool) error {
-	cli, err := w.apihelper.GetTopologyClient()
-	if err != nil {
-		return err
-	}
-
-	nrt, err := cli.TopologyV1alpha2().NodeResourceTopologies().Get(context.TODO(), w.nodeName, metav1.GetOptions{})
+	nrt, err := w.topoClient.TopologyV1alpha2().NodeResourceTopologies().Get(context.TODO(), w.nodeName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		nrtNew := v1alpha2.NodeResourceTopology{
 			ObjectMeta: metav1.ObjectMeta{
@@ -238,7 +238,7 @@ func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneLi
 
 		updateAttributes(&nrtNew.Attributes, scanResponse.Attributes)
 
-		if _, err := cli.TopologyV1alpha2().NodeResourceTopologies().Create(context.TODO(), &nrtNew, metav1.CreateOptions{}); err != nil {
+		if _, err := w.topoClient.TopologyV1alpha2().NodeResourceTopologies().Create(context.TODO(), &nrtNew, metav1.CreateOptions{}); err != nil {
 			return fmt.Errorf("failed to create NodeResourceTopology: %w", err)
 		}
 		return nil
@@ -259,7 +259,7 @@ func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneLi
 
 	updateAttributes(&nrtMutated.Attributes, attributes)
 
-	nrtUpdated, err := cli.TopologyV1alpha2().NodeResourceTopologies().Update(context.TODO(), nrtMutated, metav1.UpdateOptions{})
+	nrtUpdated, err := w.topoClient.TopologyV1alpha2().NodeResourceTopologies().Update(context.TODO(), nrtMutated, metav1.UpdateOptions{})
 	if err != nil {
 		return fmt.Errorf("failed to update NodeResourceTopology: %w", err)
 	}

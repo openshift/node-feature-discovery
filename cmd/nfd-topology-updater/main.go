@@ -102,7 +102,7 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 	flagset.BoolVar(&args.Oneshot, "oneshot", false,
 		"Update once and exit")
 	flagset.BoolVar(&args.NoPublish, "no-publish", false,
-		"Do not publish discovered features to the cluster-local Kubernetes API server.")
+		"Do not create or update NodeResourceTopology objects.")
 	flagset.StringVar(&args.KubeConfigFile, "kubeconfig", "",
 		"Kube config file.")
 	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
@@ -119,7 +119,7 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 		"Pod Resource Socket path to use.")
 	flagset.StringVar(&args.ConfigFile, "config", "/etc/kubernetes/node-feature-discovery/nfd-topology-updater.conf",
 		"Config file to use.")
-	flagset.BoolVar(&resourcemonitorArgs.PodSetFingerprint, "pods-fingerprint", false, "Compute and report the pod set fingerprint")
+	flagset.BoolVar(&resourcemonitorArgs.PodSetFingerprint, "pods-fingerprint", true, "Compute and report the pod set fingerprint")
 	flagset.StringVar(&args.KubeletStateDir, "kubelet-state-dir", DefaultKubeletStateDir, "Kubelet state directory path for watching state and checkpoint files")
 
 	klog.InitFlags(flagset)

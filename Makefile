@@ -41,6 +41,8 @@ HOSTMOUNT_PREFIX ?= /host-
 KUBECONFIG ?=
 E2E_TEST_CONFIG ?=
 E2E_PULL_IF_NOT_PRESENT ?= false
+E2E_TEST_FULL_IMAGE ?= false
+E2E_GINKGO_LABEL_FILTER ?=
 
 LDFLAGS = -ldflags "-s -w -X openshift/node-feature-discovery/pkg/version.version=$(VERSION) -X openshift/node-feature-discovery/pkg/utils/hostpath.pathPrefix=$(HOSTMOUNT_PREFIX)"
 
@@ -48,7 +50,7 @@ all: image
 
 build:
 	@mkdir -p bin
-	$(GO_CMD) build -v -o bin $(LDFLAGS) ./cmd/...
+	$(GO_CMD) build -v -o bin/ $(LDFLAGS) ./cmd/...
 
 install:
 	$(GO_CMD) install -v $(LDFLAGS) ./cmd/...
@@ -148,20 +150,26 @@ test:
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi
-	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) \
+	$(GO_CMD) test -timeout=1h -v ./test/e2e/ -args \
+	    -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME) \
 	    -kubeconfig=$(KUBECONFIG) \
 	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
 	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
-	    -ginkgo.focus="\[kubernetes-sigs\]" \
-	    -test.timeout=1h \
+	    -ginkgo.focus="\[k8s-sigs\/node-feature-discovery\]" \
+	    -ginkgo.label-filter=$(E2E_GINKGO_LABEL_FILTER) \
+	    -ginkgo.v \
 	    $(if $(OPENSHIFT),-nfd.openshift,)
-	$(GO_CMD) test -v ./test/e2e/ -args -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-minimal \
-	    -kubeconfig=$(KUBECONFIG) \
-	    -nfd.e2e-config=$(E2E_TEST_CONFIG) \
-	    -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
-	    -ginkgo.focus="\[kubernetes-sigs\]" \
-	    -test.timeout=1h \
-	    $(if $(OPENSHIFT),-nfd.openshift,)
+	if [ "$(E2E_TEST_FULL_IMAGE)" = "true" ]; then \
+	    $(GO_CMD) test -timeout=1h -v ./test/e2e/ -args \
+	        -nfd.repo=$(IMAGE_REPO) -nfd.tag=$(IMAGE_TAG_NAME)-full \
+	        -kubeconfig=$(KUBECONFIG) \
+	        -nfd.e2e-config=$(E2E_TEST_CONFIG) \
+	        -nfd.pull-if-not-present=$(E2E_PULL_IF_NOT_PRESENT) \
+	        -ginkgo.focus="\[k8s-sigs\/node-feature-discovery\]" \
+	        -ginkgo.label-filter=$(E2E_GINKGO_LABEL_FILTER) \
+	        -ginkgo.v \
+	        $(if $(OPENSHIFT),-nfd.openshift,); \
+	fi
 
 local-image-push: push
 push:

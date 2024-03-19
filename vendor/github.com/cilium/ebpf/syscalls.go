@@ -4,11 +4,23 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"os"
+	"runtime"
 
 	"github.com/cilium/ebpf/asm"
 	"github.com/cilium/ebpf/internal"
 	"github.com/cilium/ebpf/internal/sys"
+	"github.com/cilium/ebpf/internal/tracefs"
 	"github.com/cilium/ebpf/internal/unix"
+)
+
+var (
+	// pre-allocating these here since they may
+	// get called in hot code paths and cause
+	// unnecessary memory allocations
+	sysErrKeyNotExist  = sys.Error(ErrKeyNotExist, unix.ENOENT)
+	sysErrKeyExist     = sys.Error(ErrKeyExist, unix.EEXIST)
+	sysErrNotSupported = sys.Error(ErrNotSupported, sys.ENOTSUPP)
 )
 
 // invalidBPFObjNameChar returns true if char may not appear in
@@ -107,6 +119,7 @@ var haveInnerMaps = internal.NewFeatureTest("inner maps", "5.10", func() error {
 		MaxEntries: 1,
 		MapFlags:   unix.BPF_F_INNER_MAP,
 	})
+
 	if err != nil {
 		return internal.ErrNotSupported
 	}
@@ -123,6 +136,7 @@ var haveNoPreallocMaps = internal.NewFeatureTest("prealloc maps", "4.6", func() 
 		MaxEntries: 1,
 		MapFlags:   unix.BPF_F_NO_PREALLOC,
 	})
+
 	if err != nil {
 		return internal.ErrNotSupported
 	}
@@ -136,15 +150,15 @@ func wrapMapError(err error) error {
 	}
 
 	if errors.Is(err, unix.ENOENT) {
-		return sys.Error(ErrKeyNotExist, unix.ENOENT)
+		return sysErrKeyNotExist
 	}
 
 	if errors.Is(err, unix.EEXIST) {
-		return sys.Error(ErrKeyExist, unix.EEXIST)
+		return sysErrKeyExist
 	}
 
 	if errors.Is(err, sys.ENOTSUPP) {
-		return sys.Error(ErrNotSupported, sys.ENOTSUPP)
+		return sysErrNotSupported
 	}
 
 	if errors.Is(err, unix.E2BIG) {
@@ -211,8 +225,8 @@ var haveBatchAPI = internal.NewFeatureTest("map batch api", "5.6", func() error 
 
 	keys := []uint32{1, 2}
 	values := []uint32{3, 4}
-	kp, _ := marshalPtr(keys, 8)
-	vp, _ := marshalPtr(values, 8)
+	kp, _ := marshalMapSyscallInput(keys, 8)
+	vp, _ := marshalMapSyscallInput(values, 8)
 
 	err = sys.MapUpdateBatch(&sys.MapUpdateBatchAttr{
 		MapFd:  fd.Uint(),
@@ -253,12 +267,38 @@ var haveBPFToBPFCalls = internal.NewFeatureTest("bpf2bpf calls", "4.16", func() 
 	}
 
 	fd, err := progLoad(insns, SocketFilter, "MIT")
-	if errors.Is(err, unix.EINVAL) {
+	if err != nil {
+		return internal.ErrNotSupported
+	}
+	_ = fd.Close()
+	return nil
+})
+
+var haveSyscallWrapper = internal.NewFeatureTest("syscall wrapper", "4.17", func() error {
+	prefix := internal.PlatformPrefix()
+	if prefix == "" {
+		return fmt.Errorf("unable to find the platform prefix for (%s)", runtime.GOARCH)
+	}
+
+	args := tracefs.ProbeArgs{
+		Type:   tracefs.Kprobe,
+		Symbol: prefix + "sys_bpf",
+		Pid:    -1,
+	}
+
+	var err error
+	args.Group, err = tracefs.RandomGroup("ebpf_probe")
+	if err != nil {
+		return err
+	}
+
+	evt, err := tracefs.NewEvent(args)
+	if errors.Is(err, os.ErrNotExist) {
 		return internal.ErrNotSupported
 	}
 	if err != nil {
 		return err
 	}
-	_ = fd.Close()
-	return nil
+
+	return evt.Close()
 })

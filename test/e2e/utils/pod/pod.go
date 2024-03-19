@@ -31,10 +31,10 @@ import (
 	"k8s.io/apimachinery/pkg/util/wait"
 	clientset "k8s.io/client-go/kubernetes"
 	"k8s.io/kubectl/pkg/util/podutils"
+	"k8s.io/utils/ptr"
 
 	"k8s.io/kubernetes/test/e2e/framework"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
-	"k8s.io/utils/pointer"
 
 	"github.com/openshift/node-feature-discovery/test/e2e/utils"
 )
@@ -270,6 +270,22 @@ func nfdWorkerSpec(opts ...SpecOption) *corev1.PodSpec {
 							},
 						},
 					},
+					{
+						Name: "POD_NAME",
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{
+								FieldPath: "metadata.name",
+							},
+						},
+					},
+					{
+						Name: "POD_UID",
+						ValueFrom: &corev1.EnvVarSource{
+							FieldRef: &corev1.ObjectFieldSelector{
+								FieldPath: "metadata.uid",
+							},
+						},
+					},
 				},
 				SecurityContext: &corev1.SecurityContext{
 					Capabilities: &corev1.Capabilities{
@@ -412,9 +428,9 @@ func NFDTopologyUpdaterSpec(kc utils.KubeletConfig, opts ...SpecOption) *corev1.
 					Capabilities: &corev1.Capabilities{
 						Drop: []corev1.Capability{"ALL"},
 					},
-					RunAsUser:                pointer.Int64(0),
-					ReadOnlyRootFilesystem:   pointer.Bool(true),
-					AllowPrivilegeEscalation: pointer.Bool(false),
+					RunAsUser:                ptr.To[int64](0),
+					ReadOnlyRootFilesystem:   ptr.To[bool](true),
+					AllowPrivilegeEscalation: ptr.To[bool](false),
 					SeccompProfile: &corev1.SeccompProfile{
 						Type: corev1.SeccompProfileTypeRuntimeDefault,
 					},

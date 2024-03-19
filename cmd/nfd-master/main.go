@@ -33,7 +33,8 @@ import (
 
 const (
 	// ProgramName is the canonical name of this program
-	ProgramName = "nfd-master"
+	ProgramName    = "nfd-master"
+	GrpcHealthPort = 8082
 )
 
 func main() {
@@ -55,6 +56,8 @@ func main() {
 		switch f.Name {
 		case "featurerules-controller":
 			klog.InfoS("-featurerules-controller is deprecated, use '-crd-controller' flag instead")
+		case "crd-controller":
+			klog.InfoS("-crd-controller is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "extra-label-ns":
 			args.Overrides.ExtraLabelNs = overrides.ExtraLabelNs
 		case "deny-label-ns":
@@ -101,6 +104,7 @@ func main() {
 	utils.ConfigureGrpcKlog()
 
 	// Get new NfdMaster instance
+	args.GrpcHealthPort = GrpcHealthPort
 	instance, err := master.NewNfdMaster(args)
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize NfdMaster instance")
@@ -137,7 +141,8 @@ func initFlags(flagset *flag.FlagSet) (*master.Args, *master.ConfigOverrideArgs)
 	flagset.BoolVar(&args.CrdController, "featurerules-controller", true,
 		"Enable NFD CRD API controller. DEPRECATED: use -crd-controller instead")
 	flagset.BoolVar(&args.CrdController, "crd-controller", true,
-		"Enable NFD CRD API controller for processing NodeFeature and NodeFeatureRule objects.")
+		"Enable NFD CRD API controller for processing NodeFeature and NodeFeatureRule objects."+
+			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.IntVar(&args.Port, "port", 12000,
 		"Port on which to listen for gRPC connections."+
 			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")

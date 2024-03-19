@@ -20,6 +20,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"path/filepath"
 	"strings"
 	"time"
@@ -30,6 +31,7 @@ import (
 	corev1 "k8s.io/api/core/v1"
 	apiextensionsv1 "k8s.io/apiextensions-apiserver/pkg/apis/apiextensions/v1"
 	extclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	resourcev1 "k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
@@ -40,9 +42,9 @@ import (
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
 
-	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source/custom"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 	testds "github.com/openshift/node-feature-discovery/test/e2e/utils/daemonset"
@@ -171,13 +173,18 @@ func cleanupCRs(ctx context.Context, cli *nfdclient.Clientset, namespace string)
 		By("Deleting NodeFeature objects from namespace " + namespace)
 		for _, nf := range nfs.Items {
 			err = cli.NfdV1alpha1().NodeFeatures(namespace).Delete(ctx, nf.Name, metav1.DeleteOptions{})
-			Expect(err).NotTo(HaveOccurred())
+			Expect(func() error {
+				if apierrors.IsNotFound(err) {
+					return nil
+				}
+				return err
+			}()).NotTo(HaveOccurred())
 		}
 	}
 }
 
 // Actual test suite
-var _ = SIGDescribe("NFD master and worker", func() {
+var _ = NFDDescribe(Label("nfd-master"), func() {
 	f := framework.NewDefaultFramework("node-feature-discovery")
 
 	nfdTestSuite := func(useNodeFeatureApi bool) {
@@ -272,7 +279,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 			// Simple test with only the fake source enabled
 			//
 			Context("and a single worker pod with fake source enabled", func() {
-				It("it should decorate the node with the fake feature labels", func(ctx context.Context) {
+				It("it should decorate the node with the fake feature labels", Label("nfd-worker"), func(ctx context.Context) {
 					nodes, err := getNonControlPlaneNodes(ctx, f.ClientSet)
 					Expect(err).NotTo(HaveOccurred())
 
@@ -308,6 +315,12 @@ var _ = SIGDescribe("NFD master and worker", func() {
 					By("Deleting the node-feature-discovery worker pod")
 					err = f.ClientSet.CoreV1().Pods(f.Namespace.Name).Delete(ctx, workerPod.Name, metav1.DeleteOptions{})
 					Expect(err).NotTo(HaveOccurred())
+
+					if useNodeFeatureApi {
+						By("Verify that labels from nfd-worker are garbage-collected")
+						delete(expectedLabels, workerPod.Spec.NodeName)
+						eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchLabels(expectedLabels, nodes))
+					}
 				})
 			})
 
@@ -315,7 +328,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 			// More comprehensive test when --e2e-node-config is enabled
 			//
 			Context("and nfd-workers as a daemonset with default sources enabled", func() {
-				It("the node labels and annotations listed in the e2e config should be present", func(ctx context.Context) {
+				It("the node labels and annotations listed in the e2e config should be present", Label("nfd-worker"), func(ctx context.Context) {
 					cfg, err := testutils.GetConfig()
 					Expect(err).ToNot(HaveOccurred())
 
@@ -407,7 +420,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 			// Test custom nodename source configured in 2 additional ConfigMaps
 			//
 			Context("and nfd-workers as a daemonset with 2 additional configmaps for the custom source configured", func() {
-				It("the nodename matching features listed in the configmaps should be present", func(ctx context.Context) {
+				It("the nodename matching features listed in the configmaps should be present", Label("nfd-worker"), func(ctx context.Context) {
 					By("Getting a worker node")
 
 					// We need a valid nodename for the configmap
@@ -490,6 +503,12 @@ var _ = SIGDescribe("NFD master and worker", func() {
 					By("Deleting nfd-worker daemonset")
 					err = f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Delete(ctx, workerDS.Name, metav1.DeleteOptions{})
 					Expect(err).NotTo(HaveOccurred())
+
+					if useNodeFeatureApi {
+						By("Verify that labels from nfd-worker are garbage-collected")
+						delete(expectedLabels, targetNodeName)
+						eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchLabels(expectedLabels, nodes))
+					}
 				})
 			})
 
@@ -505,7 +524,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 						),
 					}
 				})
-				It("labels from the NodeFeature objects should be created", func(ctx context.Context) {
+				It("labels from the NodeFeature objects should be created", Label("nfd-worker"), func(ctx context.Context) {
 					if !useNodeFeatureApi {
 						Skip("NodeFeature API not enabled")
 					}
@@ -635,7 +654,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 
 			// Test NodeFeatureRule
 			//
-			Context("and nfd-worker and NodeFeatureRules objects deployed", func() {
+			Context("and nfd-worker and NodeFeatureRules objects deployed", Label("nodefeaturerule"), func() {
 				testTolerations := []corev1.Toleration{
 					{
 						Key:    "feature.node.kubernetes.io/fake-special-node",
@@ -664,7 +683,7 @@ var _ = SIGDescribe("NFD master and worker", func() {
 						testpod.SpecWithTolerations(testTolerations),
 					}
 				})
-				It("custom features from the NodeFeatureRule rules should be created", func(ctx context.Context) {
+				It("custom features from the NodeFeatureRule rules should be created", Label("nfd-worker"), func(ctx context.Context) {
 					nodes, err := getNonControlPlaneNodes(ctx, f.ClientSet)
 					Expect(err).NotTo(HaveOccurred())
 
@@ -696,8 +715,11 @@ core:
 					expectedLabels := map[string]k8sLabels{
 						"*": {
 							nfdv1alpha1.FeatureLabelNs + "/e2e-flag-test-1":      "true",
+							nfdv1alpha1.FeatureLabelNs + "/e2e-flag-test-2":      "true",
 							nfdv1alpha1.FeatureLabelNs + "/e2e-attribute-test-1": "true",
+							nfdv1alpha1.FeatureLabelNs + "/e2e-attribute-test-2": "true",
 							nfdv1alpha1.FeatureLabelNs + "/e2e-instance-test-1":  "true",
+							nfdv1alpha1.FeatureLabelNs + "/e2e-instance-test-2":  "true",
 						},
 					}
 
@@ -711,13 +733,17 @@ core:
 					Expect(testutils.CreateNodeFeatureRulesFromFile(ctx, nfdClient, "nodefeaturerule-2.yaml")).NotTo(HaveOccurred())
 
 					// Add features from NodeFeatureRule #2
-					expectedLabels["*"][nfdv1alpha1.FeatureLabelNs+"/e2e-matchany-test-1"] = "true"
-					expectedLabels["*"][nfdv1alpha1.FeatureLabelNs+"/e2e-template-test-1-instance_1"] = "found"
-					expectedLabels["*"][nfdv1alpha1.FeatureLabelNs+"/e2e-template-test-1-instance_2"] = "found"
-					expectedLabels["*"][nfdv1alpha1.FeatureLabelNs+"/dynamic-label"] = "true"
+					maps.Copy(expectedLabels["*"], k8sLabels{
+						nfdv1alpha1.FeatureLabelNs + "/e2e-matchany-test-1":            "true",
+						nfdv1alpha1.FeatureLabelNs + "/e2e-template-test-1-instance_1": "found",
+						nfdv1alpha1.FeatureLabelNs + "/e2e-template-test-1-instance_2": "found",
+						nfdv1alpha1.FeatureLabelNs + "/e2e-template-test-2-attr_2":     "false",
+						nfdv1alpha1.FeatureLabelNs + "/e2e-template-test-2-attr_3":     "10",
+						nfdv1alpha1.FeatureLabelNs + "/dynamic-label":                  "true",
+					})
 					expectedAnnotations := map[string]k8sAnnotations{
 						"*": {
-							"nfd.node.kubernetes.io/feature-labels": "dynamic-label,e2e-attribute-test-1,e2e-flag-test-1,e2e-instance-test-1,e2e-matchany-test-1,e2e-template-test-1-instance_1,e2e-template-test-1-instance_2"},
+							"nfd.node.kubernetes.io/feature-labels": "dynamic-label,e2e-attribute-test-1,e2e-attribute-test-2,e2e-flag-test-1,e2e-flag-test-2,e2e-instance-test-1,e2e-instance-test-2,e2e-matchany-test-1,e2e-template-test-1-instance_1,e2e-template-test-1-instance_2,e2e-template-test-2-attr_2,e2e-template-test-2-attr_3"},
 					}
 
 					By("Verifying node labels from NodeFeatureRules #1 and #2")
@@ -799,7 +825,7 @@ core:
 					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchAnnotations(expectedAnnotations, nodes))
 
 					By("Verifying node status capacity from NodeFeatureRules #4")
-					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchCapacity(expectedCapacity, nodes))
+					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchCapacity(expectedCapacity, nodes))
 
 					By("Deleting NodeFeatureRules #4")
 					err = nfdClient.NfdV1alpha1().NodeFeatureRules().Delete(ctx, "e2e-extened-resource-test", metav1.DeleteOptions{})
@@ -808,7 +834,7 @@ core:
 					By("Verifying node status capacity from NodeFeatureRules #4 was removed")
 					expectedCapacity = map[string]corev1.ResourceList{"*": {}}
 					delete(expectedAnnotations["*"], "nfd.node.kubernetes.io/extended-resources")
-					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchCapacity(expectedCapacity, nodes))
+					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchCapacity(expectedCapacity, nodes))
 					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchAnnotations(expectedAnnotations, nodes))
 
 					By("Creating NodeFeatureRules #5")
@@ -836,6 +862,14 @@ core:
 					By("Deleting nfd-worker daemonset")
 					err = f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Delete(ctx, workerDS.Name, metav1.DeleteOptions{})
 					Expect(err).NotTo(HaveOccurred())
+
+					if useNodeFeatureApi {
+						By("Verify that labels from nfd-worker are garbage-collected")
+						expectedLabels = map[string]k8sLabels{
+							"*": {},
+						}
+						eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchLabels(expectedLabels, nodes))
+					}
 				})
 			})
 
@@ -940,8 +974,8 @@ resyncPeriod: "1s"
 					eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchLabels(expectedLabels, nodes))
 
 					patches, err := json.Marshal(
-						[]apihelper.JsonPatch{
-							apihelper.NewJsonPatch(
+						[]utils.JsonPatch{
+							utils.NewJsonPatch(
 								"replace",
 								"/metadata/labels",
 								nfdv1alpha1.FeatureLabelNs+"/e2e-nodefeature-test-1",

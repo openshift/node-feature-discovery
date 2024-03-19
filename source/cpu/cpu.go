@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 
 	"k8s.io/apimachinery/pkg/util/sets"
 	"k8s.io/klog/v2"
@@ -164,15 +165,6 @@ func (s *cpuSource) GetLabels() (source.FeatureLabels, error) {
 		labels["pstate."+k] = v
 	}
 
-	// RDT
-	for k, v := range features.Attributes[RdtFeature].Elements {
-		if k == "RDTL3CA_NUM_CLOSID" {
-			continue
-		}
-
-		labels["rdt."+k] = v
-	}
-
 	// Security
 	// skipLabel lists features that will not have labels created but are only made available for
 	// NodeFeatureRules (e.g. to be published via extended resources instead)
@@ -270,38 +262,44 @@ func getCPUModel() map[string]string {
 func discoverTopology() map[string]string {
 	features := make(map[string]string)
 
-	if ht, err := haveThreadSiblings(); err != nil {
-		klog.ErrorS(err, "failed to detect hyper-threading")
-	} else {
-		features["hardware_multithreading"] = strconv.FormatBool(ht)
-	}
-
-	return features
-}
-
-// Check if any (online) CPUs have thread siblings
-func haveThreadSiblings() (bool, error) {
-
 	files, err := os.ReadDir(hostpath.SysfsDir.Path("bus/cpu/devices"))
 	if err != nil {
-		return false, err
+		klog.ErrorS(err, "failed to read devices folder")
+		return features
 	}
+
+	ht := false
+	uniquePhysicalIDs := sets.NewString()
 
 	for _, file := range files {
 		// Try to read siblings from topology
 		siblings, err := os.ReadFile(hostpath.SysfsDir.Path("bus/cpu/devices", file.Name(), "topology/thread_siblings_list"))
 		if err != nil {
-			return false, err
+			klog.ErrorS(err, "error while reading thread_sigblings_list file")
+			return map[string]string{}
 		}
 		for _, char := range siblings {
 			// If list separator found, we determine that there are multiple siblings
 			if char == ',' || char == '-' {
-				return true, nil
+				ht = true
+				break
 			}
 		}
+
+		// Try to read physical_package_id from topology
+		physicalID, err := os.ReadFile(hostpath.SysfsDir.Path("bus/cpu/devices", file.Name(), "topology/physical_package_id"))
+		if err != nil {
+			klog.ErrorS(err, "error while reading physical_package_id file")
+			return map[string]string{}
+		}
+		id := strings.TrimSpace(string(physicalID))
+		uniquePhysicalIDs.Insert(id)
 	}
-	// No siblings were found
-	return false, nil
+
+	features["hardware_multithreading"] = strconv.FormatBool(ht)
+	features["socket_count"] = strconv.FormatInt(int64(uniquePhysicalIDs.Len()), 10)
+
+	return features
 }
 
 func (s *cpuSource) initCpuidFilter() {

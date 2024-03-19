@@ -11,7 +11,7 @@ import (
 // ENOTSUPP is a Linux internal error code that has leaked into UAPI.
 //
 // It is not the same as ENOTSUP or EOPNOTSUPP.
-var ENOTSUPP = syscall.Errno(524)
+const ENOTSUPP = syscall.Errno(524)
 
 // BPF wraps SYS_BPF.
 //
@@ -117,10 +117,13 @@ type LinkID uint32
 // BTFID uniquely identifies a BTF blob loaded into the kernel.
 type BTFID uint32
 
+// TypeID identifies a type in a BTF blob.
+type TypeID uint32
+
 // MapFlags control map behaviour.
 type MapFlags uint32
 
-//go:generate stringer -type MapFlags
+//go:generate go run golang.org/x/tools/cmd/stringer@latest -type MapFlags
 
 const (
 	BPF_F_NO_PREALLOC MapFlags = 1 << iota

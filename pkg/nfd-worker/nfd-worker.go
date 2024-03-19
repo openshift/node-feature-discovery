@@ -28,18 +28,19 @@ import (
 	"strings"
 	"time"
 
+	"golang.org/x/exp/maps"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	"k8s.io/klog/v2"
 	"sigs.k8s.io/yaml"
 
         apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"github.com/openshift/node-feature-discovery/pkg/apihelper"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
 	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
@@ -302,10 +303,7 @@ func (w *nfdWorker) Run() error {
 
 // Stop NfdWorker
 func (w *nfdWorker) Stop() {
-	select {
-	case w.stop <- struct{}{}:
-	default:
-	}
+	close(w.stop)
 }
 
 // getGrpcClient returns client connection to the NFD gRPC server. It creates a
@@ -414,10 +412,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 		}
 	}
 
-	w.featureSources = make([]source.FeatureSource, 0, len(featureSources))
-	for _, s := range featureSources {
-		w.featureSources = append(w.featureSources, s)
-	}
+	w.featureSources = maps.Values(featureSources)
 
 	sort.Slice(w.featureSources, func(i, j int) bool { return w.featureSources[i].Name() < w.featureSources[j].Name() })
 
@@ -449,10 +444,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 		}
 	}
 
-	w.labelSources = make([]source.LabelSource, 0, len(labelSources))
-	for _, s := range labelSources {
-		w.labelSources = append(w.labelSources, s)
-	}
+	w.labelSources = maps.Values(labelSources)
 
 	sort.Slice(w.labelSources, func(i, j int) bool {
 		iP, jP := w.labelSources[i].Priority(), w.labelSources[j].Priority()
@@ -559,9 +551,7 @@ func createFeatureLabels(sources []source.LabelSource, labelWhiteList regexp.Reg
 			continue
 		}
 
-		for name, value := range labelsFromSource {
-			labels[name] = value
-		}
+		maps.Copy(labels, labelsFromSource)
 	}
 	if klogV := klog.V(1); klogV.Enabled() {
 		klogV.InfoS("feature discovery completed", "labels", utils.DelayedDumper(labels))
@@ -580,34 +570,29 @@ func getFeatureLabels(source source.LabelSource, labelWhiteList regexp.Regexp) (
 		return nil, err
 	}
 
-	// Prefix for labels in the default namespace
-	prefix := source.Name() + "-"
-	switch source.Name() {
-	case "local", "custom":
-		// Do not prefix labels from the custom rules, hooks or feature files
-		prefix = ""
-	}
-
 	for k, v := range features {
-		// Split label name into namespace and name compoents. Use dummy 'ns'
-		// default namespace because there is no function to validate just
-		// the name part
-		split := strings.SplitN(k, "/", 2)
+		name := k
+		switch sourceName := source.Name(); sourceName {
+		case "local", "custom":
+			// No mangling of labels from the custom rules, hooks or feature files
+		default:
+			// Prefix for labels from other sources
+			if !strings.Contains(name, "/") {
+				name = nfdv1alpha1.FeatureLabelNs + "/" + sourceName + "-" + name
+			}
+		}
+		// Split label name into namespace and name compoents
+		split := strings.SplitN(name, "/", 2)
 
-		label := prefix + split[0]
-		nameForValidation := "ns/" + label
-		nameForWhiteListing := label
-
+		nameForWhiteListing := name
 		if len(split) == 2 {
-			label = k
-			nameForValidation = label
 			nameForWhiteListing = split[1]
 		}
 
 		// Validate label name.
-		errs := validation.IsQualifiedName(nameForValidation)
+		errs := validation.IsQualifiedName(name)
 		if len(errs) > 0 {
-			klog.InfoS("ignoring label with invalid name", "lableKey", label, "errors", errs)
+			klog.InfoS("ignoring label with invalid name", "labelKey", name, "errors", errs)
 			continue
 		}
 
@@ -615,7 +600,7 @@ func getFeatureLabels(source source.LabelSource, labelWhiteList regexp.Regexp) (
 		// Validate label value
 		errs = validation.IsValidLabelValue(value)
 		if len(errs) > 0 {
-			klog.InfoS("ignoring label with invalide value", "labelKey", label, "labelValue", value, "errors", errs)
+			klog.InfoS("ignoring label with invalid value", "labelKey", name, "labelValue", value, "errors", errs)
 			continue
 		}
 
@@ -625,7 +610,7 @@ func getFeatureLabels(source source.LabelSource, labelWhiteList regexp.Regexp) (
 			continue
 		}
 
-		labels[label] = value
+		labels[name] = value
 	}
 	return labels, nil
 }
@@ -684,15 +669,35 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 
 	features := source.GetAllFeatures()
 
+	// Create owner ref
+	ownerRefs := []metav1.OwnerReference{}
+	podName := os.Getenv("POD_NAME")
+	podUID := os.Getenv("POD_UID")
+	if podName != "" && podUID != "" {
+		isTrue := true
+		ownerRefs = []metav1.OwnerReference{
+			{
+				APIVersion: "v1",
+				Kind:       "Pod",
+				Name:       podName,
+				UID:        types.UID(podUID),
+				Controller: &isTrue,
+			},
+		}
+	} else {
+		klog.InfoS("Cannot set NodeFeature owner reference, POD_NAME and/or POD_UID not specified")
+	}
+
 	// TODO: we could implement some simple caching of the object, only get it
 	// every 10 minutes or so because nobody else should really be modifying it
 	if nfr, err := cli.NfdV1alpha1().NodeFeatures(namespace).Get(context.TODO(), nodename, metav1.GetOptions{}); errors.IsNotFound(err) {
 		klog.InfoS("creating NodeFeature object", "nodefeature", klog.KObj(nfr))
 		nfr = &nfdv1alpha1.NodeFeature{
 			ObjectMeta: metav1.ObjectMeta{
-				Name:        nodename,
-				Annotations: map[string]string{nfdv1alpha1.WorkerVersionAnnotation: version.Get()},
-				Labels:      map[string]string{nfdv1alpha1.NodeFeatureObjNodeNameLabel: nodename},
+				Name:            nodename,
+				Annotations:     map[string]string{nfdv1alpha1.WorkerVersionAnnotation: version.Get()},
+				Labels:          map[string]string{nfdv1alpha1.NodeFeatureObjNodeNameLabel: nodename},
+				OwnerReferences: ownerRefs,
 			},
 			Spec: nfdv1alpha1.NodeFeatureSpec{
 				Features: *features,
@@ -712,6 +717,7 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 		nfrUpdated := nfr.DeepCopy()
 		nfrUpdated.Annotations = map[string]string{nfdv1alpha1.WorkerVersionAnnotation: version.Get()}
 		nfrUpdated.Labels = map[string]string{nfdv1alpha1.NodeFeatureObjNodeNameLabel: nodename}
+		nfrUpdated.OwnerReferences = ownerRefs
 		nfrUpdated.Spec = nfdv1alpha1.NodeFeatureSpec{
 			Features: *features,
 			Labels:   labels,
@@ -737,7 +743,7 @@ func (m *nfdWorker) getNfdClient() (*nfdclient.Clientset, error) {
 		return m.nfdClient, nil
 	}
 
-	kubeconfig, err := apihelper.GetKubeconfig(m.args.Kubeconfig)
+	kubeconfig, err := utils.GetKubeconfig(m.args.Kubeconfig)
 	if err != nil {
 		return nil, err
 	}
