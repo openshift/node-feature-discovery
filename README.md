@@ -13,6 +13,7 @@ features and system configuration!
 
 ```bash
 $ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.14.3
+$ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.15.4
   namespace/node-feature-discovery created
 ...
 
