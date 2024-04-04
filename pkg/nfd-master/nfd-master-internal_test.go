@@ -114,6 +114,7 @@ func newFakeMaster(opts ...NfdMasterOption) *nfdMaster {
 	defaultOpts := []NfdMasterOption{
 		withNodeName(testNodeName),
 		withConfig(&NFDConfig{}),
+		WithKubernetesClient(fakeclient.NewSimpleClientset()),
 	}
 	m, err := NewNfdMaster(append(defaultOpts, opts...)...)
 	if err != nil {
@@ -663,6 +664,10 @@ leaderElection:
 
 func TestDynamicConfig(t *testing.T) {
 	Convey("When running nfd-master", t, func() {
+		// Add feature gates as running nfd-master depends on that
+		err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates)
+		So(err, ShouldBeNil)
+
 		tmpDir, err := os.MkdirTemp("", "*.nfd-test")
 		So(err, ShouldBeNil)
 		defer os.RemoveAll(tmpDir)
@@ -673,7 +678,7 @@ func TestDynamicConfig(t *testing.T) {
 		So(err, ShouldBeNil)
 
 		// Create config file
-		configFile := filepath.Join(configDir, "master.conf")
+		configFile := filepath.Clean(filepath.Join(configDir, "master.conf"))
 
 		writeConfig := func(data string) {
 			f, err := os.Create(configFile)
@@ -684,25 +689,22 @@ func TestDynamicConfig(t *testing.T) {
 			So(err, ShouldBeNil)
 		}
 		writeConfig(`
+klog:
+  v: "4"
 extraLabelNs: ["added.ns.io"]
 `)
 
-		noPublish := true
-		// Add FeatureGates flag
-		if err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates); err != nil {
-			klog.ErrorS(err, "failed to add default feature gates")
-			os.Exit(1)
-		}
-		_ = features.NFDMutableFeatureGate.OverrideDefault(features.NodeFeatureAPI, false)
-		master := newFakeMaster(WithArgs(&Args{
-			ConfigFile: configFile,
-			Overrides: ConfigOverrideArgs{
-				NoPublish: &noPublish,
-			},
-		}))
+		master := newFakeMaster(
+			WithArgs(&Args{ConfigFile: configFile}),
+			WithKubernetesClient(fakeclient.NewSimpleClientset(newTestNode())))
 
 		Convey("config file updates should take effect", func() {
-			go func() { _ = master.Run() }()
+			go func() {
+				Convey("nfd-master should exit gracefully", t, func() {
+					err = master.Run()
+					So(err, ShouldBeNil)
+				})
+			}()
 			defer master.Stop()
 			// Check initial config
 			time.Sleep(10 * time.Second)
