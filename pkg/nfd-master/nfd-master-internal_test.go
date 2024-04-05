@@ -44,7 +44,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
-	k8sclient "k8s.io/client-go/kubernetes"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
 	fakecorev1client "k8s.io/client-go/kubernetes/typed/core/v1/fake"
 	clienttesting "k8s.io/client-go/testing"
@@ -103,12 +102,24 @@ func newFakeNfdAPIController(client *fakenfdclient.Clientset) *nfdController {
 	return c
 }
 
-func newFakeMaster(cli k8sclient.Interface) *nfdMaster {
-	return &nfdMaster{
-		nodeName:  testNodeName,
-		config:    &NFDConfig{},
-		k8sClient: cli,
+func withNodeName(nodeName string) NfdMasterOption {
+	return &nfdMasterOpt{f: func(n *nfdMaster) { n.nodeName = nodeName }}
+}
+
+func withConfig(config *NFDConfig) NfdMasterOption {
+	return &nfdMasterOpt{f: func(n *nfdMaster) { n.config = config }}
+}
+
+func newFakeMaster(opts ...NfdMasterOption) *nfdMaster {
+	defaultOpts := []NfdMasterOption{
+		withNodeName(testNodeName),
+		withConfig(&NFDConfig{}),
 	}
+	m, err := NewNfdMaster(append(defaultOpts, opts...)...)
+	if err != nil {
+		panic(err)
+	}
+	return m.(*nfdMaster)
 }
 
 func TestUpdateNodeObject(t *testing.T) {
@@ -152,7 +163,7 @@ func TestUpdateNodeObject(t *testing.T) {
 
 		// Create fake api client and initialize NfdMaster instance
 		fakeCli := fakeclient.NewSimpleClientset(testNode)
-		fakeMaster := newFakeMaster(fakeCli)
+		fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
 		Convey("When I successfully update the node with feature labels", func() {
 			err := fakeMaster.updateNodeObject(testNode, featureLabels, featureAnnotations, featureExtResources, nil)
@@ -204,7 +215,7 @@ func TestUpdateMasterNode(t *testing.T) {
 
 		Convey("When update operation succeeds", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 			err := fakeMaster.updateMasterNode()
 			Convey("No error should be returned", func() {
 				So(err, ShouldBeNil)
@@ -219,7 +230,7 @@ func TestUpdateMasterNode(t *testing.T) {
 
 		Convey("When getting API node object fails", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 			fakeMaster.nodeName = "does-not-exist"
 
 			err := fakeMaster.updateMasterNode()
@@ -234,7 +245,7 @@ func TestUpdateMasterNode(t *testing.T) {
 			fakeCli.CoreV1().(*fakecorev1client.FakeCoreV1).PrependReactor("patch", "nodes", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
 				return true, &v1.Node{}, fakeErr
 			})
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
 			err := fakeMaster.updateMasterNode()
 			Convey("An error should be returned", func() {
@@ -246,7 +257,7 @@ func TestUpdateMasterNode(t *testing.T) {
 
 func TestAddingExtResources(t *testing.T) {
 	Convey("When adding extended resources", t, func() {
-		fakeMaster := newFakeMaster(nil)
+		fakeMaster := newFakeMaster()
 		Convey("When there are no matching labels", func() {
 			testNode := newTestNode()
 			resourceLabels := ExtendedResources{}
@@ -289,7 +300,7 @@ func TestAddingExtResources(t *testing.T) {
 
 func TestRemovingExtResources(t *testing.T) {
 	Convey("When removing extended resources", t, func() {
-		fakeMaster := newFakeMaster(nil)
+		fakeMaster := newFakeMaster()
 		Convey("When none are removed", func() {
 			testNode := newTestNode()
 			resourceLabels := ExtendedResources{nfdv1alpha1.FeatureLabelNs + "/feature-1": "1", nfdv1alpha1.FeatureLabelNs + "/feature-2": "2"}
@@ -338,7 +349,7 @@ func TestSetLabels(t *testing.T) {
 
 		Convey("When node update succeeds", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
 			_, err := fakeMaster.SetLabels(ctx, req)
 			Convey("No error should be returned", func() {
@@ -353,11 +364,13 @@ func TestSetLabels(t *testing.T) {
 
 		Convey("When -resource-labels is specified", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
-			fakeMaster.config.ResourceLabels = map[string]struct{}{
-				"feature.node.kubernetes.io/feature-3": {},
-				"feature-1":                            {},
-			}
+			fakeMaster := newFakeMaster(
+				WithKubernetesClient(fakeCli),
+				withConfig(&NFDConfig{
+					ResourceLabels: map[string]struct{}{
+						"feature.node.kubernetes.io/feature-3": {},
+						"feature-1":                            {}},
+				}))
 
 			_, err := fakeMaster.SetLabels(ctx, req)
 			Convey("Error is nil", func() {
@@ -373,7 +386,7 @@ func TestSetLabels(t *testing.T) {
 
 		Convey("When node update fails", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
 			fakeErr := errors.New("Fake error when patching node")
 			fakeCli.CoreV1().(*fakecorev1client.FakeCoreV1).PrependReactor("patch", "nodes", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
@@ -387,7 +400,7 @@ func TestSetLabels(t *testing.T) {
 
 		Convey("With '-no-publish'", func() {
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
-			fakeMaster := newFakeMaster(fakeCli)
+			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
 			fakeMaster.config.NoPublish = true
 			_, err := fakeMaster.SetLabels(ctx, req)
@@ -399,7 +412,7 @@ func TestSetLabels(t *testing.T) {
 }
 
 func TestFilterLabels(t *testing.T) {
-	fakeMaster := newFakeMaster(nil)
+	fakeMaster := newFakeMaster()
 	fakeMaster.config.ExtraLabelNs = map[string]struct{}{"example.io": {}}
 	fakeMaster.deniedNs = deniedNs{
 		normal:   map[string]struct{}{"": struct{}{}, "kubernetes.io": struct{}{}, "denied.ns": struct{}{}},
@@ -570,9 +583,7 @@ func TestRemoveLabelsWithPrefix(t *testing.T) {
 
 func TestConfigParse(t *testing.T) {
 	Convey("When parsing configuration", t, func() {
-		m, err := NewNfdMaster(&Args{})
-		So(err, ShouldBeNil)
-		master := m.(*nfdMaster)
+		master := newFakeMaster()
 		overrides := `{"noPublish": true, "enableTaints": true, "extraLabelNs": ["added.ns.io","added.kubernetes.io"], "denyLabelNs": ["denied.ns.io","denied.kubernetes.io"], "resourceLabels": ["vendor-1.com/feature-1","vendor-2.io/feature-2"], "labelWhiteList": "foo"}`
 
 		Convey("and no core cmdline flags have been specified", func() {
@@ -683,18 +694,16 @@ extraLabelNs: ["added.ns.io"]
 			os.Exit(1)
 		}
 		_ = features.NFDMutableFeatureGate.OverrideDefault(features.NodeFeatureAPI, false)
-		m, err := NewNfdMaster(&Args{
+		master := newFakeMaster(WithArgs(&Args{
 			ConfigFile: configFile,
 			Overrides: ConfigOverrideArgs{
 				NoPublish: &noPublish,
 			},
-		})
-		So(err, ShouldBeNil)
-		master := m.(*nfdMaster)
+		}))
 
 		Convey("config file updates should take effect", func() {
-			go func() { _ = m.Run() }()
-			defer m.Stop()
+			go func() { _ = master.Run() }()
+			defer master.Stop()
 			// Check initial config
 			time.Sleep(10 * time.Second)
 			So(func() interface{} { return master.config.ExtraLabelNs },
@@ -758,7 +767,7 @@ func newTestNodeList() *corev1.NodeList {
 
 func BenchmarkNfdAPIUpdateAllNodes(b *testing.B) {
 	fakeCli := fakeclient.NewSimpleClientset(newTestNodeList())
-	fakeMaster := newFakeMaster(fakeCli)
+	fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 	fakeMaster.nfdController = newFakeNfdAPIController(fakenfdclient.NewSimpleClientset())
 
 	nodeUpdaterPool := newNodeUpdaterPool(fakeMaster)
