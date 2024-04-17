@@ -774,10 +774,10 @@ func BenchmarkNfdAPIUpdateAllNodes(b *testing.B) {
 	fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 	fakeMaster.nfdController = newFakeNfdAPIController(fakenfdclient.NewSimpleClientset())
 
-	nodeUpdaterPool := newNodeUpdaterPool(fakeMaster)
-	fakeMaster.nodeUpdaterPool = nodeUpdaterPool
+	updaterPool := newUpdaterPool(fakeMaster)
+	fakeMaster.updaterPool = updaterPool
 
-	nodeUpdaterPool.start(10)
+	updaterPool.start(10)
 
 	b.ResetTimer()
 
