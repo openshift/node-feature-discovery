@@ -8,6 +8,7 @@
 #    cpuid:
 ##     NOTE: whitelist has priority over blacklist
 #      attributeBlacklist:
+#        - "AVX10"
 #        - "BMI1"
 #        - "BMI2"
 #        - "CLMUL"
