@@ -17,7 +17,7 @@ limitations under the License.
 package features
 
 import (
-	"sigs.k8s.io/node-feature-discovery/pkg/utils/featuregate"
+	"github.com/openshift/node-feature-discovery/pkg/utils/featuregate"
 )
 
 const (
