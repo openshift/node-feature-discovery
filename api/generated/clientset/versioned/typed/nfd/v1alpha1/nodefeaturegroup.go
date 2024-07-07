@@ -26,8 +26,8 @@ import (
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
 	rest "k8s.io/client-go/rest"
-	scheme "sigs.k8s.io/node-feature-discovery/api/generated/clientset/versioned/scheme"
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
+	scheme "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned/scheme"
+	v1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 // NodeFeatureGroupsGetter has a method to return a NodeFeatureGroupInterface.

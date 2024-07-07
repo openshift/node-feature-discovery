@@ -25,9 +25,9 @@ import (
 	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/util/workqueue"
 	"k8s.io/klog/v2"
-	nfdclientset "sigs.k8s.io/node-feature-discovery/api/generated/clientset/versioned"
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/pkg/features"
+	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/features"
 )
 
 type updaterPool struct {
