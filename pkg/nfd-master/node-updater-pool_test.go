@@ -23,11 +23,7 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 	fakek8sclient "k8s.io/client-go/kubernetes/fake"
-<<<<<<< HEAD
 	fakenfdclient "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned/fake"
-=======
-	fakenfdclient "sigs.k8s.io/node-feature-discovery/api/generated/clientset/versioned/fake"
->>>>>>> 3434557d7 (Move NFD api to a separate go mod)
 )
 
 func newFakeNodeUpdaterPool(nfdMaster *nfdMaster) *nodeUpdaterPool {

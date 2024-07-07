@@ -1,4 +1,4 @@
-module sigs.k8s.io/node-feature-discovery/api/nfd
+module github.com/openshift/node-feature-discovery/api/nfd
 
 go 1.22
 

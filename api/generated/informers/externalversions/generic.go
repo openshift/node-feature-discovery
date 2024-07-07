@@ -23,11 +23,7 @@ import (
 
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
-<<<<<<< HEAD:pkg/generated/informers/externalversions/generic.go
 	v1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
-=======
-	v1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
->>>>>>> 3434557d7 (Move NFD api to a separate go mod):api/generated/informers/externalversions/generic.go
 )
 
 // GenericInformer is type of SharedIndexInformer which will locate and delegate to other

@@ -14,6 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.13.0
 	github.com/onsi/gomega v1.29.0
 	github.com/opencontainers/runc v1.1.12
+	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.18.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.8.0
@@ -34,7 +35,6 @@ require (
 	k8s.io/kubernetes v1.29.0
 	k8s.io/pod-security-admission v0.29.0
 	k8s.io/utils v0.0.0-20230726121419-3b25d923346b
-	sigs.k8s.io/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	sigs.k8s.io/yaml v1.3.0
 )
 
@@ -205,6 +205,7 @@ require (
 // need to override with commits (corresponding their kubernetes-* tags)
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
+	github.com/openshift/node-feature-discovery/api/nfd => ./api/nfd
 	k8s.io/api => k8s.io/api v0.29.0
 	k8s.io/apiextensions-apiserver => k8s.io/apiextensions-apiserver v0.29.0
 	k8s.io/apimachinery => k8s.io/apimachinery v0.29.0
@@ -230,5 +231,4 @@ replace (
 	k8s.io/mount-utils => k8s.io/mount-utils v0.29.0
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.29.0
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.29.0
-	sigs.k8s.io/node-feature-discovery/api/nfd => ./api/nfd
 )
