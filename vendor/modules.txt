@@ -227,7 +227,7 @@ github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/client
 # github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
 ## explicit; go 1.17
 github.com/k8stopologyawareschedwg/podfingerprint
-# github.com/klauspost/cpuid/v2 v2.2.7
+# github.com/klauspost/cpuid/v2 v2.2.8
 ## explicit; go 1.15
 github.com/klauspost/cpuid/v2
 # github.com/mailru/easyjson v0.7.7
