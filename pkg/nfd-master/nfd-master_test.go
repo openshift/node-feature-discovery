@@ -19,6 +19,7 @@ package nfdmaster_test
 import (
 	"testing"
 
+        . "github.com/smartystreets/goconvey/convey"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
 	m "github.com/openshift/node-feature-discovery/pkg/nfd-master"
 )
