@@ -56,7 +56,7 @@ import (
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/nodefeaturerule"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/validate"
-	"github.com/openshift/node-feature-discovery/pkg/features"
+	nfdfeatures "github.com/openshift/node-feature-discovery/pkg/features"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
