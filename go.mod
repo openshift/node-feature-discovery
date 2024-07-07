@@ -17,7 +17,7 @@ require (
 	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.18.0
 	github.com/smartystreets/goconvey v1.8.1
-	github.com/spf13/cobra v1.8.0
+	github.com/spf13/cobra v1.8.1
 	github.com/stretchr/testify v1.9.0
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
 	golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
