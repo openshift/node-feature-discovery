@@ -227,7 +227,7 @@ github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/client
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha1/fake
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha2
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha2/fake
-# github.com/k8stopologyawareschedwg/podfingerprint v0.1.2
+# github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
 ## explicit; go 1.17
 github.com/k8stopologyawareschedwg/podfingerprint
 # github.com/klauspost/cpuid/v2 v2.2.7
