@@ -21,7 +21,7 @@ package source
 import (
 	"fmt"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 // Source is the base interface for all other source interfaces
@@ -161,25 +161,16 @@ func GetAllFeatures() *nfdv1alpha1.Features {
 		for k, v := range f.Flags {
 			// Prefix feature with the name of the source
 			k = n + "." + k
-			if typ := features.Exists(k); typ != "" {
-				panic(fmt.Sprintf("feature source %q returned flag feature %q which already exists (type %q)", n, k, typ))
-			}
 			features.Flags[k] = v
 		}
 		for k, v := range f.Attributes {
 			// Prefix feature with the name of the source
 			k = n + "." + k
-			if typ := features.Exists(k); typ != "" {
-				panic(fmt.Sprintf("feature source %q returned attribute feature %q which already exists (type %q)", n, k, typ))
-			}
 			features.Attributes[k] = v
 		}
 		for k, v := range f.Instances {
 			// Prefix feature with the name of the source
 			k = n + "." + k
-			if typ := features.Exists(k); typ != "" {
-				panic(fmt.Sprintf("feature source %q returned instance feature %q which already exists (type %q)", n, k, typ))
-			}
 			features.Instances[k] = v
 		}
 	}

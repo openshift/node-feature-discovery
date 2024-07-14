@@ -70,6 +70,9 @@ denyLabelNs: ["denied.ns.io","denied.kubernetes.io"]
 
 ## autoDefaultNs
 
+**DEPRECATED**: Will be removed in NFD v0.17. Use the
+[DisableAutoPrefix](feature-gates.md#disableautoprefix) feature gate instead.
+
 The `autoDefaultNs` option controls the automatic prefixing of names. When set
 to true (the default in NFD version {{ site.version }}) nfd-master
 automatically adds the default `feature.node.kubernetes.io/` prefix to
@@ -152,8 +155,9 @@ The `resyncPeriod` option specifies the NFD API controller resync period.
 The resync means nfd-master replaying all NodeFeature and NodeFeatureRule objects,
 thus effectively re-syncing all nodes in the cluster (i.e. ensuring labels, annotations,
 extended resources and taints are in place).
-Only has effect when the [NodeFeature](../usage/custom-resources.md#nodefeature)
-CRD API has been enabled with [`-enable-nodefeature-api`](master-commandline-reference.md#-enable-nodefeature-api).
+
+Does not have effect if the [NodeFeatureAPI](feature-gates.md#nodefeatureapi)
+feature gate is disabled.
 
 Default: 1 hour.
 
@@ -227,7 +231,8 @@ leaderElection:
 The `nfdApiParallelism` option can be used to specify the maximum
 number of concurrent node updates.
 
-It takes effect only when `-enable-nodefeature-api` has been set.
+Does not have effect if the [NodeFeatureAPI](feature-gates.md#nodefeatureapi)
+feature gate is disabled.
 
 Default: 10
 

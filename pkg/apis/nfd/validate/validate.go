@@ -25,7 +25,7 @@ import (
 	k8sQuantity "k8s.io/apimachinery/pkg/api/resource"
 	k8svalidation "k8s.io/apimachinery/pkg/util/validation"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 var (
@@ -57,7 +57,7 @@ func MatchFeatures(matchFeature nfdv1alpha1.FeatureMatcher) []error {
 	var validationErr []error
 
 	for _, match := range matchFeature {
-		nameSplit := strings.SplitN(match.Feature, ".", 2)
+		nameSplit := strings.Split(match.Feature, ".")
 		if len(nameSplit) != 2 {
 			validationErr = append(validationErr, fmt.Errorf("invalid feature name %v (not <domain>.<feature>), cannot be used for templating", match.Feature))
 		}
@@ -115,7 +115,7 @@ func Label(key, value string) error {
 
 	// Validate label value
 	if err := k8svalidation.IsValidLabelValue(value); len(err) > 0 {
-		return fmt.Errorf("invalid labelvalue %q: %s", value, strings.Join(err, "; "))
+		return fmt.Errorf("invalid value %q: %s", value, strings.Join(err, "; "))
 	}
 
 	return nil
@@ -155,8 +155,8 @@ func Annotation(key, value string) error {
 	}
 
 	// Validate annotation value
-	if errs := k8svalidation.IsValidLabelValue(value); len(errs) > 0 {
-		return fmt.Errorf("invalid annotation value %q: %s", value, strings.Join(errs, "; "))
+	if len(value) > nfdv1alpha1.FeatureAnnotationValueSizeLimit {
+		return fmt.Errorf("invalid value: too long: feature annotations must not be longer than %d characters", nfdv1alpha1.FeatureAnnotationValueSizeLimit)
 	}
 
 	return nil
@@ -236,10 +236,10 @@ func ExtendedResource(key, value string) error {
 		}
 	}
 
-	// Static Value (Pre-Defined at the NodeFeatureRule)
+	// Validate extended resource value
 	_, err := k8sQuantity.ParseQuantity(value)
 	if err != nil {
-		return fmt.Errorf("invalid value %s (from %s): %w", value, value, err)
+		return fmt.Errorf("invalid value %q: %w", value, err)
 	}
 
 	return nil

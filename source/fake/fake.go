@@ -20,7 +20,7 @@ import (
 	"fmt"
 
 	"k8s.io/klog/v2"
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 )
@@ -126,7 +126,7 @@ func (s *fakeSource) Discover() error {
 	for i, instanceAttributes := range s.config.InstanceFeatures {
 		instances[i] = *nfdv1alpha1.NewInstanceFeature(instanceAttributes)
 	}
-	s.features.Instances[InstanceFeature] = nfdv1alpha1.NewInstanceFeatures(instances)
+	s.features.Instances[InstanceFeature] = nfdv1alpha1.NewInstanceFeatures(instances...)
 
 	klog.V(3).InfoS("discovered features", "featureSource", s.Name(), "features", utils.DelayedDumper(s.features))
 

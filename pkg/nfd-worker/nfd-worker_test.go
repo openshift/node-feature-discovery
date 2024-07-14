@@ -24,7 +24,10 @@ import (
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
+	fakeclient "k8s.io/client-go/kubernetes/fake"
+	"k8s.io/klog/v2"
 
+	"github.com/openshift/node-feature-discovery/pkg/features"
 	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
@@ -44,7 +47,16 @@ func setupTest(args *master.Args) testContext {
 		LabelWhiteList: &utils.RegexpVal{Regexp: *regexp.MustCompile("")},
 	}
 	args.Port = 8192
-	m, err := master.NewNfdMaster(args)
+	// Add FeatureGates flag
+	if err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates); err != nil {
+		klog.ErrorS(err, "failed to add default feature gates")
+		os.Exit(1)
+	}
+	_ = features.NFDMutableFeatureGate.OverrideDefault(features.NodeFeatureAPI, false)
+	_ = features.NFDMutableFeatureGate.OverrideDefault(features.NodeFeatureGroupAPI, false)
+	m, err := master.NewNfdMaster(
+		master.WithArgs(args),
+		master.WithKubernetesClient(fakeclient.NewSimpleClientset()))
 	if err != nil {
 		fmt.Printf("Test setup failed: %v\n", err)
 		os.Exit(1)

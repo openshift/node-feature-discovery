@@ -19,16 +19,17 @@ package nfdmaster_test
 import (
 	"testing"
 
+        . "github.com/smartystreets/goconvey/convey"
+	fakeclient "k8s.io/client-go/kubernetes/fake"
 	m "github.com/openshift/node-feature-discovery/pkg/nfd-master"
-	. "github.com/smartystreets/goconvey/convey"
 )
 
 func TestNewNfdMaster(t *testing.T) {
 	Convey("When initializing new NfdMaster instance", t, func() {
 		Convey("When one of -cert-file, -key-file or -ca-file is missing", func() {
-			_, err := m.NewNfdMaster(&m.Args{CertFile: "crt", KeyFile: "key"})
-			_, err2 := m.NewNfdMaster(&m.Args{KeyFile: "key", CaFile: "ca"})
-			_, err3 := m.NewNfdMaster(&m.Args{CertFile: "crt", CaFile: "ca"})
+			_, err := m.NewNfdMaster(m.WithArgs(&m.Args{CertFile: "crt", KeyFile: "key"}))
+			_, err2 := m.NewNfdMaster(m.WithArgs(&m.Args{KeyFile: "key", CaFile: "ca"}))
+			_, err3 := m.NewNfdMaster(m.WithArgs(&m.Args{CertFile: "crt", CaFile: "ca"}))
 			Convey("An error should be returned", func() {
 				So(err, ShouldNotBeNil)
 				So(err2, ShouldNotBeNil)
@@ -36,7 +37,13 @@ func TestNewNfdMaster(t *testing.T) {
 			})
 		})
 		Convey("When -config is supplied", func() {
-			_, err := m.NewNfdMaster(&m.Args{CertFile: "crt", KeyFile: "key", CaFile: "ca", ConfigFile: "master-config.yaml"})
+			_, err := m.NewNfdMaster(
+				m.WithArgs(&m.Args{
+					CertFile:   "crt",
+					KeyFile:    "key",
+					CaFile:     "ca",
+					ConfigFile: "master-config.yaml"}),
+				m.WithKubernetesClient(fakeclient.NewSimpleClientset()))
 			Convey("An error should not be returned", func() {
 				So(err, ShouldBeNil)
 			})

@@ -27,7 +27,7 @@ import (
 
 	"github.com/klauspost/cpuid/v2"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
@@ -64,6 +64,7 @@ func newDefaultConfig() *Config {
 	return &Config{
 		cpuidConfig{
 			AttributeBlacklist: []string{
+				"AVX10",
 				"BMI1",
 				"BMI2",
 				"CLMUL",
@@ -149,6 +150,9 @@ func (s *cpuSource) GetLabels() (source.FeatureLabels, error) {
 			labels["cpuid."+f] = true
 		}
 	}
+	for f, v := range features.Attributes[CpuidFeature].Elements {
+		labels["cpuid."+f] = v
+	}
 
 	// CPU model
 	for k, v := range features.Attributes[Cpumodel].Elements {
@@ -203,6 +207,9 @@ func (s *cpuSource) Discover() error {
 
 	// Detect CPUID
 	s.features.Flags[CpuidFeature] = nfdv1alpha1.NewFlagFeatures(getCpuidFlags()...)
+	if cpuidAttrs := getCpuidAttributes(); cpuidAttrs != nil {
+		s.features.Attributes[CpuidFeature] = nfdv1alpha1.NewAttributeFeatures(cpuidAttrs)
+	}
 
 	// Detect CPU model
 	s.features.Attributes[Cpumodel] = nfdv1alpha1.NewAttributeFeatures(getCPUModel())

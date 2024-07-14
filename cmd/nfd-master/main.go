@@ -23,10 +23,10 @@ import (
 	"time"
 
 	"k8s.io/klog/v2"
+
+	"github.com/openshift/node-feature-discovery/pkg/features"
 	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
-
 	master "github.com/openshift/node-feature-discovery/pkg/nfd-master"
-
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
@@ -43,6 +43,12 @@ func main() {
 	printVersion := flags.Bool("version", false, "Print version and exit.")
 
 	args, overrides := initFlags(flags)
+	// Add FeatureGates flag
+	if err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates); err != nil {
+		klog.ErrorS(err, "failed to add default feature gates")
+		os.Exit(1)
+	}
+	features.NFDMutableFeatureGate.AddFlag(flags)
 
 	_ = flags.Parse(os.Args[1:])
 	if len(flags.Args()) > 0 {
@@ -76,7 +82,7 @@ func main() {
 		case "nfd-api-parallelism":
 			args.Overrides.NfdApiParallelism = overrides.NfdApiParallelism
 		case "enable-nodefeature-api":
-			klog.InfoS("-enable-nodefeature-api is deprecated, will be removed in a future release along with the deprecated gRPC API")
+			klog.InfoS("-enable-nodefeature-api is deprecated and will be removed in the next release, use -feature-gate NodeFeatureAPI instead")
 		case "ca-file":
 			klog.InfoS("-ca-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "cert-file":
@@ -105,7 +111,7 @@ func main() {
 
 	// Get new NfdMaster instance
 	args.GrpcHealthPort = GrpcHealthPort
-	instance, err := master.NewNfdMaster(args)
+	instance, err := master.NewNfdMaster(master.WithArgs(args))
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize NfdMaster instance")
 		os.Exit(1)
@@ -137,7 +143,7 @@ func initFlags(flagset *flag.FlagSet) (*master.Args, *master.ConfigOverrideArgs)
 		"Kubeconfig to use")
 	flagset.BoolVar(&args.EnableNodeFeatureApi, "enable-nodefeature-api", true,
 		"Enable the NodeFeature CRD API for receiving node features. This will automatically disable the gRPC communication."+
-			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
+			" DEPRECATED: will be removed in NFD v0.17. Use -feature-gate NodeFeatureAPI instead.")
 	flagset.BoolVar(&args.CrdController, "featurerules-controller", true,
 		"Enable NFD CRD API controller. DEPRECATED: use -crd-controller instead")
 	flagset.BoolVar(&args.CrdController, "crd-controller", true,
@@ -184,9 +190,9 @@ func initFlags(flagset *flag.FlagSet) (*master.Args, *master.ConfigOverrideArgs)
 		"Comma separated list of labels to be exposed as extended resources. DEPRECATED: use NodeFeatureRule objects instead")
 	flagset.Var(overrides.ResyncPeriod, "resync-period",
 		"Specify the NFD API controller resync period."+
-			"It has an effect when the NodeFeature API has been enabled (with -enable-nodefeature-api).")
+			"It does not have effect when the NodeFeature API has been disabled (with -feature-gates NodeFeatureAPI=false).")
 	overrides.NfdApiParallelism = flagset.Int("nfd-api-parallelism", 10, "Defines the maximum number of goroutines responsible of updating nodes. "+
-		"Can be used for the throttling mechanism. It has effect only when -enable-nodefeature-api has been set.")
+		"Can be used for the throttling mechanism. It does not have effect if NodeFeatureAPI feature gate is disabled.")
 
 	return args, overrides
 }

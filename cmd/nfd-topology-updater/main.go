@@ -19,8 +19,10 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net"
 	"os"
 	"path"
+	"strings"
 	"time"
 
 	"k8s.io/klog/v2"
@@ -36,6 +38,7 @@ const (
 	// ProgramName is the canonical name of this program
 	ProgramName       = "nfd-topology-updater"
 	kubeletSecurePort = 10250
+	GrpcHealthPort    = 8082
 )
 
 var DefaultKubeletStateDir = path.Join(string(hostpath.VarDir), "lib", "kubelet")
@@ -54,6 +57,7 @@ func main() {
 	utils.ConfigureGrpcKlog()
 
 	// Get new TopologyUpdater instance
+	args.GrpcHealthPort = GrpcHealthPort
 	instance, err := topology.NewTopologyUpdater(*args, *resourcemonitorArgs)
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize topology updater instance")
@@ -88,6 +92,10 @@ func parseArgs(flags *flag.FlagSet, osArgs ...string) (*topology.Args, *resource
 			fmt.Fprintf(flags.Output(), "unable to determine the default kubelet config endpoint 'https://${NODE_ADDRESS}:%d/configz' due to empty NODE_ADDRESS environment, "+
 				"please either define the NODE_ADDRESS environment variable or specify endpoint with the -kubelet-config-uri flag\n", kubeletSecurePort)
 			os.Exit(1)
+		}
+		if isIPv6(nodeAddress) {
+			// With IPv6 we need to wrap the IP address in brackets as we append :port below
+			nodeAddress = "[" + nodeAddress + "]"
 		}
 		resourcemonitorArgs.KubeletConfigURI = fmt.Sprintf("https://%s:%d/configz", nodeAddress, kubeletSecurePort)
 	}
@@ -125,4 +133,9 @@ func initFlags(flagset *flag.FlagSet) (*topology.Args, *resourcemonitor.Args) {
 	klog.InitFlags(flagset)
 
 	return args, resourcemonitorArgs
+}
+
+func isIPv6(addr string) bool {
+	ip := net.ParseIP(addr)
+	return ip != nil && strings.Count(ip.String(), ":") >= 2
 }

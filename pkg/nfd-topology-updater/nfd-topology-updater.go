@@ -18,14 +18,19 @@ package nfdtopologyupdater
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 
 	"golang.org/x/net/context"
 
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/types"
 	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 	kubeletconfigv1beta1 "k8s.io/kubelet/config/v1beta1"
@@ -57,6 +62,7 @@ type Args struct {
 	KubeConfigFile  string
 	ConfigFile      string
 	KubeletStateDir string
+	GrpcHealthPort  int
 
 	Klog map[string]*utils.KlogFlagVal
 }
@@ -80,7 +86,11 @@ type nfdTopologyUpdater struct {
 	eventSource         <-chan kubeletnotifier.Info
 	configFilePath      string
 	config              *NFDConfig
+	kubernetesNamespace string
+	ownerRefs           []metav1.OwnerReference
+	k8sClient           k8sclient.Interface
 	kubeletConfigFunc   func() (*kubeletconfigv1beta1.KubeletConfiguration, error)
+	healthServer        *grpc.Server
 }
 
 // NewTopologyUpdater creates a new NfdTopologyUpdater instance.
@@ -101,10 +111,12 @@ func NewTopologyUpdater(args Args, resourcemonitorArgs resourcemonitor.Args) (Nf
 	nfd := &nfdTopologyUpdater{
 		args:                args,
 		resourcemonitorArgs: resourcemonitorArgs,
-		stop:                make(chan struct{}, 1),
+		stop:                make(chan struct{}),
 		nodeName:            utils.NodeName(),
 		eventSource:         eventSource,
 		config:              &NFDConfig{},
+		kubernetesNamespace: utils.GetKubernetesNamespace(),
+		ownerRefs:           []metav1.OwnerReference{},
 		kubeletConfigFunc:   kubeletConfigFunc,
 	}
 	if args.ConfigFile != "" {
@@ -120,6 +132,29 @@ func (w *nfdTopologyUpdater) detectTopologyPolicyAndScope() (string, string, err
 	}
 
 	return klConfig.TopologyManagerPolicy, klConfig.TopologyManagerScope, nil
+}
+
+func (w *nfdTopologyUpdater) startGrpcHealthServer(errChan chan<- error) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", w.args.GrpcHealthPort))
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+
+	s := grpc.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
+	klog.InfoS("gRPC health server serving", "port", w.args.GrpcHealthPort)
+
+	go func() {
+		defer func() {
+			lis.Close()
+		}()
+		if err := s.Serve(lis); err != nil {
+			errChan <- fmt.Errorf("gRPC health server exited with an error: %w", err)
+		}
+		klog.InfoS("gRPC health server stopped")
+	}()
+	w.healthServer = s
+	return nil
 }
 
 // Run nfdTopologyUpdater. Returns if a fatal error is encountered, or, after
@@ -146,6 +181,7 @@ func (w *nfdTopologyUpdater) Run() error {
 	if err != nil {
 		return err
 	}
+	w.k8sClient = k8sClient
 
 	if err := w.configure(); err != nil {
 		return fmt.Errorf("faild to configure Node Feature Discovery Topology Updater: %w", err)
@@ -171,7 +207,6 @@ func (w *nfdTopologyUpdater) Run() error {
 	// CAUTION: these resources are expected to change rarely - if ever.
 	// So we are intentionally do this once during the process lifecycle.
 	// TODO: Obtain node resources dynamically from the podresource API
-	// zonesChannel := make(chan v1alpha1.ZoneList)
 	var zones v1alpha2.ZoneList
 
 	excludeList := resourcemonitor.NewExcludeResourceList(w.config.ExcludeList, w.nodeName)
@@ -180,8 +215,20 @@ func (w *nfdTopologyUpdater) Run() error {
 		return fmt.Errorf("failed to obtain node resource information: %w", err)
 	}
 
+	grpcErr := make(chan error)
+
+	// Start gRPC server for liveness probe (at this point we're "live")
+	if w.args.GrpcHealthPort != 0 {
+		if err := w.startGrpcHealthServer(grpcErr); err != nil {
+			return fmt.Errorf("failed to start gRPC health server: %w", err)
+		}
+	}
+
 	for {
 		select {
+		case err := <-grpcErr:
+			return fmt.Errorf("error in serving gRPC: %w", err)
+
 		case info := <-w.eventSource:
 			klog.V(4).InfoS("event received, scanning...", "event", info.Event)
 			scanResponse, err := resScan.Scan()
@@ -210,6 +257,9 @@ func (w *nfdTopologyUpdater) Run() error {
 
 		case <-w.stop:
 			klog.InfoS("shutting down nfd-topology-updater")
+			if w.healthServer != nil {
+				w.healthServer.GracefulStop()
+			}
 			return nil
 		}
 	}
@@ -222,11 +272,29 @@ func (w *nfdTopologyUpdater) Stop() {
 }
 
 func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneList, scanResponse resourcemonitor.ScanResponse, readKubeletConfig bool) error {
+
+	if len(w.ownerRefs) == 0 {
+		ns, err := w.k8sClient.CoreV1().Namespaces().Get(context.TODO(), w.kubernetesNamespace, metav1.GetOptions{})
+		if err != nil {
+			klog.ErrorS(err, "Cannot get NodeResourceTopology owner reference")
+		} else {
+			w.ownerRefs = []metav1.OwnerReference{
+				{
+					APIVersion: "v1",
+					Kind:       "Namespace",
+					Name:       ns.Name,
+					UID:        types.UID(ns.UID),
+				},
+			}
+		}
+	}
+
 	nrt, err := w.topoClient.TopologyV1alpha2().NodeResourceTopologies().Get(context.TODO(), w.nodeName, metav1.GetOptions{})
 	if errors.IsNotFound(err) {
 		nrtNew := v1alpha2.NodeResourceTopology{
 			ObjectMeta: metav1.ObjectMeta{
-				Name: w.nodeName,
+				Name:            w.nodeName,
+				OwnerReferences: w.ownerRefs,
 			},
 			Zones:      zoneInfo,
 			Attributes: v1alpha2.AttributeList{},
@@ -248,6 +316,7 @@ func (w *nfdTopologyUpdater) updateNodeResourceTopology(zoneInfo v1alpha2.ZoneLi
 
 	nrtMutated := nrt.DeepCopy()
 	nrtMutated.Zones = zoneInfo
+	nrtMutated.OwnerReferences = w.ownerRefs
 
 	attributes := scanResponse.Attributes
 

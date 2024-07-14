@@ -22,8 +22,9 @@ import (
 	"os"
 
 	"k8s.io/klog/v2"
-	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 
+	"github.com/openshift/node-feature-discovery/pkg/features"
+	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
 	worker "github.com/openshift/node-feature-discovery/pkg/nfd-worker"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
@@ -31,13 +32,21 @@ import (
 
 const (
 	// ProgramName is the canonical name of this program
-	ProgramName = "nfd-worker"
+	ProgramName    = "nfd-worker"
+	GrpcHealthPort = 8082
 )
 
 func main() {
 	flags := flag.NewFlagSet(ProgramName, flag.ExitOnError)
 
 	printVersion := flags.Bool("version", false, "Print version and exit.")
+
+	// Add FeatureGates flag
+	if err := features.NFDMutableFeatureGate.Add(features.DefaultNFDFeatureGates); err != nil {
+		klog.ErrorS(err, "failed to add default feature gates")
+		os.Exit(1)
+	}
+	features.NFDMutableFeatureGate.AddFlag(flags)
 
 	args := parseArgs(flags, os.Args[1:]...)
 
@@ -54,14 +63,14 @@ func main() {
 	// Check deprecated flags
 	flags.Visit(func(f *flag.Flag) {
 		switch f.Name {
-		case "enable-nodefeature-api":
-			klog.InfoS("-enable-nodefeature-api is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "ca-file":
 			klog.InfoS("-ca-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "cert-file":
 			klog.InfoS("-cert-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "key-file":
 			klog.InfoS("-key-file is deprecated, will be removed in a future release along with the deprecated gRPC API")
+		case "enable-nodefeature-api":
+			klog.InfoS("-enable-nodefeature-api is deprecated and will be removed in the next release, use -feature-gate NodeFeatureAPI instead")
 		case "server":
 			klog.InfoS("-server is deprecated, will be removed in a future release along with the deprecated gRPC API")
 		case "server-name-override":
@@ -73,6 +82,7 @@ func main() {
 	utils.ConfigureGrpcKlog()
 
 	// Get new NfdWorker instance
+	args.GrpcHealthPort = GrpcHealthPort
 	instance, err := worker.NewNfdWorker(args)
 	if err != nil {
 		klog.ErrorS(err, "failed to initialize NfdWorker instance")
@@ -126,7 +136,7 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
 	flagset.BoolVar(&args.EnableNodeFeatureApi, "enable-nodefeature-api", true,
 		"Enable the NodeFeature CRD API for communicating with nfd-master. This will automatically disable the gRPC communication."+
-			" DEPRECATED: will be removed in a future release along with the deprecated gRPC API.")
+			" DEPRECATED: will be removed in NFD v0.17. Use -feature-gate NodeFeatureAPI instead.")
 	flagset.StringVar(&args.Kubeconfig, "kubeconfig", "",
 		"Kubeconfig to use")
 	flagset.BoolVar(&args.Oneshot, "oneshot", false,

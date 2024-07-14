@@ -21,6 +21,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -33,6 +34,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health"
+	"google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
@@ -41,8 +44,9 @@ import (
 
         apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclient "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
+	nfdclient "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/features"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"	
@@ -104,6 +108,7 @@ type Args struct {
 	Server               string
 	ServerNameOverride   string
 	MetricsPort          int
+	GrpcHealthPort       int
 
 	Overrides ConfigOverrideArgs
 }
@@ -124,6 +129,7 @@ type nfdWorker struct {
 	config              *NFDConfig
 	kubernetesNamespace string
 	grpcClient          pb.LabelerClient
+	healthServer        *grpc.Server
 	nfdClient           *nfdclient.Clientset
 	stop                chan struct{} // channel for signaling stop
 	featureSources      []source.FeatureSource
@@ -141,7 +147,7 @@ func NewNfdWorker(args *Args) (NfdWorker, error) {
 		args:                *args,
 		config:              &NFDConfig{},
 		kubernetesNamespace: utils.GetKubernetesNamespace(),
-		stop:                make(chan struct{}, 1),
+		stop:                make(chan struct{}),
 	}
 
 	// Check TLS related args
@@ -185,6 +191,29 @@ func (i *infiniteTicker) Reset(d time.Duration) {
 		// as if it was set to an infinite duration by not ticking.
 		i.Ticker.Stop()
 	}
+}
+
+func (w *nfdWorker) startGrpcHealthServer(errChan chan<- error) error {
+	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", w.args.GrpcHealthPort))
+	if err != nil {
+		return fmt.Errorf("failed to listen: %w", err)
+	}
+
+	s := grpc.NewServer()
+	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
+	klog.InfoS("gRPC health server serving", "port", w.args.GrpcHealthPort)
+
+	go func() {
+		defer func() {
+			lis.Close()
+		}()
+		if err := s.Serve(lis); err != nil {
+			errChan <- fmt.Errorf("gRPC health server exited with an error: %w", err)
+		}
+		klog.InfoS("gRPC health server stopped")
+	}()
+	w.healthServer = s
+	return nil
 }
 
 // Run feature discovery.
@@ -262,8 +291,20 @@ func (w *nfdWorker) Run() error {
 		return nil
 	}
 
+	grpcErr := make(chan error)
+
+	// Start gRPC server for liveness probe (at this point we're "live")
+	if w.args.GrpcHealthPort != 0 {
+		if err := w.startGrpcHealthServer(grpcErr); err != nil {
+			return fmt.Errorf("failed to start gRPC health server: %w", err)
+		}
+	}
+
 	for {
 		select {
+		case err := <-grpcErr:
+			return fmt.Errorf("error in serving gRPC: %w", err)
+
 		case <-labelTrigger.C:
 			err = w.runFeatureDiscovery()
 			if err != nil {
@@ -276,7 +317,7 @@ func (w *nfdWorker) Run() error {
 				return err
 			}
 			// Manage connection to master
-			if w.config.Core.NoPublish || !w.args.EnableNodeFeatureApi {
+			if w.config.Core.NoPublish || !features.NFDFeatureGate.Enabled(features.NodeFeatureAPI) || !w.args.EnableNodeFeatureApi {
 				w.grpcDisconnect()
 			}
 
@@ -294,6 +335,9 @@ func (w *nfdWorker) Run() error {
 
 		case <-w.stop:
 			klog.InfoS("shutting down nfd-worker")
+			if w.healthServer != nil {
+				w.healthServer.GracefulStop()
+			}
 			configWatch.Close()
 			w.certWatch.Close()
 			return nil
@@ -617,7 +661,7 @@ func getFeatureLabels(source source.LabelSource, labelWhiteList regexp.Regexp) (
 
 // advertiseFeatures advertises the features of a Kubernetes node
 func (w *nfdWorker) advertiseFeatures(labels Labels) error {
-	if w.args.EnableNodeFeatureApi {
+	if features.NFDFeatureGate.Enabled(features.NodeFeatureAPI) && w.args.EnableNodeFeatureApi {
 		// Create/update NodeFeature CR object
 		if err := w.updateNodeFeatureObject(labels); err != nil {
 			return fmt.Errorf("failed to advertise features (via CRD API): %w", err)
@@ -691,7 +735,6 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 	// TODO: we could implement some simple caching of the object, only get it
 	// every 10 minutes or so because nobody else should really be modifying it
 	if nfr, err := cli.NfdV1alpha1().NodeFeatures(namespace).Get(context.TODO(), nodename, metav1.GetOptions{}); errors.IsNotFound(err) {
-		klog.InfoS("creating NodeFeature object", "nodefeature", klog.KObj(nfr))
 		nfr = &nfdv1alpha1.NodeFeature{
 			ObjectMeta: metav1.ObjectMeta{
 				Name:            nodename,
@@ -704,6 +747,7 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 				Labels:   labels,
 			},
 		}
+		klog.InfoS("creating NodeFeature object", "nodefeature", klog.KObj(nfr))
 
 		nfrCreated, err := cli.NfdV1alpha1().NodeFeatures(namespace).Create(context.TODO(), nfr, metav1.CreateOptions{})
 		if err != nil {

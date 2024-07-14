@@ -19,9 +19,27 @@ spec:
         - name: nfd-topology-updater
           image: k8s.gcr.io/nfd/node-feature-discovery:v0.11.0
           imagePullPolicy: IfNotPresent
+          livenessProbe:
+            grpc:
+              port: 8082
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          readinessProbe:
+            grpc:
+              port: 8082
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 10
           command:
             - "nfd-topology-updater"
           args: []
+          resources:
+            limits:
+              cpu: 100m
+              memory: 60Mi
+            requests:
+              cpu: 50m
+              memory: 40Mi
           ports:
             - name: metrics
               containerPort: 8081

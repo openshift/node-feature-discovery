@@ -40,10 +40,13 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/peer"
 	corev1 "k8s.io/api/core/v1"
+	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	k8sLabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/types"
 	k8sclient "k8s.io/client-go/kubernetes"
+	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
 	"k8s.io/klog/v2"
@@ -52,9 +55,11 @@ import (
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	"sigs.k8s.io/yaml"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1/nodefeaturerule"
+	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/nodefeaturerule"
 	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/validate"
+	nfdfeatures "github.com/openshift/node-feature-discovery/pkg/features"
 	pb "github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	klogutils "github.com/openshift/node-feature-discovery/pkg/utils/klog"
@@ -75,7 +80,7 @@ type NFDConfig struct {
 	AutoDefaultNs     bool
 	DenyLabelNs       utils.StringSetVal
 	ExtraLabelNs      utils.StringSetVal
-	LabelWhiteList    utils.RegexpVal
+	LabelWhiteList    *regexp.Regexp
 	NoPublish         bool
 	ResourceLabels    utils.StringSetVal
 	EnableTaints      bool
@@ -142,62 +147,119 @@ type NfdMaster interface {
 type nfdMaster struct {
 	*nfdController
 
-	args            Args
-	namespace       string
-	nodeName        string
-	configFilePath  string
-	server          *grpc.Server
-	healthServer    *grpc.Server
-	stop            chan struct{}
-	ready           chan bool
-	k8sClient       k8sclient.Interface
-	nodeUpdaterPool *nodeUpdaterPool
+	args           Args
+	namespace      string
+	nodeName       string
+	configFilePath string
+	server         *grpc.Server
+	healthServer   *grpc.Server
+	stop           chan struct{}
+	ready          chan struct{}
+	kubeconfig     *restclient.Config
+	k8sClient      k8sclient.Interface
+	nfdClient      *nfdclientset.Clientset
+	updaterPool    *updaterPool
 	deniedNs
 	config *NFDConfig
 }
 
 // NewNfdMaster creates a new NfdMaster server instance.
-func NewNfdMaster(args *Args) (NfdMaster, error) {
-	nfd := &nfdMaster{args: *args,
+func NewNfdMaster(opts ...NfdMasterOption) (NfdMaster, error) {
+	nfd := &nfdMaster{
 		nodeName:  utils.NodeName(),
 		namespace: utils.GetKubernetesNamespace(),
-		ready:     make(chan bool, 1),
-		stop:      make(chan struct{}, 1),
+		ready:     make(chan struct{}),
+		stop:      make(chan struct{}),
 	}
 
-	if args.Instance != "" {
-		if ok, _ := regexp.MatchString(`^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$`, args.Instance); !ok {
+	for _, o := range opts {
+		o.apply(nfd)
+	}
+
+	if nfd.args.Instance != "" {
+		if ok, _ := regexp.MatchString(`^([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9]$`, nfd.args.Instance); !ok {
 			return nfd, fmt.Errorf("invalid -instance %q: instance name "+
 				"must start and end with an alphanumeric character and may only contain "+
-				"alphanumerics, `-`, `_` or `.`", args.Instance)
+				"alphanumerics, `-`, `_` or `.`", nfd.args.Instance)
 		}
 	}
 
 	// Check TLS related args
-	if args.CertFile != "" || args.KeyFile != "" || args.CaFile != "" {
-		if args.CertFile == "" {
+	if nfd.args.CertFile != "" || nfd.args.KeyFile != "" || nfd.args.CaFile != "" {
+		if nfd.args.CertFile == "" {
 			return nfd, fmt.Errorf("-cert-file needs to be specified alongside -key-file and -ca-file")
 		}
-		if args.KeyFile == "" {
+		if nfd.args.KeyFile == "" {
 			return nfd, fmt.Errorf("-key-file needs to be specified alongside -cert-file and -ca-file")
 		}
-		if args.CaFile == "" {
+		if nfd.args.CaFile == "" {
 			return nfd, fmt.Errorf("-ca-file needs to be specified alongside -cert-file and -key-file")
 		}
 	}
 
-	if args.ConfigFile != "" {
-		nfd.configFilePath = filepath.Clean(args.ConfigFile)
+	if nfd.args.ConfigFile != "" {
+		nfd.configFilePath = filepath.Clean(nfd.args.ConfigFile)
 	}
 
-	nfd.nodeUpdaterPool = newNodeUpdaterPool(nfd)
+	// k8sClient might've been set via opts by tests
+	if nfd.k8sClient == nil {
+		kubeconfig, err := utils.GetKubeconfig(nfd.args.Kubeconfig)
+		if err != nil {
+			return nfd, err
+		}
+		nfd.kubeconfig = kubeconfig
+		cli, err := k8sclient.NewForConfig(kubeconfig)
+		if err != nil {
+			return nfd, err
+		}
+		nfd.k8sClient = cli
+	}
+
+	// nfdClient
+	if nfd.kubeconfig != nil {
+		kubeconfig, err := utils.GetKubeconfig(nfd.args.Kubeconfig)
+		if err != nil {
+			return nfd, err
+		}
+		nfd.kubeconfig = kubeconfig
+		nfdClient, err := nfdclientset.NewForConfig(nfd.kubeconfig)
+		if err != nil {
+			return nfd, err
+		}
+		nfd.nfdClient = nfdClient
+	}
+
+	nfd.updaterPool = newUpdaterPool(nfd)
 
 	return nfd, nil
 }
 
+// NfdMasterOption sets properties of the NfdMaster instance.
+type NfdMasterOption interface {
+	apply(*nfdMaster)
+}
+
+// WithArgs is used for passing settings from command line arguments.
+func WithArgs(args *Args) NfdMasterOption {
+	return &nfdMasterOpt{f: func(n *nfdMaster) { n.args = *args }}
+}
+
+// WithKuberneteClient forces to use the given kubernetes client, without
+// initializing one from kubeconfig.
+func WithKubernetesClient(cli k8sclient.Interface) NfdMasterOption {
+	return &nfdMasterOpt{f: func(n *nfdMaster) { n.k8sClient = cli }}
+}
+
+type nfdMasterOpt struct {
+	f func(*nfdMaster)
+}
+
+func (f *nfdMasterOpt) apply(n *nfdMaster) {
+	f.f(n)
+}
+
 func newDefaultConfig() *NFDConfig {
 	return &NFDConfig{
-		LabelWhiteList:    utils.RegexpVal{Regexp: *regexp.MustCompile("")},
 		DenyLabelNs:       utils.StringSetVal{},
 		ExtraLabelNs:      utils.StringSetVal{},
 		NoPublish:         false,
@@ -239,7 +301,7 @@ func (m *nfdMaster) Run() error {
 		}
 	}
 
-	m.nodeUpdaterPool.start(m.config.NfdApiParallelism)
+	m.updaterPool.start(m.config.NfdApiParallelism)
 
 	// Create watcher for config file
 	configWatch, err := utils.CreateFsWatcher(time.Second, m.configFilePath)
@@ -272,10 +334,10 @@ func (m *nfdMaster) Run() error {
 	}
 
 	// Run gRPC server
-	grpcErr := make(chan error, 1)
+	grpcErr := make(chan error)
 	// If the NodeFeature API is enabled, don'tregister the labeler API
 	// server. Otherwise, register the labeler server.
-	if !m.args.EnableNodeFeatureApi {
+	if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureAPI) || !m.args.EnableNodeFeatureApi {
 		go m.runGrpcServer(grpcErr)
 	}
 
@@ -296,7 +358,6 @@ func (m *nfdMaster) Run() error {
 	}
 
 	// Notify that we're ready to accept connections
-	m.ready <- true
 	close(m.ready)
 
 	// NFD-Master main event loop
@@ -311,6 +372,11 @@ func (m *nfdMaster) Run() error {
 				return err
 			}
 
+			// Stop the updaterPool so that no node updates are underway
+			// while we reconfigure the NFD API controller (including the
+			// listers) below
+			m.updaterPool.stop()
+
 			// restart NFD API controller
 			if m.nfdController != nil {
 				klog.InfoS("stopping the nfd api controller")
@@ -322,13 +388,13 @@ func (m *nfdMaster) Run() error {
 					return nil
 				}
 			}
+			// Restart the updaterPool
+			m.updaterPool.start(m.config.NfdApiParallelism)
+
 			// Update all nodes when the configuration changes
-			if m.nfdController != nil && m.args.EnableNodeFeatureApi {
+			if m.nfdController != nil && nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureAPI) && m.args.EnableNodeFeatureApi {
 				m.nfdController.updateAllNodesChan <- struct{}{}
 			}
-			// Restart the node updater pool
-			m.nodeUpdaterPool.stop()
-			m.nodeUpdaterPool.start(m.config.NfdApiParallelism)
 
 		case <-m.stop:
 			klog.InfoS("shutting down nfd-master")
@@ -397,7 +463,7 @@ func (m *nfdMaster) runGrpcServer(errChan chan<- error) {
 	klog.InfoS("gRPC server serving", "port", m.args.Port)
 
 	// Run gRPC server
-	grpcErr := make(chan error, 1)
+	grpcErr := make(chan error)
 	go func() {
 		defer lis.Close()
 		grpcErr <- m.server.Serve(lis)
@@ -424,8 +490,10 @@ func (m *nfdMaster) runGrpcServer(errChan chan<- error) {
 func (m *nfdMaster) nfdAPIUpdateHandler() {
 	// We want to unconditionally update all nodes at startup if gRPC is
 	// disabled (i.e. NodeFeature API is enabled)
-	updateAll := m.args.EnableNodeFeatureApi
+	updateAll := nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureAPI) && m.args.EnableNodeFeatureApi
 	updateNodes := make(map[string]struct{})
+	nodeFeatureGroup := make(map[string]struct{})
+	updateAllNodeFeatureGroups := false
 	rateLimit := time.After(time.Second)
 	for {
 		select {
@@ -433,7 +501,12 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 			updateAll = true
 		case nodeName := <-m.nfdController.updateOneNodeChan:
 			updateNodes[nodeName] = struct{}{}
+		case <-m.nfdController.updateAllNodeFeatureGroupsChan:
+			updateAllNodeFeatureGroups = true
+		case nodeFeatureGroupName := <-m.nfdController.updateNodeFeatureGroupChan:
+			nodeFeatureGroup[nodeFeatureGroupName] = struct{}{}
 		case <-rateLimit:
+			// NodeFeature
 			errUpdateAll := false
 			if updateAll {
 				if err := m.nfdAPIUpdateAllNodes(); err != nil {
@@ -442,12 +515,26 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 				}
 			} else {
 				for nodeName := range updateNodes {
-					m.nodeUpdaterPool.queue.Add(nodeName)
+					m.updaterPool.addNode(nodeName)
+				}
+			}
+			// NodeFeatureGroup
+			errUpdateAllNFG := false
+			if updateAllNodeFeatureGroups {
+				if err := m.nfdAPIUpdateAllNodeFeatureGroups(); err != nil {
+					klog.ErrorS(err, "failed to update NodeFeatureGroups")
+					errUpdateAllNFG = true
+				}
+			} else {
+				for nodeFeatureGroupName := range nodeFeatureGroup {
+					m.updaterPool.addNodeFeatureGroup(nodeFeatureGroupName)
 				}
 			}
 
 			// Reset "work queue" and timer
 			updateAll = errUpdateAll
+			updateAllNodeFeatureGroups = errUpdateAllNFG
+			nodeFeatureGroup = map[string]struct{}{}
 			updateNodes = map[string]struct{}{}
 			rateLimit = time.After(time.Second)
 		}
@@ -467,7 +554,7 @@ func (m *nfdMaster) Stop() {
 		m.nfdController.stop()
 	}
 
-	m.nodeUpdaterPool.stop()
+	m.updaterPool.stop()
 
 	close(m.stop)
 }
@@ -475,15 +562,10 @@ func (m *nfdMaster) Stop() {
 // Wait until NfdMaster is able able to accept connections.
 func (m *nfdMaster) WaitForReady(timeout time.Duration) bool {
 	select {
-	case ready, ok := <-m.ready:
-		// Ready if the flag is true or the channel has been closed
-		if ready || !ok {
-			return true
-		}
+	case <-m.ready:
+		return true
 	case <-time.After(timeout):
-		return false
 	}
-	// We should never end-up here
 	return false
 }
 
@@ -494,7 +576,7 @@ func (m *nfdMaster) prune() error {
 		return nil
 	}
 
-	nodes, err := m.getNodes()
+	nodes, err := getNodes(m.k8sClient)
 	if err != nil {
 		return err
 	}
@@ -503,14 +585,14 @@ func (m *nfdMaster) prune() error {
 		klog.InfoS("pruning node...", "nodeName", node.Name)
 
 		// Prune labels and extended resources
-		err := m.updateNodeObject(node.Name, Labels{}, Annotations{}, ExtendedResources{}, []corev1.Taint{})
+		err := m.updateNodeObject(m.k8sClient, &node, Labels{}, Annotations{}, ExtendedResources{}, []corev1.Taint{})
 		if err != nil {
 			nodeUpdateFailures.Inc()
 			return fmt.Errorf("failed to prune node %q: %v", node.Name, err)
 		}
 
 		// Prune annotations
-		node, err := m.getNode(node.Name)
+		node, err := getNode(m.k8sClient, node.Name)
 		if err != nil {
 			return err
 		}
@@ -530,7 +612,7 @@ func (m *nfdMaster) prune() error {
 // "nfd.node.kubernetes.io/master.version" annotation, if it exists.
 // TODO: Drop when nfdv1alpha1.MasterVersionAnnotation is removed.
 func (m *nfdMaster) updateMasterNode() error {
-	node, err := m.getNode(m.nodeName)
+	node, err := getNode(m.k8sClient, m.nodeName)
 	if err != nil {
 		return err
 	}
@@ -541,7 +623,7 @@ func (m *nfdMaster) updateMasterNode() error {
 		nil,
 		"/metadata/annotations")
 
-	err = m.patchNode(node.Name, p)
+	err = patchNode(m.k8sClient, node.Name, p)
 	if err != nil {
 		return fmt.Errorf("failed to patch node annotations: %w", err)
 	}
@@ -608,8 +690,8 @@ func (m *nfdMaster) filterFeatureLabel(name, value string, features *nfdv1alpha1
 	}
 
 	// Skip if label doesn't match labelWhiteList
-	if !m.config.LabelWhiteList.Regexp.MatchString(base) {
-		return "", fmt.Errorf("%s (%s) does not match the whitelist (%s)", base, name, m.config.LabelWhiteList.Regexp.String())
+	if m.config.LabelWhiteList != nil && !m.config.LabelWhiteList.MatchString(base) {
+		return "", fmt.Errorf("%s (%s) does not match the whitelist (%s)", base, name, m.config.LabelWhiteList.String())
 	}
 
 	return filteredValue, nil
@@ -692,8 +774,13 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 		klog.InfoS("gRPC SetLabels request received", "nodeName", r.NodeName)
 	}
 	if !m.config.NoPublish {
+		// Fetch the node object.
+		node, err := getNode(m.k8sClient, r.NodeName)
+		if err != nil {
+			return &pb.SetLabelsReply{}, err
+		}
 		// Create labels et al
-		if err := m.refreshNodeFeatures(r.NodeName, r.GetLabels(), r.GetFeatures()); err != nil {
+		if err := m.refreshNodeFeatures(m.k8sClient, node, r.GetLabels(), r.GetFeatures()); err != nil {
 			nodeUpdateFailures.Inc()
 			return &pb.SetLabelsReply{}, err
 		}
@@ -704,27 +791,36 @@ func (m *nfdMaster) SetLabels(c context.Context, r *pb.SetLabelsRequest) (*pb.Se
 func (m *nfdMaster) nfdAPIUpdateAllNodes() error {
 	klog.InfoS("will process all nodes in the cluster")
 
-	nodes, err := m.getNodes()
+	nodes, err := getNodes(m.k8sClient)
 	if err != nil {
 		return err
 	}
 
 	for _, node := range nodes.Items {
-		m.nodeUpdaterPool.queue.Add(node.Name)
+		m.updaterPool.addNode(node.Name)
 	}
 
 	return nil
 }
 
-func (m *nfdMaster) nfdAPIUpdateOneNode(nodeName string) error {
-	if m.nfdController == nil || m.nfdController.featureLister == nil {
-		return nil
+// getAndMergeNodeFeatures merges the NodeFeature objects of the given node into a single NodeFeatureSpec.
+// The Name field of the returned NodeFeatureSpec contains the node name.
+func (m *nfdMaster) getAndMergeNodeFeatures(nodeName string) (*nfdv1alpha1.NodeFeature, error) {
+	nodeFeatures := &nfdv1alpha1.NodeFeature{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: nodeName,
+		},
 	}
 
 	sel := k8sLabels.SelectorFromSet(k8sLabels.Set{nfdv1alpha1.NodeFeatureObjNodeNameLabel: nodeName})
 	objs, err := m.nfdController.featureLister.List(sel)
 	if err != nil {
-		return fmt.Errorf("failed to get NodeFeature resources for node %q: %w", nodeName, err)
+		return &nfdv1alpha1.NodeFeature{}, fmt.Errorf("failed to get NodeFeature resources for node %q: %w", nodeName, err)
+	}
+
+	// Node without a running NFD-Worker
+	if len(objs) == 0 {
+		return &nfdv1alpha1.NodeFeature{}, nil
 	}
 
 	// Sort our objects
@@ -744,39 +840,135 @@ func (m *nfdMaster) nfdAPIUpdateOneNode(nodeName string) error {
 		return objs[i].Namespace < objs[j].Namespace
 	})
 
-	if m.config.NoPublish {
-		return nil
-	}
-
-	klog.V(1).InfoS("processing of node initiated by NodeFeature API", "nodeName", nodeName)
-
-	features := nfdv1alpha1.NewNodeFeatureSpec()
-
 	if len(objs) > 0 {
 		// Merge in features
 		//
 		// NOTE: changing the rule api to support handle multiple objects instead
 		// of merging would probably perform better with lot less data to copy.
-		features = objs[0].Spec.DeepCopy()
-		if m.config.AutoDefaultNs {
+		features := objs[0].Spec.DeepCopy()
+		if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
 			features.Labels = addNsToMapKeys(features.Labels, nfdv1alpha1.FeatureLabelNs)
 		}
 		for _, o := range objs[1:] {
 			s := o.Spec.DeepCopy()
-			if m.config.AutoDefaultNs {
+			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
 				s.Labels = addNsToMapKeys(s.Labels, nfdv1alpha1.FeatureLabelNs)
 			}
 			s.MergeInto(features)
 		}
 
+		// Set the merged features to the NodeFeature object
+		nodeFeatures.Spec = *features
+
 		klog.V(4).InfoS("merged nodeFeatureSpecs", "newNodeFeatureSpec", utils.DelayedDumper(features))
+	}
+
+	return nodeFeatures, nil
+}
+
+func (m *nfdMaster) nfdAPIUpdateOneNode(cli k8sclient.Interface, node *corev1.Node) error {
+	if m.nfdController == nil || m.nfdController.featureLister == nil {
+		return nil
+	}
+
+	// Merge all NodeFeature objects into a single NodeFeatureSpec
+	nodeFeatures, err := m.getAndMergeNodeFeatures(node.Name)
+	if err != nil {
+		return fmt.Errorf("failed to merge NodeFeature objects for node %q: %w", node.Name, err)
 	}
 
 	// Update node labels et al. This may also mean removing all NFD-owned
 	// labels (et al.), for example  in the case no NodeFeature objects are
 	// present.
-	if err := m.refreshNodeFeatures(nodeName, features.Labels, &features.Features); err != nil {
+	if err := m.refreshNodeFeatures(cli, node, nodeFeatures.Spec.Labels, &nodeFeatures.Spec.Features); err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func (m *nfdMaster) nfdAPIUpdateAllNodeFeatureGroups() error {
+	klog.V(1).InfoS("updating all NodeFeatureGroups")
+
+	nodeFeatureGroupsList, err := m.nfdController.featureGroupLister.List(labels.Everything())
+	if err != nil {
+		return fmt.Errorf("failed to get NodeFeatureGroup objects: %w", err)
+	}
+
+	if len(nodeFeatureGroupsList) > 0 {
+		for _, nodeFeatureGroup := range nodeFeatureGroupsList {
+			m.updaterPool.nfgQueue.Add(nodeFeatureGroup.Name)
+		}
+	} else {
+		klog.V(2).InfoS("no NodeFeatureGroup objects found")
+	}
+
+	return nil
+}
+
+func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient *nfdclientset.Clientset, nodeFeatureGroup *nfdv1alpha1.NodeFeatureGroup) error {
+	klog.V(2).InfoS("evaluating NodeFeatureGroup", "nodeFeatureGroup", klog.KObj(nodeFeatureGroup))
+	if m.nfdController == nil || m.nfdController.featureLister == nil {
+		return nil
+	}
+
+	// Get all Nodes
+	nodes, err := getNodes(m.k8sClient)
+	if err != nil {
+		return fmt.Errorf("failed to get nodes: %w", err)
+	}
+	nodeFeaturesList := make([]*nfdv1alpha1.NodeFeature, 0)
+	for _, node := range nodes.Items {
+		// Merge all NodeFeature objects into a single NodeFeatureSpec
+		nodeFeatures, err := m.getAndMergeNodeFeatures(node.Name)
+		if err != nil {
+			return fmt.Errorf("failed to merge NodeFeature objects for node %q: %w", node.Name, err)
+		}
+		if nodeFeatures.Name == "" {
+			// Nothing to do for this node
+			continue
+		}
+		nodeFeaturesList = append(nodeFeaturesList, nodeFeatures)
+	}
+
+	// Execute rules and create matching groups
+	nodePool := make([]nfdv1alpha1.FeatureGroupNode, 0)
+	nodeGroupValidator := make(map[string]bool)
+	for _, rule := range nodeFeatureGroup.Spec.Rules {
+		for _, feature := range nodeFeaturesList {
+			match, err := nodefeaturerule.ExecuteGroupRule(&rule, &feature.Spec.Features)
+			if err != nil {
+				klog.ErrorS(err, "failed to evaluate rule", "ruleName", rule.Name)
+				continue
+			}
+
+			if match {
+				klog.ErrorS(err, "failed to evaluate rule", "ruleName", rule.Name, "nodeName", feature.Name)
+				system := feature.Spec.Features.Attributes["system.name"]
+				nodeName := system.Elements["nodename"]
+				if _, ok := nodeGroupValidator[nodeName]; !ok {
+					nodePool = append(nodePool, nfdv1alpha1.FeatureGroupNode{
+						Name: nodeName,
+					})
+					nodeGroupValidator[nodeName] = true
+				}
+			}
+		}
+	}
+
+	// Update the NodeFeatureGroup object with the updated featureGroupRules
+	nodeFeatureGroupUpdated := nodeFeatureGroup.DeepCopy()
+	nodeFeatureGroupUpdated.Status.Nodes = nodePool
+
+	if !apiequality.Semantic.DeepEqual(nodeFeatureGroup, nodeFeatureGroupUpdated) {
+		klog.InfoS("updating NodeFeatureGroup object", "nodeFeatureGroup", klog.KObj(nodeFeatureGroup))
+		nodeFeatureGroupUpdated, err = nfdClient.NfdV1alpha1().NodeFeatureGroups(m.namespace).UpdateStatus(context.TODO(), nodeFeatureGroupUpdated, metav1.UpdateOptions{})
+		if err != nil {
+			return fmt.Errorf("failed to update NodeFeatureGroup object: %w", err)
+		}
+		klog.V(4).InfoS("NodeFeatureGroup object updated", "nodeFeatureGroup", utils.DelayedDumper(nodeFeatureGroupUpdated))
+	} else {
+		klog.V(1).InfoS("no changes in NodeFeatureGroup, object is up to date", "nodeFeatureGroup", klog.KObj(nodeFeatureGroup))
 	}
 
 	return nil
@@ -820,14 +1012,14 @@ func filterExtendedResource(name, value string, features *nfdv1alpha1.Features) 
 	return filteredValue, nil
 }
 
-func (m *nfdMaster) refreshNodeFeatures(nodeName string, labels map[string]string, features *nfdv1alpha1.Features) error {
-	if m.config.AutoDefaultNs {
+func (m *nfdMaster) refreshNodeFeatures(cli k8sclient.Interface, node *corev1.Node, labels map[string]string, features *nfdv1alpha1.Features) error {
+	if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
 		labels = addNsToMapKeys(labels, nfdv1alpha1.FeatureLabelNs)
 	} else if labels == nil {
 		labels = make(map[string]string)
 	}
 
-	crLabels, crAnnotations, crExtendedResources, crTaints := m.processNodeFeatureRule(nodeName, features)
+	crLabels, crAnnotations, crExtendedResources, crTaints := m.processNodeFeatureRule(node.Name, features)
 
 	// Mix in CR-originated labels
 	maps.Copy(labels, crLabels)
@@ -849,9 +1041,14 @@ func (m *nfdMaster) refreshNodeFeatures(nodeName string, labels map[string]strin
 		taints = filterTaints(crTaints)
 	}
 
-	err := m.updateNodeObject(nodeName, labels, annotations, extendedResources, taints)
+	if m.config.NoPublish {
+		klog.V(1).InfoS("node update skipped, NoPublish=true", "nodeName", node.Name)
+		return nil
+	}
+
+	err := m.updateNodeObject(cli, node, labels, annotations, extendedResources, taints)
 	if err != nil {
-		klog.ErrorS(err, "failed to update node", "nodeName", nodeName)
+		klog.ErrorS(err, "failed to update node", "nodeName", node.Name)
 		return err
 	}
 
@@ -861,14 +1058,9 @@ func (m *nfdMaster) refreshNodeFeatures(nodeName string, labels map[string]strin
 // setTaints sets node taints and annotations based on the taints passed via
 // nodeFeatureRule custom resorce. If empty list of taints is passed, currently
 // NFD owned taints and annotations are removed from the node.
-func (m *nfdMaster) setTaints(taints []corev1.Taint, nodeName string) error {
-	// Fetch the node object.
-	node, err := m.getNode(nodeName)
-	if err != nil {
-		return err
-	}
-
+func setTaints(cli k8sclient.Interface, taints []corev1.Taint, node *corev1.Node) error {
 	// De-serialize the taints annotation into corev1.Taint type for comparision below.
+	var err error
 	oldTaints := []corev1.Taint{}
 	if val, ok := node.Annotations[nfdv1alpha1.NodeTaintsAnnotation]; ok {
 		sts := strings.Split(val, ",")
@@ -905,11 +1097,10 @@ func (m *nfdMaster) setTaints(taints []corev1.Taint, nodeName string) error {
 	}
 
 	if taintsUpdated {
-		err = controller.PatchNodeTaints(context.TODO(), m.k8sClient, nodeName, node, newNode)
-		if err != nil {
+		if err := controller.PatchNodeTaints(context.TODO(), cli, node.Name, node, newNode); err != nil {
 			return fmt.Errorf("failed to patch the node %v", node.Name)
 		}
-		klog.InfoS("updated node taints", "nodeName", nodeName)
+		klog.InfoS("updated node taints", "nodeName", node.Name)
 	}
 
 	// Update node annotation that holds the taints managed by us
@@ -926,11 +1117,10 @@ func (m *nfdMaster) setTaints(taints []corev1.Taint, nodeName string) error {
 
 	patches := createPatches([]string{nfdv1alpha1.NodeTaintsAnnotation}, node.Annotations, newAnnotations, "/metadata/annotations")
 	if len(patches) > 0 {
-		err = m.patchNode(node.Name, patches)
-		if err != nil {
+		if err := patchNode(cli, node.Name, patches); err != nil {
 			return fmt.Errorf("error while patching node object: %w", err)
 		}
-		klog.V(1).InfoS("patched node annotations for taints", "nodeName", nodeName)
+		klog.V(1).InfoS("patched node annotations for taints", "nodeName", node.Name)
 	}
 	return nil
 }
@@ -1000,7 +1190,7 @@ func (m *nfdMaster) processNodeFeatureRule(nodeName string, features *nfdv1alpha
 			l := ruleOut.Labels
 			e := ruleOut.ExtendedResources
 			a := ruleOut.Annotations
-			if m.config.AutoDefaultNs {
+			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
 				l = addNsToMapKeys(ruleOut.Labels, nfdv1alpha1.FeatureLabelNs)
 				e = addNsToMapKeys(ruleOut.ExtendedResources, nfdv1alpha1.ExtendedResourceNs)
 				a = addNsToMapKeys(ruleOut.Annotations, nfdv1alpha1.FeatureAnnotationNs)
@@ -1024,13 +1214,7 @@ func (m *nfdMaster) processNodeFeatureRule(nodeName string, features *nfdv1alpha
 // updateNodeObject ensures the Kubernetes node object is up to date,
 // creating new labels and extended resources where necessary and removing
 // outdated ones. Also updates the corresponding annotations.
-func (m *nfdMaster) updateNodeObject(nodeName string, labels Labels, featureAnnotations Annotations, extendedResources ExtendedResources, taints []corev1.Taint) error {
-	// Get the worker node object
-	node, err := m.getNode(nodeName)
-	if err != nil {
-		return err
-	}
-
+func (m *nfdMaster) updateNodeObject(cli k8sclient.Interface, node *corev1.Node, labels Labels, featureAnnotations Annotations, extendedResources ExtendedResources, taints []corev1.Taint) error {
 	annotations := make(Annotations)
 
 	// Store names of labels in an annotation
@@ -1083,26 +1267,26 @@ func (m *nfdMaster) updateNodeObject(nodeName string, labels Labels, featureAnno
 
 	// patch node status with extended resource changes
 	statusPatches := m.createExtendedResourcePatches(node, extendedResources)
-	err = m.patchNodeStatus(node.Name, statusPatches)
+	err := patchNodeStatus(cli, node.Name, statusPatches)
 	if err != nil {
 		return fmt.Errorf("error while patching extended resources: %w", err)
 	}
 
 	// Patch the node object in the apiserver
-	err = m.patchNode(node.Name, patches)
+	err = patchNode(cli, node.Name, patches)
 	if err != nil {
 		return fmt.Errorf("error while patching node object: %w", err)
 	}
 
 	if len(patches) > 0 || len(statusPatches) > 0 {
 		nodeUpdates.Inc()
-		klog.InfoS("node updated", "nodeName", nodeName)
+		klog.InfoS("node updated", "nodeName", node.Name)
 	} else {
-		klog.V(1).InfoS("no updates to node", "nodeName", nodeName)
+		klog.V(1).InfoS("no updates to node", "nodeName", node.Name)
 	}
 
 	// Set taints
-	err = m.setTaints(taints, node.Name)
+	err = setTaints(cli, taints, node)
 	if err != nil {
 		return err
 	}
@@ -1218,7 +1402,7 @@ func (m *nfdMaster) configure(filepath string, overrides string) error {
 		c.EnableTaints = *m.args.Overrides.EnableTaints
 	}
 	if m.args.Overrides.LabelWhiteList != nil {
-		c.LabelWhiteList = *m.args.Overrides.LabelWhiteList
+		c.LabelWhiteList = &m.args.Overrides.LabelWhiteList.Regexp
 	}
 	if m.args.Overrides.ResyncPeriod != nil {
 		c.ResyncPeriod = *m.args.Overrides.ResyncPeriod
@@ -1235,18 +1419,6 @@ func (m *nfdMaster) configure(filepath string, overrides string) error {
 
 	if err := klogutils.MergeKlogConfiguration(m.args.Klog, c.Klog); err != nil {
 		return err
-	}
-
-	if !c.NoPublish {
-		kubeconfig, err := utils.GetKubeconfig(m.args.Kubeconfig)
-		if err != nil {
-			return err
-		}
-		cli, err := k8sclient.NewForConfig(kubeconfig)
-		if err != nil {
-			return err
-		}
-		m.k8sClient = cli
 	}
 
 	// Pre-process DenyLabelNS into 2 lists: one for normal ns, and the other for wildcard ns
@@ -1340,7 +1512,7 @@ func (m *nfdMaster) startNfdApiController() error {
 	}
 	klog.InfoS("starting the nfd api controller")
 	m.nfdController, err = newNfdController(kubeconfig, nfdApiControllerOptions{
-		DisableNodeFeature: !m.args.EnableNodeFeatureApi,
+		DisableNodeFeature: !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureAPI) || !m.args.EnableNodeFeatureApi,
 		ResyncPeriod:       m.config.ResyncPeriod.Duration,
 	})
 	if err != nil {
@@ -1405,25 +1577,29 @@ func (m *nfdMaster) filterFeatureAnnotations(annotations map[string]string) map[
 	return outAnnotations
 }
 
-func (m *nfdMaster) getNode(nodeName string) (*corev1.Node, error) {
-	return m.k8sClient.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+func getNode(cli k8sclient.Interface, nodeName string) (*corev1.Node, error) {
+	return cli.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
 }
 
-func (m *nfdMaster) getNodes() (*corev1.NodeList, error) {
-	return m.k8sClient.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+func getNodeFeatureGroup(cli nfdclientset.Interface, namespace, name string) (*nfdv1alpha1.NodeFeatureGroup, error) {
+	return cli.NfdV1alpha1().NodeFeatureGroups(namespace).Get(context.TODO(), name, metav1.GetOptions{})
 }
 
-func (m *nfdMaster) patchNode(nodeName string, patches []utils.JsonPatch, subresources ...string) error {
+func getNodes(cli k8sclient.Interface) (*corev1.NodeList, error) {
+	return cli.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+}
+
+func patchNode(cli k8sclient.Interface, nodeName string, patches []utils.JsonPatch, subresources ...string) error {
 	if len(patches) == 0 {
 		return nil
 	}
 	data, err := json.Marshal(patches)
 	if err == nil {
-		_, err = m.k8sClient.CoreV1().Nodes().Patch(context.TODO(), nodeName, types.JSONPatchType, data, metav1.PatchOptions{}, subresources...)
+		_, err = cli.CoreV1().Nodes().Patch(context.TODO(), nodeName, types.JSONPatchType, data, metav1.PatchOptions{}, subresources...)
 	}
 	return err
 }
 
-func (m *nfdMaster) patchNodeStatus(nodeName string, patches []utils.JsonPatch) error {
-	return m.patchNode(nodeName, patches, "status")
+func patchNodeStatus(cli k8sclient.Interface, nodeName string, patches []utils.JsonPatch) error {
+	return patchNode(cli, nodeName, patches, "status")
 }

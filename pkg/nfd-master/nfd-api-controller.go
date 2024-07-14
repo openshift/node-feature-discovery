@@ -26,34 +26,44 @@ import (
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	nfdv1alpha1 "github.com/openshift/node-feature-discovery/pkg/apis/nfd/v1alpha1"
-	nfdclientset "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned"
-	nfdscheme "github.com/openshift/node-feature-discovery/pkg/generated/clientset/versioned/scheme"
-	nfdinformers "github.com/openshift/node-feature-discovery/pkg/generated/informers/externalversions"
-	nfdlisters "github.com/openshift/node-feature-discovery/pkg/generated/listers/nfd/v1alpha1"
+	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
+	nfdscheme "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned/scheme"
+	nfdinformers "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions"
+	nfdlisters "github.com/openshift/node-feature-discovery/api/generated/listers/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 type nfdController struct {
-	featureLister nfdlisters.NodeFeatureLister
-	ruleLister    nfdlisters.NodeFeatureRuleLister
+	featureLister      nfdlisters.NodeFeatureLister
+	ruleLister         nfdlisters.NodeFeatureRuleLister
+	featureGroupLister nfdlisters.NodeFeatureGroupLister
 
 	stopChan chan struct{}
 
-	updateAllNodesChan chan struct{}
-	updateOneNodeChan  chan string
+	updateAllNodesChan             chan struct{}
+	updateOneNodeChan              chan string
+	updateAllNodeFeatureGroupsChan chan struct{}
+	updateNodeFeatureGroupChan     chan string
 }
 
 type nfdApiControllerOptions struct {
-	DisableNodeFeature bool
-	ResyncPeriod       time.Duration
+	DisableNodeFeature      bool
+	DisableNodeFeatureGroup bool
+	ResyncPeriod            time.Duration
+}
+
+func init() {
+	utilruntime.Must(nfdv1alpha1.AddToScheme(nfdscheme.Scheme))
 }
 
 func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiControllerOptions) (*nfdController, error) {
 	c := &nfdController{
-		stopChan:           make(chan struct{}, 1),
-		updateAllNodesChan: make(chan struct{}, 1),
-		updateOneNodeChan:  make(chan string),
+		stopChan:                       make(chan struct{}),
+		updateAllNodesChan:             make(chan struct{}, 1),
+		updateOneNodeChan:              make(chan string),
+		updateAllNodeFeatureGroupsChan: make(chan struct{}, 1),
+		updateNodeFeatureGroupChan:     make(chan string),
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)
@@ -69,16 +79,25 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 				nfr := obj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature added", "nodefeature", klog.KObj(nfr))
 				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
+				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				nfr := newObj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature updated", "nodefeature", klog.KObj(nfr))
 				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
+				}
 			},
 			DeleteFunc: func(obj interface{}) {
 				nfr := obj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature deleted", "nodefeature", klog.KObj(nfr))
 				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
+				}
 			},
 		}); err != nil {
 			return nil, err
@@ -87,8 +106,8 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 	}
 
 	// Add informer for NodeFeatureRule objects
-	ruleInformer := informerFactory.Nfd().V1alpha1().NodeFeatureRules()
-	if _, err := ruleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+	nodeFeatureRuleInformer := informerFactory.Nfd().V1alpha1().NodeFeatureRules()
+	if _, err := nodeFeatureRuleInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc: func(object interface{}) {
 			klog.V(2).InfoS("NodeFeatureRule added", "nodefeaturerule", klog.KObj(object.(metav1.Object)))
 			if !nfdApiControllerOptions.DisableNodeFeature {
@@ -113,26 +132,42 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 	}); err != nil {
 		return nil, err
 	}
-	c.ruleLister = ruleInformer.Lister()
+	c.ruleLister = nodeFeatureRuleInformer.Lister()
+
+	// Add informer for NodeFeatureGroup objects
+	if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+		nodeFeatureGroupInformer := informerFactory.Nfd().V1alpha1().NodeFeatureGroups()
+		if _, err := nodeFeatureGroupInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				nfg := obj.(*nfdv1alpha1.NodeFeatureGroup)
+				klog.V(2).InfoS("NodeFeatureGroup added", "nodeFeatureGroup", klog.KObj(nfg))
+				c.updateNodeFeatureGroup(nfg.Name)
+			},
+			UpdateFunc: func(oldObj, newObj interface{}) {
+				nfg := newObj.(*nfdv1alpha1.NodeFeatureGroup)
+				klog.V(2).InfoS("NodeFeatureGroup updated", "nodeFeatureGroup", klog.KObj(nfg))
+				c.updateNodeFeatureGroup(nfg.Name)
+			},
+			DeleteFunc: func(obj interface{}) {
+				nfg := obj.(*nfdv1alpha1.NodeFeatureGroup)
+				klog.V(2).InfoS("NodeFeatureGroup deleted", "nodeFeatureGroup", klog.KObj(nfg))
+				c.updateNodeFeatureGroup(nfg.Name)
+			},
+		}); err != nil {
+			return nil, err
+		}
+		c.featureGroupLister = nodeFeatureGroupInformer.Lister()
+	}
 
 	// Start informers
 	informerFactory.Start(c.stopChan)
+	informerFactory.WaitForCacheSync(c.stopChan)
 
-	utilruntime.Must(nfdv1alpha1.AddToScheme(nfdscheme.Scheme))
 	return c, nil
 }
 
 func (c *nfdController) stop() {
 	close(c.stopChan)
-}
-
-func (c *nfdController) updateOneNode(typ string, obj metav1.Object) {
-	nodeName, err := getNodeNameForObj(obj)
-	if err != nil {
-		klog.ErrorS(err, "failed to determine node name for object", "type", typ, "object", klog.KObj(obj))
-		return
-	}
-	c.updateOneNodeChan <- nodeName
 }
 
 func getNodeNameForObj(obj metav1.Object) (string, error) {
@@ -146,9 +181,29 @@ func getNodeNameForObj(obj metav1.Object) (string, error) {
 	return nodeName, nil
 }
 
+func (c *nfdController) updateOneNode(typ string, obj metav1.Object) {
+	nodeName, err := getNodeNameForObj(obj)
+	if err != nil {
+		klog.ErrorS(err, "failed to determine node name for object", "type", typ, "object", klog.KObj(obj))
+		return
+	}
+	c.updateOneNodeChan <- nodeName
+}
+
 func (c *nfdController) updateAllNodes() {
 	select {
 	case c.updateAllNodesChan <- struct{}{}:
+	default:
+	}
+}
+
+func (c *nfdController) updateNodeFeatureGroup(nodeFeatureGroup string) {
+	c.updateNodeFeatureGroupChan <- nodeFeatureGroup
+}
+
+func (c *nfdController) updateAllNodeFeatureGroups() {
+	select {
+	case c.updateAllNodeFeatureGroupsChan <- struct{}{}:
 	default:
 	}
 }
