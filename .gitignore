@@ -4,3 +4,4 @@ demo/helper-scripts/*.log
 /kustomization.yaml
 .vscode
 coverage.out
+.idea/
