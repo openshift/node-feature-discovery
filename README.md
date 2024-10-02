@@ -12,7 +12,7 @@ features and system configuration!
 #### Quick-start – the short-short version
 
 ```bash
-$ kubectl apply -k https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.16.4
+$ kubectl apply -k "https://github.com/kubernetes-sigs/node-feature-discovery/deployment/overlays/default?ref=v0.16.4"
   namespace/node-feature-discovery created
 ...
 
@@ -25,7 +25,7 @@ kubectl -n node-feature-discovery get all
   pod/nfd-worker-mjg9f              1/1     Running   0          17s
 ...
 
-$ kubectl get no -o json | jq '.items[].metadata.labels'
+$ kubectl get no -o json | jq ".items[].metadata.labels"
   {
     "kubernetes.io/arch": "amd64",
     "kubernetes.io/os": "linux",
