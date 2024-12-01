@@ -14,7 +14,7 @@ require (
 	github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
 	github.com/klauspost/cpuid/v2 v2.2.8
 	github.com/onsi/ginkgo/v2 v2.19.0
-	github.com/onsi/gomega v1.33.1
+	github.com/onsi/gomega v1.34.0
 	github.com/opencontainers/runc v1.1.13
 	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.18.0
