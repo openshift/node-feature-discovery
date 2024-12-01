@@ -17,7 +17,6 @@ limitations under the License.
 package nfdmaster
 
 import (
-	"context"
 	"fmt"
 	"time"
 
@@ -66,8 +65,6 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 		updateOneNodeChan:              make(chan string),
 		updateAllNodeFeatureGroupsChan: make(chan struct{}, 1),
 		updateNodeFeatureGroupChan:     make(chan string),
-		k8sClient:                      nfdApiControllerOptions.K8sClient,
-		nodeFeatureNamespaceSelector:   nfdApiControllerOptions.NodeFeatureNamespaceSelector,
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)
@@ -92,28 +89,25 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 			AddFunc: func(obj interface{}) {
 				nfr := obj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature added", "nodefeature", klog.KObj(nfr))
-				if c.isNamespaceSelected(nfr.Namespace) {
-					c.updateOneNode("NodeFeature", nfr)
-				} else {
-					klog.InfoS("NodeFeature not in selected namespace", "namespace", nfr.Namespace, "name", nfr.Name)
+				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
 				}
 			},
 			UpdateFunc: func(oldObj, newObj interface{}) {
 				nfr := newObj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature updated", "nodefeature", klog.KObj(nfr))
-				if c.isNamespaceSelected(nfr.Namespace) {
-					c.updateOneNode("NodeFeature", nfr)
-				} else {
-					klog.InfoS("NodeFeature not in selected namespace", "namespace", nfr.Namespace, "name", nfr.Name)
+				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
 				}
 			},
 			DeleteFunc: func(obj interface{}) {
 				nfr := obj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature deleted", "nodefeature", klog.KObj(nfr))
-				if c.isNamespaceSelected(nfr.Namespace) {
-					c.updateOneNode("NodeFeature", nfr)
-				} else {
-					klog.InfoS("NodeFeature not in selected namespace", "namespace", nfr.Namespace, "name", nfr.Name)
+				c.updateOneNode("NodeFeature", nfr)
+				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
+					c.updateAllNodeFeatureGroups()
 				}
 			},
 		}); err != nil {
@@ -213,37 +207,6 @@ func (c *nfdController) updateOneNode(typ string, obj metav1.Object) {
 		return
 	}
 	c.updateOneNodeChan <- nodeName
-}
-
-func (c *nfdController) isNamespaceSelected(namespace string) bool {
-	// no namespace restrictions are made here
-	if c.nodeFeatureNamespaceSelector == nil {
-		return true
-	}
-
-	labelMap, err := metav1.LabelSelectorAsSelector(c.nodeFeatureNamespaceSelector)
-	if err != nil {
-		klog.ErrorS(err, "failed to convert label selector to map", "selector", c.nodeFeatureNamespaceSelector)
-		return false
-	}
-
-	listOptions := metav1.ListOptions{
-		LabelSelector: labelMap.String(),
-	}
-
-	namespaces, err := c.k8sClient.CoreV1().Namespaces().List(context.Background(), listOptions)
-	if err != nil {
-		klog.ErrorS(err, "failed to query namespaces", "listOptions", listOptions)
-		return false
-	}
-
-	for _, ns := range namespaces.Items {
-		if ns.Name == namespace {
-			return true
-		}
-	}
-
-	return false
 }
 
 func (c *nfdController) updateAllNodes() {
