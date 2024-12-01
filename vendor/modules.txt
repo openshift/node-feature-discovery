@@ -217,12 +217,9 @@ github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha1
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned
-github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/fake
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/scheme
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha1
-github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha1/fake
 github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha2
-github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned/typed/topology/v1alpha2/fake
 # github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
 ## explicit; go 1.17
 github.com/k8stopologyawareschedwg/podfingerprint
@@ -281,7 +278,7 @@ github.com/onsi/ginkgo/v2/internal/parallel_support
 github.com/onsi/ginkgo/v2/internal/testingtproxy
 github.com/onsi/ginkgo/v2/reporters
 github.com/onsi/ginkgo/v2/types
-# github.com/onsi/gomega v1.34.0
+# github.com/onsi/gomega v1.34.1
 ## explicit; go 1.20
 github.com/onsi/gomega
 github.com/onsi/gomega/format
@@ -483,12 +480,12 @@ golang.org/x/crypto/nacl/secretbox
 golang.org/x/crypto/salsa20/salsa
 golang.org/x/crypto/ssh
 golang.org/x/crypto/ssh/internal/bcrypt_pbkdf
-# golang.org/x/exp v0.0.0-20231206192017-f3f8817b8deb
+# golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 ## explicit; go 1.20
 golang.org/x/exp/constraints
 golang.org/x/exp/maps
 golang.org/x/exp/slices
-# golang.org/x/mod v0.17.0
+# golang.org/x/mod v0.19.0
 ## explicit; go 1.18
 golang.org/x/mod/semver
 # golang.org/x/net v0.27.0
@@ -558,13 +555,12 @@ golang.org/x/text/width
 # golang.org/x/time v0.5.0
 ## explicit; go 1.18
 golang.org/x/time/rate
-# golang.org/x/tools v0.21.1-0.20240508182429-e35e4ccd0d2d
+# golang.org/x/tools v0.23.0
 ## explicit; go 1.19
 golang.org/x/tools/cmd/stringer
 golang.org/x/tools/cover
 golang.org/x/tools/go/ast/inspector
 golang.org/x/tools/go/gcexportdata
-golang.org/x/tools/go/internal/packagesdriver
 golang.org/x/tools/go/packages
 golang.org/x/tools/go/types/objectpath
 golang.org/x/tools/internal/aliases
@@ -1281,6 +1277,10 @@ k8s.io/client-go/listers/storage/v1
 k8s.io/client-go/listers/storage/v1alpha1
 k8s.io/client-go/listers/storage/v1beta1
 k8s.io/client-go/listers/storagemigration/v1alpha1
+k8s.io/client-go/metadata
+k8s.io/client-go/metadata/fake
+k8s.io/client-go/metadata/metadatainformer
+k8s.io/client-go/metadata/metadatalister
 k8s.io/client-go/openapi
 k8s.io/client-go/openapi/cached
 k8s.io/client-go/pkg/apis/clientauthentication
