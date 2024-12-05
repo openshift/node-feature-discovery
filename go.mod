@@ -3,7 +3,7 @@ module github.com/openshift/node-feature-discovery
 go 1.22.2
 
 require (
-	github.com/fsnotify/fsnotify v1.7.0
+	github.com/fsnotify/fsnotify v1.8.0
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/jaypipes/ghw v0.13.0
