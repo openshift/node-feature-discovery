@@ -288,15 +288,9 @@ func (w *nfdWorker) Run() error {
 
 	// Add pod owner reference if it exists
 	if podName != "" {
-		if selfPod, err := w.k8sClient.CoreV1().Pods(w.kubernetesNamespace).Get(context.TODO(), podName, metav1.GetOptions{}); err != nil {
-			klog.ErrorS(err, "failed to get self pod, cannot inherit ownerReference for NodeFeature")
-			return err
-		} else {
-			ownerReference = append(ownerReference, selfPod.OwnerReferences...)
-		}
-
 		podUID := os.Getenv("POD_UID")
 		if podUID != "" {
+			fmt.Printf("YEV - setting owner reference\n")
 			ownerReference = append(ownerReference, metav1.OwnerReference{
 				APIVersion: "v1",
 				Kind:       "Pod",
@@ -634,6 +628,8 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 
 	features := source.GetAllFeatures()
 
+	fmt.Printf("YEV - in updateNodeFeatureObject\n")
+
 	// TODO: we could implement some simple caching of the object, only get it
 	// every 10 minutes or so because nobody else should really be modifying it
 	if nfr, err := cli.NfdV1alpha1().NodeFeatures(namespace).Get(context.TODO(), nodename, metav1.GetOptions{}); errors.IsNotFound(err) {
@@ -651,6 +647,7 @@ func (m *nfdWorker) updateNodeFeatureObject(labels Labels) error {
 		}
 		klog.InfoS("creating NodeFeature object", "nodefeature", klog.KObj(nfr))
 
+		fmt.Printf("YEV - in before Create\n")
 		nfrCreated, err := cli.NfdV1alpha1().NodeFeatures(namespace).Create(context.TODO(), nfr, metav1.CreateOptions{})
 		if err != nil {
 			return fmt.Errorf("failed to create NodeFeature object %q: %w", nfr.Name, err)
