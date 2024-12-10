@@ -138,7 +138,7 @@ require (
 	k8s.io/apiserver v0.31.3 // indirect
 	k8s.io/cloud-provider v0.29.0 // indirect
 	k8s.io/component-helpers v0.31.3 // indirect
-	k8s.io/controller-manager v0.29.0 // indirect
+	k8s.io/controller-manager v0.31.3 // indirect
 	k8s.io/cri-api v0.31.3 // indirect
 	k8s.io/cri-client v0.31.3 // indirect
 	k8s.io/csi-translation-lib v0.29.0 // indirect
@@ -162,10 +162,9 @@ replace (
 	k8s.io/cluster-bootstrap => k8s.io/cluster-bootstrap v0.29.0
 	k8s.io/code-generator => k8s.io/code-generator v0.29.0
 	k8s.io/component-helpers => k8s.io/component-helpers v0.29.0
-	k8s.io/controller-manager => k8s.io/controller-manager v0.29.0
 	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.29.0
 	k8s.io/kube-aggregator => k8s.io/kube-aggregator v0.29.0
-	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.29.0
+	k8s.io/kube-controller-manager => k8s.io/kube-controller-manager v0.31.3
 	k8s.io/kube-proxy => k8s.io/kube-proxy v0.29.0
 	k8s.io/kubectl => k8s.io/kubectl v0.29.0
 	k8s.io/legacy-cloud-providers => k8s.io/legacy-cloud-providers v0.29.0
