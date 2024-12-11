@@ -436,6 +436,7 @@ func TestFilterLabels(t *testing.T) {
 func TestCreatePatches(t *testing.T) {
 	Convey("When creating JSON patches", t, func() {
 		existingItems := map[string]string{"key-1": "val-1", "key-2": "val-2", "key-3": "val-3"}
+		overwriteKeys := true
 		jsonPath := "/root"
 
 		Convey("When there are neither itmes to remoe nor to add or update", func() {
