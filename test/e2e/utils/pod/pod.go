@@ -120,8 +120,6 @@ type SpecOption func(spec *corev1.PodSpec)
 
 // NFDMaster provide NFD master pod definition
 func NFDMaster(opts ...SpecOption) *corev1.Pod {
-	yes := true
-	no := false
 	p := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			GenerateName: "nfd-master-",
@@ -147,10 +145,10 @@ func NFDMaster(opts ...SpecOption) *corev1.Pod {
 						Capabilities: &corev1.Capabilities{
 							Drop: []corev1.Capability{"ALL"},
 						},
-						Privileged:               &no,
-						RunAsNonRoot:             &yes,
-						ReadOnlyRootFilesystem:   &yes,
-						AllowPrivilegeEscalation: &no,
+						Privileged:               ptr.To[bool](false),
+						RunAsNonRoot:             ptr.To[bool](true),
+						ReadOnlyRootFilesystem:   ptr.To[bool](true),
+						AllowPrivilegeEscalation: ptr.To[bool](false),
 						SeccompProfile: &corev1.SeccompProfile{
 							Type: corev1.SeccompProfileTypeRuntimeDefault,
 						},
@@ -252,15 +250,13 @@ func SpecWithConfigMap(name, mountPath string) SpecOption {
 }
 
 func nfdWorkerSpec(opts ...SpecOption) *corev1.PodSpec {
-	yes := true
-	no := false
 	p := &corev1.PodSpec{
 		Containers: []corev1.Container{
 			{
 				Name:            "node-feature-discovery",
 				ImagePullPolicy: pullPolicy(),
 				Command:         []string{"nfd-worker"},
-				Args:            []string{"-server=nfd-master-e2e:8080"},
+				Args:            []string{},
 				Env: []corev1.EnvVar{
 					{
 						Name: "NODE_NAME",
@@ -291,10 +287,10 @@ func nfdWorkerSpec(opts ...SpecOption) *corev1.PodSpec {
 					Capabilities: &corev1.Capabilities{
 						Drop: []corev1.Capability{"ALL"},
 					},
-					Privileged:               &no,
-					RunAsNonRoot:             &yes,
-					ReadOnlyRootFilesystem:   &yes,
-					AllowPrivilegeEscalation: &no,
+					Privileged:               ptr.To[bool](false),
+					RunAsNonRoot:             ptr.To[bool](true),
+					ReadOnlyRootFilesystem:   ptr.To[bool](true),
+					AllowPrivilegeEscalation: ptr.To[bool](false),
 					SeccompProfile: &corev1.SeccompProfile{
 						Type: corev1.SeccompProfileTypeRuntimeDefault,
 					},
@@ -372,8 +368,6 @@ func nfdWorkerSpec(opts ...SpecOption) *corev1.PodSpec {
 }
 
 func NFDGCSpec(opts ...SpecOption) *corev1.PodSpec {
-	yes := true
-	no := false
 	p := &corev1.PodSpec{
 		Containers: []corev1.Container{
 			{
@@ -384,10 +378,10 @@ func NFDGCSpec(opts ...SpecOption) *corev1.PodSpec {
 					Capabilities: &corev1.Capabilities{
 						Drop: []corev1.Capability{"ALL"},
 					},
-					Privileged:               &no,
-					RunAsNonRoot:             &yes,
-					ReadOnlyRootFilesystem:   &yes,
-					AllowPrivilegeEscalation: &no,
+					Privileged:               ptr.To[bool](false),
+					RunAsNonRoot:             ptr.To[bool](true),
+					ReadOnlyRootFilesystem:   ptr.To[bool](true),
+					AllowPrivilegeEscalation: ptr.To[bool](false),
 					SeccompProfile: &corev1.SeccompProfile{
 						Type: corev1.SeccompProfileTypeRuntimeDefault,
 					},

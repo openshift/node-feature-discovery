@@ -18,23 +18,30 @@ package nfdgarbagecollector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
-	topologyclientset "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/generated/clientset/versioned"
+	topologyv1alpha2 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/client-go/informers"
-	"k8s.io/client-go/kubernetes"
+	metadataclient "k8s.io/client-go/metadata"
+	"k8s.io/client-go/metadata/metadatainformer"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
 
-	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/version"
+)
+
+var (
+	gvrNF   = nfdv1alpha1.SchemeGroupVersion.WithResource("nodefeatures")
+	gvrNRT  = topologyv1alpha2.SchemeGroupVersion.WithResource("noderesourcetopologies")
+	gvrNode = corev1.SchemeGroupVersion.WithResource("nodes")
 )
 
 // Args are the command line arguments
@@ -50,11 +57,10 @@ type NfdGarbageCollector interface {
 }
 
 type nfdGarbageCollector struct {
-	args       *Args
-	stopChan   chan struct{}
-	nfdClient  nfdclientset.Interface
-	topoClient topologyclientset.Interface
-	factory    informers.SharedInformerFactory
+	args     *Args
+	stopChan chan struct{}
+	client   metadataclient.Interface
+	factory  metadatainformer.SharedInformerFactory
 }
 
 func New(args *Args) (NfdGarbageCollector, error) {
@@ -63,20 +69,19 @@ func New(args *Args) (NfdGarbageCollector, error) {
 		return nil, err
 	}
 
-	clientset := kubernetes.NewForConfigOrDie(kubeconfig)
+	cli := metadataclient.NewForConfigOrDie(kubeconfig)
 
 	return &nfdGarbageCollector{
-		args:       args,
-		stopChan:   make(chan struct{}),
-		topoClient: topologyclientset.NewForConfigOrDie(kubeconfig),
-		nfdClient:  nfdclientset.NewForConfigOrDie(kubeconfig),
-		factory:    informers.NewSharedInformerFactory(clientset, 5*time.Minute),
+		args:     args,
+		stopChan: make(chan struct{}),
+		client:   cli,
+		factory:  metadatainformer.NewSharedInformerFactory(cli, 0),
 	}, nil
 }
 
 func (n *nfdGarbageCollector) deleteNodeFeature(namespace, name string) {
 	kind := "NodeFeature"
-	if err := n.nfdClient.NfdV1alpha1().NodeFeatures(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
+	if err := n.client.Resource(gvrNF).Namespace(namespace).Delete(context.TODO(), name, metav1.DeleteOptions{}); err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).InfoS("NodeFeature not found, omitting deletion", "nodefeature", klog.KRef(namespace, name))
 			return
@@ -92,7 +97,7 @@ func (n *nfdGarbageCollector) deleteNodeFeature(namespace, name string) {
 
 func (n *nfdGarbageCollector) deleteNRT(nodeName string) {
 	kind := "NodeResourceTopology"
-	if err := n.topoClient.TopologyV1alpha2().NodeResourceTopologies().Delete(context.TODO(), nodeName, metav1.DeleteOptions{}); err != nil {
+	if err := n.client.Resource(gvrNRT).Delete(context.TODO(), nodeName, metav1.DeleteOptions{}); err != nil {
 		if errors.IsNotFound(err) {
 			klog.V(2).InfoS("NodeResourceTopology not found, omitting deletion", "nodeName", nodeName)
 			return
@@ -114,17 +119,18 @@ func (n *nfdGarbageCollector) deleteNodeHandler(object interface{}) {
 		obj = deletedFinalStateUnknown.Obj
 	}
 
-	node, ok := obj.(*corev1.Node)
+	meta, ok := obj.(*metav1.PartialObjectMetadata)
 	if !ok {
-		klog.InfoS("cannot convert object to v1.Node", "object", object)
+		klog.InfoS("cannot convert object to metav1.ObjectMeta", "object", object)
 		return
 	}
+	nodeName := meta.ObjectMeta.GetName()
 
-	n.deleteNRT(node.GetName())
+	n.deleteNRT(nodeName)
 
 	// Delete all NodeFeature objects (from all namespaces) targeting the deleted node
-	nfListOptions := metav1.ListOptions{LabelSelector: nfdv1alpha1.NodeFeatureObjNodeNameLabel + "=" + node.GetName()}
-	if nfs, err := n.nfdClient.NfdV1alpha1().NodeFeatures("").List(context.TODO(), nfListOptions); err != nil {
+	nfListOptions := metav1.ListOptions{LabelSelector: nfdv1alpha1.NodeFeatureObjNodeNameLabel + "=" + nodeName}
+	if nfs, err := n.client.Resource(gvrNF).List(context.TODO(), nfListOptions); err != nil {
 		klog.ErrorS(err, "failed to list NodeFeature objects")
 	} else {
 		for _, nf := range nfs.Items {
@@ -136,47 +142,58 @@ func (n *nfdGarbageCollector) deleteNodeHandler(object interface{}) {
 // garbageCollect removes all stale API objects
 func (n *nfdGarbageCollector) garbageCollect() {
 	klog.InfoS("performing garbage collection")
-	nodes, err := n.factory.Core().V1().Nodes().Lister().List(labels.Everything())
+	objs, err := n.factory.ForResource(gvrNode).Lister().List(labels.Everything())
 	if err != nil {
 		klog.ErrorS(err, "failed to list Node objects")
 		return
 	}
 	nodeNames := sets.NewString()
-	for _, node := range nodes {
-		nodeNames.Insert(node.Name)
+	for _, obj := range objs {
+		meta := obj.(*metav1.PartialObjectMetadata).ObjectMeta
+		nodeNames.Insert(meta.Name)
+	}
+
+	listAndHandle := func(gvr schema.GroupVersionResource, handler func(metav1.PartialObjectMetadata)) {
+		opts := metav1.ListOptions{
+			Limit: 200,
+		}
+		for {
+			rsp, err := n.client.Resource(gvr).List(context.TODO(), opts)
+			if errors.IsNotFound(err) {
+				klog.V(2).InfoS("resource does not exist", "resource", gvr)
+				break
+			} else if err != nil {
+				klog.ErrorS(err, "failed to list objects", "resource", gvr)
+				break
+			}
+			for _, item := range rsp.Items {
+				handler(item)
+			}
+
+			if rsp.ListMeta.Continue == "" {
+				break
+			}
+			opts.Continue = rsp.ListMeta.Continue
+		}
 	}
 
 	// Handle NodeFeature objects
-	nfs, err := n.nfdClient.NfdV1alpha1().NodeFeatures("").List(context.TODO(), metav1.ListOptions{})
-	if errors.IsNotFound(err) {
-		klog.V(2).InfoS("NodeFeature CRD does not exist")
-	} else if err != nil {
-		klog.ErrorS(err, "failed to list NodeFeature objects")
-	} else {
-		for _, nf := range nfs.Items {
-			nodeName, ok := nf.GetLabels()[nfdv1alpha1.NodeFeatureObjNodeNameLabel]
-			if !ok {
-				klog.InfoS("node name label missing from NodeFeature object", "nodefeature", klog.KObj(&nf))
-			}
-			if !nodeNames.Has(nodeName) {
-				n.deleteNodeFeature(nf.Namespace, nf.Name)
-			}
+	listAndHandle(gvrNF, func(meta metav1.PartialObjectMetadata) {
+		nodeName, ok := meta.GetLabels()[nfdv1alpha1.NodeFeatureObjNodeNameLabel]
+		if !ok {
+			klog.InfoS("node name label missing from NodeFeature object", "nodefeature", klog.KObj(&meta))
 		}
-	}
+		if !nodeNames.Has(nodeName) {
+			n.deleteNodeFeature(meta.Namespace, meta.Name)
+		}
+	})
 
 	// Handle NodeResourceTopology objects
-	nrts, err := n.topoClient.TopologyV1alpha2().NodeResourceTopologies().List(context.TODO(), metav1.ListOptions{})
-	if errors.IsNotFound(err) {
-		klog.V(2).InfoS("NodeResourceTopology CRD does not exist")
-	} else if err != nil {
-		klog.ErrorS(err, "failed to list NodeResourceTopology objects")
-	} else {
-		for _, nrt := range nrts.Items {
-			if !nodeNames.Has(nrt.Name) {
-				n.deleteNRT(nrt.Name)
-			}
+	listAndHandle(gvrNRT, func(meta metav1.PartialObjectMetadata) {
+		if !nodeNames.Has(meta.Name) {
+			n.deleteNRT(meta.Name)
 		}
-	}
+	})
 }
 
 // periodicGC runs garbage collector at every gcPeriod to make sure we haven't missed any node
@@ -198,7 +215,7 @@ func (n *nfdGarbageCollector) periodicGC(gcPeriod time.Duration) {
 }
 
 func (n *nfdGarbageCollector) startNodeInformer() error {
-	nodeInformer := n.factory.Core().V1().Nodes().Informer()
+	nodeInformer := n.factory.ForResource(gvrNode).Informer()
 
 	if _, err := nodeInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		DeleteFunc: n.deleteNodeHandler,
@@ -208,7 +225,15 @@ func (n *nfdGarbageCollector) startNodeInformer() error {
 
 	// start informers
 	n.factory.Start(n.stopChan)
-	n.factory.WaitForCacheSync(n.stopChan)
+
+	start := time.Now()
+	ret := n.factory.WaitForCacheSync(n.stopChan)
+	for res, ok := range ret {
+		if !ok {
+			return fmt.Errorf("node informer cache failed to sync (%s)", res)
+		}
+	}
+	klog.InfoS("node informer cache synced", "duration", time.Since(start))
 
 	return nil
 }

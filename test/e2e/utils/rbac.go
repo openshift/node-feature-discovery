@@ -178,6 +178,11 @@ func createClusterRoleMaster(ctx context.Context, cs clientset.Interface) (*rbac
 		Rules: []rbacv1.PolicyRule{
 			{
 				APIGroups: []string{""},
+				Resources: []string{"namespaces"},
+				Verbs:     []string{"list", "watch"},
+			},
+			{
+				APIGroups: []string{""},
 				Resources: []string{"nodes", "nodes/status"},
 				Verbs:     []string{"get", "list", "patch", "update"},
 			},
@@ -223,6 +228,11 @@ func createRoleWorker(ctx context.Context, cs clientset.Interface, ns string) (*
 				APIGroups: []string{"nfd.k8s-sigs.io"},
 				Resources: []string{"nodefeatures"},
 				Verbs:     []string{"create", "get", "update"},
+			},
+			{
+				APIGroups: []string{""},
+				Resources: []string{"pods"},
+				Verbs:     []string{"get"},
 			},
 		},
 	}

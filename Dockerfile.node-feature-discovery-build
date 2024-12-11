@@ -21,3 +21,4 @@ RUN curl -LO https://github.com/protocolbuffers/protobuf/releases/download/v23.4
     unzip protoc-23.4-linux-x86_64.zip -d /usr/local && \
     rm protoc-23.4-linux-x86_64.zip
 RUN chmod a+x /usr/local/bin/protoc
+RUN go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.57.2

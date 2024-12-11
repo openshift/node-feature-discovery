@@ -1,28 +1,33 @@
 #!/bin/bash -e
 
-# Install deps
-curl -o /usr/local/bin/aws-iam-authenticator -L https://github.com/kubernetes-sigs/aws-iam-authenticator/releases/download/v0.5.7/aws-iam-authenticator_0.5.7_linux_amd64
-chmod a+x /usr/local/bin/aws-iam-authenticator
-
-curl -o /usr/local/bin/kubectl -L https://dl.k8s.io/release/v1.24.0/bin/linux/amd64/kubectl
-chmod a+x /usr/local/bin/kubectl
-
-
 # Configure environment
+export KIND_VERSION="v0.23.0"
+export KIND_NODE_IMAGE="kindest/node:v1.30.2"
+export CLUSTER_NAME="nfd-e2e"
 export KUBECONFIG=`pwd`/kubeconfig
-export E2E_TEST_CONFIG=`pwd`/e2e-test-config
+export IMAGE_REGISTRY="gcr.io/k8s-staging-nfd"
 export E2E_TEST_FULL_IMAGE=true
 
-echo "$KUBECONFIG_DATA" > "$KUBECONFIG"
-echo "$E2E_TEST_CONFIG_DATA" > "$E2E_TEST_CONFIG"
+# Install kind
+go install sigs.k8s.io/kind@$KIND_VERSION
 
+# create a cluster with the local registry enabled in containerd
+cat <<EOF | kind create cluster --kubeconfig $KUBECONFIG --image $KIND_NODE_IMAGE --config=-
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: $CLUSTER_NAME
+nodes:
+- role: control-plane
+- role: worker
+- role: worker
+EOF
 
 # Wait for the image to be built and published
 i=1
 while true; do
     if make poll-images; then
         break
-    elif [ $i -ge 35 ]; then
+    elif [ $i -ge 55 ]; then
         echo "ERROR: too many tries when polling for image"
         exit 1
     fi
