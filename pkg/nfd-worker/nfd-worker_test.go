@@ -48,6 +48,7 @@ func TestRun(t *testing.T) {
 		Convey("When publishing features from fake source", func() {
 			os.Setenv("NODE_NAME", "fake-node")
 			os.Setenv("KUBERNETES_NAMESPACE", "fake-ns")
+			testNamespace := utils.GetKubernetesNamespace()
 			args := &worker.Args{
 				Oneshot: true,
 				Overrides: worker.ConfigOverrideArgs{
@@ -65,13 +66,13 @@ func TestRun(t *testing.T) {
 				So(err, ShouldBeNil)
 			})
 			Convey("NodeFeture object should be created", func() {
-				nf, err := nfdCli.NfdV1alpha1().NodeFeatures("fake-ns").Get(context.TODO(), "fake-node", metav1.GetOptions{})
+				nf, err := nfdCli.NfdV1alpha1().NodeFeatures(testNamespace).Get(context.TODO(), "fake-node", metav1.GetOptions{})
 				So(err, ShouldBeNil)
 
 				nfExpected := &nfdv1alpha1.NodeFeature{
 					ObjectMeta: metav1.ObjectMeta{
 						Name:      "fake-node",
-						Namespace: "fake-ns",
+						Namespace: testNamespace,
 						Labels: map[string]string{
 							"nfd.node.kubernetes.io/node-name": "fake-node",
 						},
