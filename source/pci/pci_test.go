@@ -18,7 +18,6 @@ package pci
 
 import (
 	"path/filepath"
-	"runtime"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -26,13 +25,6 @@ import (
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/source"
 )
-
-var packagePath string
-
-func init() {
-	_, thisFile, _, _ := runtime.Caller(0)
-	packagePath = filepath.Dir(thisFile)
-}
 
 func TestSingletonPciSource(t *testing.T) {
 	assert.Equal(t, src.Name(), Name)
@@ -49,16 +41,16 @@ func TestPciSource(t *testing.T) {
 	// Specify expected "raw" features. These are always the same for the same
 	// mocked sysfs.
 	expectedFeatures := map[string]*nfdv1alpha1.Features{
-		"rootfs-empty": &nfdv1alpha1.Features{
+		"rootfs-empty": {
 			Flags:      map[string]nfdv1alpha1.FlagFeatureSet{},
 			Attributes: map[string]nfdv1alpha1.AttributeFeatureSet{},
 			Instances:  map[string]nfdv1alpha1.InstanceFeatureSet{},
 		},
-		"rootfs-1": &nfdv1alpha1.Features{
+		"rootfs-1": {
 			Flags:      map[string]nfdv1alpha1.FlagFeatureSet{},
 			Attributes: map[string]nfdv1alpha1.AttributeFeatureSet{},
 			Instances: map[string]nfdv1alpha1.InstanceFeatureSet{
-				"device": nfdv1alpha1.InstanceFeatureSet{
+				"device": {
 					Elements: []nfdv1alpha1.InstanceFeature{
 						{
 							Attributes: map[string]string{
@@ -231,7 +223,8 @@ func TestPciSource(t *testing.T) {
 	// Run test cases
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			hostpath.SysfsDir = hostpath.HostDir(filepath.Join(packagePath, "testdata", tc.rootfs, "sys"))
+			mockSysfsPath := filepath.Join("..", "..", "testdata", "source", "pci", tc.rootfs, "sys")
+			hostpath.SysfsDir = hostpath.HostDir(mockSysfsPath)
 
 			config := tc.config
 			if config == nil {

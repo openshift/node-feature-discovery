@@ -22,6 +22,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
+	k8sclient "k8s.io/client-go/kubernetes"
 	restclient "k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/klog/v2"
@@ -29,6 +30,7 @@ import (
 	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
 	nfdscheme "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned/scheme"
 	nfdinformers "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions"
+	nfdinformersv1alpha1 "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions/nfd/v1alpha1"
 	nfdlisters "github.com/openshift/node-feature-discovery/api/generated/listers/nfd/v1alpha1"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
@@ -45,12 +47,16 @@ type nfdController struct {
 	updateOneNodeChan              chan string
 	updateAllNodeFeatureGroupsChan chan struct{}
 	updateNodeFeatureGroupChan     chan string
+
+	namespaceLister *NamespaceLister
 }
 
 type nfdApiControllerOptions struct {
-	DisableNodeFeature      bool
-	DisableNodeFeatureGroup bool
-	ResyncPeriod            time.Duration
+	DisableNodeFeature           bool
+	DisableNodeFeatureGroup      bool
+	ResyncPeriod                 time.Duration
+	K8sClient                    k8sclient.Interface
+	NodeFeatureNamespaceSelector *metav1.LabelSelector
 }
 
 func init() {
@@ -60,10 +66,19 @@ func init() {
 func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiControllerOptions) (*nfdController, error) {
 	c := &nfdController{
 		stopChan:                       make(chan struct{}),
-		updateAllNodesChan:             make(chan struct{}, 1),
+		updateAllNodesChan:             make(chan struct{}),
 		updateOneNodeChan:              make(chan string),
-		updateAllNodeFeatureGroupsChan: make(chan struct{}, 1),
+		updateAllNodeFeatureGroupsChan: make(chan struct{}),
 		updateNodeFeatureGroupChan:     make(chan string),
+	}
+
+	if nfdApiControllerOptions.NodeFeatureNamespaceSelector != nil {
+		labelMap, err := metav1.LabelSelectorAsSelector(nfdApiControllerOptions.NodeFeatureNamespaceSelector)
+		if err != nil {
+			klog.ErrorS(err, "failed to convert label selector to map", "selector", nfdApiControllerOptions.NodeFeatureNamespaceSelector)
+			return nil, err
+		}
+		c.namespaceLister = newNamespaceLister(nfdApiControllerOptions.K8sClient, labelMap)
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)
@@ -73,12 +88,25 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 
 	// Add informer for NodeFeature objects
 	if !nfdApiControllerOptions.DisableNodeFeature {
-		featureInformer := informerFactory.Nfd().V1alpha1().NodeFeatures()
+		tweakListOpts := func(opts *metav1.ListOptions) {
+			// Tweak list opts on initial sync to avoid timeouts on the apiserver.
+			// NodeFeature objects are huge and the Kubernetes apiserver
+			// (v1.30) experiences http handler timeouts when the resource
+			// version is set to some non-empty value (TODO: find out why).
+			if opts.ResourceVersion == "0" {
+				opts.ResourceVersion = ""
+			}
+		}
+		featureInformer := nfdinformersv1alpha1.New(informerFactory, "", tweakListOpts).NodeFeatures()
 		if _, err := featureInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
 				nfr := obj.(*nfdv1alpha1.NodeFeature)
 				klog.V(2).InfoS("NodeFeature added", "nodefeature", klog.KObj(nfr))
-				c.updateOneNode("NodeFeature", nfr)
+				if c.isNamespaceSelected(nfr.Namespace) {
+					c.updateOneNode("NodeFeature", nfr)
+				} else {
+					klog.V(2).InfoS("NodeFeature namespace is not selected, skipping", "nodefeature", klog.KObj(nfr))
+				}
 				if !nfdApiControllerOptions.DisableNodeFeatureGroup {
 					c.updateAllNodeFeatureGroups()
 				}
@@ -161,13 +189,22 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 
 	// Start informers
 	informerFactory.Start(c.stopChan)
-	informerFactory.WaitForCacheSync(c.stopChan)
+	now := time.Now()
+	ret := informerFactory.WaitForCacheSync(c.stopChan)
+	for res, ok := range ret {
+		if !ok {
+			return nil, fmt.Errorf("informer cache failed to sync resource %s", res)
+		}
+	}
+
+	klog.InfoS("informer caches synced", "duration", time.Since(now))
 
 	return c, nil
 }
 
 func (c *nfdController) stop() {
 	close(c.stopChan)
+	c.namespaceLister.stop()
 }
 
 func getNodeNameForObj(obj metav1.Object) (string, error) {
@@ -187,7 +224,32 @@ func (c *nfdController) updateOneNode(typ string, obj metav1.Object) {
 		klog.ErrorS(err, "failed to determine node name for object", "type", typ, "object", klog.KObj(obj))
 		return
 	}
-	c.updateOneNodeChan <- nodeName
+	select {
+	case c.updateOneNodeChan <- nodeName:
+	case <-c.stopChan:
+	}
+}
+
+func (c *nfdController) isNamespaceSelected(namespace string) bool {
+	// this means that the user didn't specify any namespace selector
+	// which means that we allow all namespaces
+	if c.namespaceLister == nil {
+		return true
+	}
+
+	namespaces, err := c.namespaceLister.list()
+	if err != nil {
+		klog.ErrorS(err, "failed to query namespaces by the namespace lister")
+		return false
+	}
+
+	for _, ns := range namespaces {
+		if ns.Name == namespace {
+			return true
+		}
+	}
+
+	return false
 }
 
 func (c *nfdController) updateAllNodes() {
@@ -198,7 +260,10 @@ func (c *nfdController) updateAllNodes() {
 }
 
 func (c *nfdController) updateNodeFeatureGroup(nodeFeatureGroup string) {
-	c.updateNodeFeatureGroupChan <- nodeFeatureGroup
+	select {
+	case c.updateNodeFeatureGroupChan <- nodeFeatureGroup:
+	case <-c.stopChan:
+	}
 }
 
 func (c *nfdController) updateAllNodeFeatureGroups() {
