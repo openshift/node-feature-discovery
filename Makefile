@@ -14,7 +14,7 @@ MDL ?= mdl
 
 K8S_CODE_GENERATOR ?= ../code-generator
 
-VERSION := $(shell git describe --tags --dirty --always)
+VERSION := $(shell git describe --tags --dirty --always --match "v*")
 
 IMAGE_REGISTRY ?= registry.k8s.io/nfd
 IMAGE_TAG_NAME ?= $(VERSION)
