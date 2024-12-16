@@ -18,18 +18,16 @@ package nfdworker
 
 import (
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"github.com/stretchr/testify/mock"
 	"github.com/vektra/errors"
+	fakeclient "k8s.io/client-go/kubernetes/fake"
 
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
-	"github.com/openshift/node-feature-discovery/pkg/labeler"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source"
 	"github.com/openshift/node-feature-discovery/source/cpu"
@@ -97,7 +95,8 @@ func makeFakeFeatures(names []string) (source.FeatureLabels, Labels) {
 
 func TestConfigParse(t *testing.T) {
 	Convey("When parsing configuration", t, func() {
-		w, err := NewNfdWorker(&Args{})
+		w, err := NewNfdWorker(WithArgs(&Args{}),
+			WithKubernetesClient(fakeclient.NewSimpleClientset()))
 		So(err, ShouldBeNil)
 		worker := w.(*nfdWorker)
 		overrides := `{"core": {"labelSources": ["fake"],"noPublish": true},"sources": {"cpu": {"cpuid": {"attributeBlacklist": ["foo","bar"]}}}}`
@@ -193,113 +192,6 @@ sources:
 	})
 }
 
-func TestDynamicConfig(t *testing.T) {
-	Convey("When running nfd-worker", t, func() {
-		tmpDir, err := os.MkdirTemp("", "*.nfd-test")
-		So(err, ShouldBeNil)
-		defer os.RemoveAll(tmpDir)
-
-		// Create (temporary) dir for config
-		configDir := filepath.Join(tmpDir, "subdir-1", "subdir-2", "worker.conf")
-		err = os.MkdirAll(configDir, 0755)
-		So(err, ShouldBeNil)
-
-		// Create config file
-		configFile := filepath.Join(configDir, "worker.conf")
-
-		writeConfig := func(data string) {
-			f, err := os.Create(configFile)
-			So(err, ShouldBeNil)
-			_, err = f.WriteString(data)
-			So(err, ShouldBeNil)
-			err = f.Close()
-			So(err, ShouldBeNil)
-
-		}
-		writeConfig(`
-core:
-  labelWhiteList: "fake"
-`)
-
-		noPublish := true
-		w, err := NewNfdWorker(&Args{
-			ConfigFile: configFile,
-			Overrides: ConfigOverrideArgs{
-				FeatureSources: &utils.StringSliceVal{"fake"},
-				LabelSources:   &utils.StringSliceVal{"fake"},
-				NoPublish:      &noPublish},
-		})
-		So(err, ShouldBeNil)
-		worker := w.(*nfdWorker)
-
-		Convey("config file updates should take effect", func() {
-			go func() { _ = w.Run() }()
-			defer w.Stop()
-
-			// Check initial config
-			So(func() interface{} { return worker.config.Core.LabelWhiteList.String() },
-				withTimeout, 2*time.Second, ShouldEqual, "fake")
-
-			// Update config and verify the effect
-			writeConfig(`
-core:
-  labelWhiteList: "foo"
-`)
-			So(func() interface{} { return worker.config.Core.LabelWhiteList.String() },
-				withTimeout, 2*time.Second, ShouldEqual, "foo")
-
-			// Removing config file should get back our defaults
-			err = os.RemoveAll(tmpDir)
-			So(err, ShouldBeNil)
-			So(func() interface{} { return worker.config.Core.LabelWhiteList.String() },
-				withTimeout, 2*time.Second, ShouldEqual, "")
-
-			// Re-creating config dir and file should change the config
-			err = os.MkdirAll(configDir, 0755)
-			So(err, ShouldBeNil)
-			writeConfig(`
-core:
-  labelWhiteList: "bar"
-`)
-			So(func() interface{} { return worker.config.Core.LabelWhiteList.String() },
-				withTimeout, 2*time.Second, ShouldEqual, "bar")
-		})
-	})
-}
-
-// withTimeout is a custom assertion for polling a value asynchronously
-// actual is a function for getting the actual value
-// expected[0] is a time.Duration value specifying the timeout
-// expected[1] is  the "real" assertion function to be called
-// expected[2:] are the arguments for the "real" assertion function
-func withTimeout(actual interface{}, expected ...interface{}) string {
-	getter, ok := actual.(func() interface{})
-	if !ok {
-		return "not getterFunc"
-	}
-	t, ok := expected[0].(time.Duration)
-	if !ok {
-		return "not time.Duration"
-	}
-	f, ok := expected[1].(func(interface{}, ...interface{}) string)
-	if !ok {
-		return "not an assert func"
-	}
-
-	timeout := time.After(t)
-	for {
-		result := f(getter(), expected[2:]...)
-		if result == "" {
-			return ""
-		}
-		select {
-		case <-timeout:
-			return result
-		case <-time.After(10 * time.Millisecond):
-		}
-	}
-}
-
 func TestNewNfdWorker(t *testing.T) {
 	Convey("When creating new NfdWorker instance", t, func() {
 
@@ -307,7 +199,8 @@ func TestNewNfdWorker(t *testing.T) {
 
 		Convey("without any args specified", func() {
 			args := &Args{}
-			w, err := NewNfdWorker(args)
+			w, err := NewNfdWorker(WithArgs(args),
+				WithKubernetesClient(fakeclient.NewSimpleClientset()))
 			Convey("no error should be returned", func() {
 				So(err, ShouldBeNil)
 			})
@@ -324,7 +217,8 @@ func TestNewNfdWorker(t *testing.T) {
 			args := &Args{Overrides: ConfigOverrideArgs{
 				LabelSources:   &utils.StringSliceVal{"fake"},
 				FeatureSources: &utils.StringSliceVal{"cpu"}}}
-			w, err := NewNfdWorker(args)
+			w, err := NewNfdWorker(WithArgs(args),
+				WithKubernetesClient(fakeclient.NewSimpleClientset()))
 			Convey("no error should be returned", func() {
 				So(err, ShouldBeNil)
 			})
@@ -366,35 +260,6 @@ func TestCreateFeatureLabels(t *testing.T) {
 				So(labels, ShouldNotContainKey, "fake-fakefeature1")
 				So(labels, ShouldNotContainKey, "fake-fakefeature2")
 				So(labels, ShouldNotContainKey, "fake-fakefeature3")
-			})
-		})
-	})
-}
-
-func TestAdvertiseFeatureLabels(t *testing.T) {
-	Convey("When advertising labels", t, func() {
-		w, err := NewNfdWorker(&Args{})
-		So(err, ShouldBeNil)
-		worker := w.(*nfdWorker)
-
-		mockClient := &labeler.MockLabelerClient{}
-		worker.grpcClient = mockClient
-
-		labels := map[string]string{"feature-1": "value-1"}
-
-		Convey("Correct labeling request is sent", func() {
-			mockClient.On("SetLabels", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*labeler.SetLabelsRequest")).Return(&labeler.SetLabelsReply{}, nil)
-			err := worker.advertiseFeatureLabels(labels)
-			Convey("There should be no error", func() {
-				So(err, ShouldBeNil)
-			})
-		})
-		Convey("Labeling request fails", func() {
-			mockErr := errors.New("mock-error")
-			mockClient.On("SetLabels", mock.AnythingOfType("*context.timerCtx"), mock.AnythingOfType("*labeler.SetLabelsRequest")).Return(&labeler.SetLabelsReply{}, mockErr)
-			err := worker.advertiseFeatureLabels(labels)
-			Convey("An error should be returned", func() {
-				So(err, ShouldEqual, mockErr)
 			})
 		})
 	})
