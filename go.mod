@@ -7,11 +7,13 @@ require (
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/jaypipes/ghw v0.13.0
+	github.com/jedib0t/go-pretty/v6 v6.6.1
 	github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.1.2
 	github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
 	github.com/klauspost/cpuid/v2 v2.2.9
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
+	github.com/opencontainers/image-spec v1.1.0
 	github.com/opencontainers/runc v1.2.3
 	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.19.1
@@ -20,20 +22,23 @@ require (
 	github.com/stretchr/testify v1.10.0
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
-	golang.org/x/net v0.32.0
+	golang.org/x/net v0.33.0
 	golang.org/x/time v0.8.0
 	google.golang.org/grpc v1.69.0
 	k8s.io/api v0.32.3
-	k8s.io/apiextensions-apiserver v0.32.0
+	k8s.io/apiextensions-apiserver v0.32.2
 	k8s.io/apimachinery v0.32.3
 	k8s.io/client-go v0.32.3
-	k8s.io/component-base v0.32.0
+	k8s.io/component-base v0.32.2
 	k8s.io/klog/v2 v2.130.1
-	k8s.io/kubectl v0.32.0
-	k8s.io/kubelet v0.32.0
-	k8s.io/kubernetes v1.32.0
-	k8s.io/pod-security-admission v0.32.0
+	k8s.io/kubectl v0.32.2
+	k8s.io/kubelet v0.32.2
+	k8s.io/kubernetes v1.32.2
+	k8s.io/pod-security-admission v0.32.2
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
+	oras.land/oras-go/v2 v2.5.0
+	sigs.k8s.io/node-feature-discovery v0.17.2
+	sigs.k8s.io/node-feature-discovery/api/nfd v0.17.2
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -91,6 +96,7 @@ require (
 	github.com/jtolds/gls v4.20.0+incompatible // indirect
 	github.com/karrick/godirwalk v1.17.0 // indirect
 	github.com/mailru/easyjson v0.7.7 // indirect
+	github.com/mattn/go-runewidth v0.0.15 // indirect
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/spdystream v0.5.0 // indirect
@@ -108,6 +114,7 @@ require (
 	github.com/prometheus/client_model v0.6.1 // indirect
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
+	github.com/rivo/uniseg v0.2.0 // indirect
 	github.com/sirupsen/logrus v1.9.3 // indirect
 	github.com/smarty/assertions v1.15.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
@@ -135,7 +142,6 @@ require (
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
-	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
@@ -144,18 +150,18 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.0 // indirect
-	k8s.io/apiserver v0.32.0 // indirect
-	k8s.io/cloud-provider v0.32.0 // indirect
+	k8s.io/apiserver v0.32.2 // indirect
+	k8s.io/cloud-provider v0.32.2 // indirect
 	k8s.io/component-helpers v0.32.3 // indirect
-	k8s.io/controller-manager v0.32.0 // indirect
-	k8s.io/cri-api v0.32.0 // indirect
+	k8s.io/controller-manager v0.32.2 // indirect
+	k8s.io/cri-api v0.32.2 // indirect
 	k8s.io/cri-client v0.31.3 // indirect
-	k8s.io/csi-translation-lib v0.32.0 // indirect
-	k8s.io/dynamic-resource-allocation v0.31.3 // indirect
-	k8s.io/kms v0.32.0 // indirect
+	k8s.io/csi-translation-lib v0.32.2 // indirect
+	k8s.io/dynamic-resource-allocation v0.32.2 // indirect
+	k8s.io/kms v0.32.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
-	k8s.io/kube-scheduler v0.30.3 // indirect
-	k8s.io/mount-utils v0.25.0 // indirect
+	k8s.io/kube-scheduler v0.32.2 // indirect
+	k8s.io/mount-utils v0.32.2 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect
