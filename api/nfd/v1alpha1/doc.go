@@ -19,5 +19,3 @@ limitations under the License.
 // +kubebuilder:object:generate=true
 // +groupName=nfd.openshift.io
 package v1alpha1
-
-//go:generate ./generate.sh
