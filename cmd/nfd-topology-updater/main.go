@@ -29,7 +29,6 @@ import (
 
 	topology "github.com/openshift/node-feature-discovery/pkg/nfd-topology-updater"
 	"github.com/openshift/node-feature-discovery/pkg/resourcemonitor"
-	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 	"github.com/openshift/node-feature-discovery/pkg/version"
 )
@@ -51,9 +50,6 @@ func main() {
 	if version.Undefined() {
 		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always --match 'v*'`\" during build or run.")
 	}
-
-	// Plug klog into grpc logging infrastructure
-	utils.ConfigureGrpcKlog()
 
 	// Get new TopologyUpdater instance
 	instance, err := topology.NewTopologyUpdater(*args, *resourcemonitorArgs)
