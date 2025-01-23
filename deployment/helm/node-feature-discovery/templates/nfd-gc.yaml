@@ -29,7 +29,10 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "node-feature-discovery.gc.serviceAccountName" . }}
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: {{ .Values.gc.dnsPolicy }}
+    {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+    {{- end }}
     {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
