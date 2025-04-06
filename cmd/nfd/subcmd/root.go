@@ -22,7 +22,7 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"sigs.k8s.io/node-feature-discovery/cmd/nfd/subcmd/compat"
+	"github.com/openshift/node-feature-discovery/cmd/nfd/subcmd/compat"
 )
 
 // RootCmd represents the base command when called without any subcommands

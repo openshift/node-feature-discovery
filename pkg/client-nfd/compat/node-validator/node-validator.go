@@ -21,20 +21,20 @@ import (
 	"slices"
 	"sort"
 
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/pkg/apis/nfd/nodefeaturerule"
-	artifactcli "sigs.k8s.io/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
-	"sigs.k8s.io/node-feature-discovery/source"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	"github.com/openshift/node-feature-discovery/pkg/apis/nfd/nodefeaturerule"
+	artifactcli "github.com/openshift/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
+	"github.com/openshift/node-feature-discovery/source"
 
 	// register sources
-	_ "sigs.k8s.io/node-feature-discovery/source/cpu"
-	_ "sigs.k8s.io/node-feature-discovery/source/kernel"
-	_ "sigs.k8s.io/node-feature-discovery/source/memory"
-	_ "sigs.k8s.io/node-feature-discovery/source/network"
-	_ "sigs.k8s.io/node-feature-discovery/source/pci"
-	_ "sigs.k8s.io/node-feature-discovery/source/storage"
-	_ "sigs.k8s.io/node-feature-discovery/source/system"
-	_ "sigs.k8s.io/node-feature-discovery/source/usb"
+	_ "github.com/openshift/node-feature-discovery/source/cpu"
+	_ "github.com/openshift/node-feature-discovery/source/kernel"
+	_ "github.com/openshift/node-feature-discovery/source/memory"
+	_ "github.com/openshift/node-feature-discovery/source/network"
+	_ "github.com/openshift/node-feature-discovery/source/pci"
+	_ "github.com/openshift/node-feature-discovery/source/storage"
+	_ "github.com/openshift/node-feature-discovery/source/system"
+	_ "github.com/openshift/node-feature-discovery/source/usb"
 )
 
 // Args holds command line arguments.

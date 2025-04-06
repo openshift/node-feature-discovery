@@ -31,7 +31,7 @@ import (
 	"oras.land/oras-go/v2/registry/remote/retry"
 	"sigs.k8s.io/yaml"
 
-	compatv1alpha1 "sigs.k8s.io/node-feature-discovery/api/image-compatibility/v1alpha1"
+	compatv1alpha1 "github.com/openshift/node-feature-discovery/api/image-compatibility/v1alpha1"
 )
 
 // ArtifactClient interface contain set of functions to manipulate compatibility artfact.

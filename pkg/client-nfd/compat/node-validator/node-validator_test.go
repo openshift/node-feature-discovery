@@ -22,11 +22,11 @@ import (
 
 	. "github.com/smartystreets/goconvey/convey"
 
-	compatv1alpha1 "sigs.k8s.io/node-feature-discovery/api/image-compatibility/v1alpha1"
-	"sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
-	artifactcli "sigs.k8s.io/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
-	"sigs.k8s.io/node-feature-discovery/source"
-	"sigs.k8s.io/node-feature-discovery/source/fake"
+	compatv1alpha1 "github.com/openshift/node-feature-discovery/api/image-compatibility/v1alpha1"
+	"github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
+	artifactcli "github.com/openshift/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
+	"github.com/openshift/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/source/fake"
 )
 
 func init() {

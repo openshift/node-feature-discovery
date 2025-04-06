@@ -17,8 +17,8 @@ limitations under the License.
 package nodevalidator
 
 import (
-	compatv1alpha1 "sigs.k8s.io/node-feature-discovery/api/image-compatibility/v1alpha1"
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
+	compatv1alpha1 "github.com/openshift/node-feature-discovery/api/image-compatibility/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 // MatcherType represents a type of the used matcher.

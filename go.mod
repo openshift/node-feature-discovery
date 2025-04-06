@@ -37,8 +37,6 @@ require (
 	k8s.io/pod-security-admission v0.32.2
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	oras.land/oras-go/v2 v2.5.0
-	sigs.k8s.io/node-feature-discovery v0.17.2
-	sigs.k8s.io/node-feature-discovery/api/nfd v0.17.2
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -142,6 +140,7 @@ require (
 	golang.org/x/term v0.27.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 	golang.org/x/tools v0.26.0 // indirect
+	google.golang.org/genproto v0.0.0-20240227224415-6ceb2ff114de // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241015192408-796eee8c2d53 // indirect
 	google.golang.org/protobuf v1.35.1 // indirect
@@ -172,7 +171,4 @@ require (
 replace (
 	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
 	github.com/openshift/node-feature-discovery/api/nfd => ./api/nfd
-	k8s.io/cloud-provider => k8s.io/cloud-provider v0.32.0
-	k8s.io/csi-translation-lib => k8s.io/csi-translation-lib v0.32.0
-	k8s.io/kubectl => k8s.io/kubectl v0.32.0
 )

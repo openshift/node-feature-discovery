@@ -17,7 +17,7 @@ limitations under the License.
 package main
 
 import (
-	"sigs.k8s.io/node-feature-discovery/cmd/nfd/subcmd"
+	"github.com/openshift/node-feature-discovery/cmd/nfd/subcmd"
 )
 
 const ProgramName = "nfd"

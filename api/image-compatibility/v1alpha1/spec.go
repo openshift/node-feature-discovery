@@ -17,7 +17,7 @@ limitations under the License.
 package v1alpha1
 
 import (
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 // ArtifactType is a type of OCI artifact that contains image compatibility metadata.

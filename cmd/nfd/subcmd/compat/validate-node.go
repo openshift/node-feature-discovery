@@ -30,10 +30,10 @@ import (
 	"github.com/spf13/cobra"
 	"oras.land/oras-go/v2/registry"
 
-	"sigs.k8s.io/node-feature-discovery/cmd/nfd/subcmd/compat/options"
-	artifactcli "sigs.k8s.io/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
-	nodevalidator "sigs.k8s.io/node-feature-discovery/pkg/client-nfd/compat/node-validator"
-	"sigs.k8s.io/node-feature-discovery/source"
+	"github.com/openshift/node-feature-discovery/cmd/nfd/subcmd/compat/options"
+	artifactcli "github.com/openshift/node-feature-discovery/pkg/client-nfd/compat/artifact-client"
+	nodevalidator "github.com/openshift/node-feature-discovery/pkg/client-nfd/compat/node-validator"
+	"github.com/openshift/node-feature-discovery/source"
 )
 
 var (
