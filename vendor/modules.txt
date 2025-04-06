@@ -266,7 +266,7 @@ github.com/jaypipes/ghw/pkg/util
 # github.com/jaypipes/pcidb v1.0.1
 ## explicit; go 1.21
 github.com/jaypipes/pcidb
-# github.com/jedib0t/go-pretty/v6 v6.6.1
+# github.com/jedib0t/go-pretty/v6 v6.6.5
 ## explicit; go 1.17
 github.com/jedib0t/go-pretty/v6/table
 github.com/jedib0t/go-pretty/v6/text
@@ -642,6 +642,7 @@ golang.org/x/text/secure/bidirule
 golang.org/x/text/transform
 golang.org/x/text/unicode/bidi
 golang.org/x/text/unicode/norm
+golang.org/x/text/width
 # golang.org/x/time v0.8.0
 ## explicit; go 1.18
 golang.org/x/time/rate

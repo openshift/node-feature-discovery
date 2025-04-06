@@ -11,6 +11,7 @@ type Writer interface {
 	AppendRow(row Row, configs ...RowConfig)
 	AppendRows(rows []Row, configs ...RowConfig)
 	AppendSeparator()
+	ImportGrid(grid interface{}) bool
 	Length() int
 	Pager(opts ...PagerOption) Pager
 	Render() string
@@ -26,7 +27,7 @@ type Writer interface {
 	SetColumnConfigs(configs []ColumnConfig)
 	SetIndexColumn(colNum int)
 	SetOutputMirror(mirror io.Writer)
-	SetRowPainter(painter RowPainter)
+	SetRowPainter(painter interface{})
 	SetStyle(style Style)
 	SetTitle(format string, a ...interface{})
 	SortBy(sortBy []SortBy)
