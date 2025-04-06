@@ -12,7 +12,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.9
 	github.com/onsi/ginkgo/v2 v2.22.0
 	github.com/onsi/gomega v1.36.1
-	github.com/opencontainers/runc v1.2.2
+	github.com/opencontainers/runc v1.2.3
 	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.19.1
 	github.com/smartystreets/goconvey v1.8.1
@@ -50,7 +50,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
-	github.com/cyphar/filepath-securejoin v0.3.4 // indirect
+	github.com/cyphar/filepath-securejoin v0.3.5 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect
 	github.com/distribution/reference v0.5.0 // indirect
 	github.com/emicklei/go-restful/v3 v3.11.0 // indirect
