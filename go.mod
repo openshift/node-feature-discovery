@@ -14,7 +14,7 @@ require (
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/opencontainers/image-spec v1.1.0
-	github.com/opencontainers/runc v1.2.3
+	github.com/opencontainers/runc v1.2.4
 	github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000
 	github.com/prometheus/client_golang v1.19.1
 	github.com/smartystreets/goconvey v1.8.1
