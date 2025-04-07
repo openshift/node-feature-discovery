@@ -25,7 +25,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/kubernetes/test/e2e/framework"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils"
+	"github.com/openshift/node-feature-discovery/pkg/utils"
 )
 
 // PatchLabels updates the given label for a specific namespace with a given value
