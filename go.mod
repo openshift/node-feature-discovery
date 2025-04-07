@@ -11,7 +11,7 @@ require (
 	github.com/jedib0t/go-pretty/v6 v6.6.6
 	github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.1.2
 	github.com/k8stopologyawareschedwg/podfingerprint v0.2.2
-	github.com/klauspost/cpuid/v2 v2.2.9
+	github.com/klauspost/cpuid/v2 v2.2.10
 	github.com/onsi/ginkgo/v2 v2.22.2
 	github.com/onsi/gomega v1.36.2
 	github.com/opencontainers/image-spec v1.1.0
@@ -161,17 +161,17 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.0 // indirect
 	k8s.io/apiserver v0.32.2 // indirect
-	k8s.io/cloud-provider v0.32.1 // indirect
+	k8s.io/cloud-provider v0.32.2 // indirect
 	k8s.io/component-helpers v0.32.2 // indirect
-	k8s.io/controller-manager v0.32.1 // indirect
+	k8s.io/controller-manager v0.32.2 // indirect
 	k8s.io/cri-api v0.32.2 // indirect
 	k8s.io/cri-client v0.31.3 // indirect
-	k8s.io/csi-translation-lib v0.32.1 // indirect
-	k8s.io/dynamic-resource-allocation v0.32.1 // indirect
+	k8s.io/csi-translation-lib v0.32.2 // indirect
+	k8s.io/dynamic-resource-allocation v0.32.2 // indirect
 	k8s.io/kms v0.32.2 // indirect
 	k8s.io/kube-openapi v0.0.0-20241105132330-32ad38e42d3f // indirect
-	k8s.io/kube-scheduler v0.32.1 // indirect
-	k8s.io/mount-utils v0.32.1 // indirect
+	k8s.io/kube-scheduler v0.32.2 // indirect
+	k8s.io/mount-utils v0.32.2 // indirect
 	sigs.k8s.io/apiserver-network-proxy/konnectivity-client v0.31.0 // indirect
 	sigs.k8s.io/json v0.0.0-20241010143419-9aa6b5e7a4b3 // indirect
 	sigs.k8s.io/structured-merge-diff/v4 v4.4.2 // indirect

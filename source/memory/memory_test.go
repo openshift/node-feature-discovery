@@ -23,7 +23,7 @@ import (
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/stretchr/testify/assert"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 func TestMemorySource(t *testing.T) {
