@@ -131,7 +131,7 @@ func NewFeatureGate() *featureGate {
 // map[string]bool of known keys or returns an error.
 func (f *featureGate) Set(value string) error {
 	m := make(map[string]bool)
-	for s := range strings.SplitSeq(value, ",") {
+	for _, s := range strings.Split(value, ",") {
 		if len(s) == 0 {
 			continue
 		}

@@ -49,7 +49,7 @@ type StringSetVal map[string]struct{}
 // Set implements the flag.Value interface
 func (a *StringSetVal) Set(val string) error {
 	m := map[string]struct{}{}
-	for n := range strings.SplitSeq(val, ",") {
+	for _, n := range strings.Split(val, ",") {
 		m[n] = struct{}{}
 	}
 	*a = m

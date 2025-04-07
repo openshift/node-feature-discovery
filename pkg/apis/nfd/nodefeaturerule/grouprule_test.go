@@ -21,7 +21,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 
-	nfdv1alpha1 "sigs.k8s.io/node-feature-discovery/api/nfd/v1alpha1"
+	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 )
 
 func TestGroupRule(t *testing.T) {
