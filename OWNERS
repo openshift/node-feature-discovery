@@ -2,8 +2,10 @@ approvers:
   - ybettan
   - yevgeny-shnaidman
   - chr15p
+  - TomerNewman
 reviewers:
   - ybettan
   - yevgeny-shnaidman
   - chr15p
+  - TomerNewman
 component: "Node Feature Discovery Operator"
