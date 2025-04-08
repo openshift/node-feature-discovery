@@ -36,13 +36,15 @@ spec:
           image: k8s.gcr.io/nfd/node-feature-discovery:v0.11.0
           imagePullPolicy: IfNotPresent
           livenessProbe:
-            grpc:
-              port: 8082
+            httpGet:
+              path: /healthz
+              port: http
             initialDelaySeconds: 10
             periodSeconds: 10
           readinessProbe:
-            grpc:
-              port: 8082
+            httpGet:
+              path: /healthz
+              port: http
             initialDelaySeconds: 5
             periodSeconds: 10
             failureThreshold: 10
@@ -55,8 +57,6 @@ spec:
             requests:
               cpu: 5m
               memory: 64Mi
-          args:
-            - "-server=nfd-master:8080"
           ports:
-            - name: metrics
-              containerPort: 8081
+            - name: http
+              containerPort: 8080

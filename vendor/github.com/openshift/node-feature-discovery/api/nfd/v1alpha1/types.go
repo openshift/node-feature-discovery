@@ -55,49 +55,44 @@ type NodeFeatureSpec struct {
 }
 
 // Features is the collection of all discovered features.
-//
-// +protobuf=true
 type Features struct {
-	Flags      map[string]FlagFeatureSet      `json:"flags" protobuf:"bytes,1,rep,name=flags"`
-	Attributes map[string]AttributeFeatureSet `json:"attributes" protobuf:"bytes,2,rep,name=vattributes"`
-	Instances  map[string]InstanceFeatureSet  `json:"instances" protobuf:"bytes,3,rep,name=instances"`
+	// Flags contains all the flag-type features of the node.
+	// +optional
+	Flags map[string]FlagFeatureSet `json:"flags"`
+	// Attributes contains all the attribute-type features of the node.
+	// +optional
+	Attributes map[string]AttributeFeatureSet `json:"attributes"`
+	// Instances contains all the instance-type features of the node.
+	// +optional
+	Instances map[string]InstanceFeatureSet `json:"instances"`
 }
 
 // FlagFeatureSet is a set of simple features only containing names without values.
-//
-// +protobuf=true
 type FlagFeatureSet struct {
 	// Individual features of the feature set.
-	Elements map[string]Nil `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+	Elements map[string]Nil `json:"elements"`
 }
 
 // AttributeFeatureSet is a set of features having string value.
-//
-// +protobuf=true
 type AttributeFeatureSet struct {
 	// Individual features of the feature set.
-	Elements map[string]string `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+	Elements map[string]string `json:"elements"`
 }
 
 // InstanceFeatureSet is a set of features each of which is an instance having multiple attributes.
-//
-// +protobuf=true
 type InstanceFeatureSet struct {
 	// Individual features of the feature set.
-	Elements []InstanceFeature `json:"elements" protobuf:"bytes,1,rep,name=elements"`
+	Elements []InstanceFeature `json:"elements"`
 }
 
 // InstanceFeature represents one instance of a complex features, e.g. a device.
-//
-// +protobuf=true
 type InstanceFeature struct {
 	// Attributes of the instance feature.
-	Attributes map[string]string `json:"attributes" protobuf:"bytes,1,rep,name=attributes"`
+	Attributes map[string]string `json:"attributes"`
 }
 
-// Nil is a dummy empty struct for protobuf compatibility
-//
-// +protobuf=true
+// Nil is a dummy empty struct for protobuf compatibility.
+// NOTE: protobuf definitions have been removed but this is kept for API compatibility.
 type Nil struct{}
 
 // NodeFeatureRuleList contains a list of NodeFeatureRule objects.
@@ -186,6 +181,17 @@ type NodeFeatureGroupList struct {
 type GroupRule struct {
 	// Name of the rule.
 	Name string `json:"name"`
+
+	// Vars is the variables to store if the rule matches. Variables can be
+	// referenced from other rules enabling more complex rule hierarchies.
+	// +optional
+	Vars map[string]string `json:"vars"`
+
+	// VarsTemplate specifies a template to expand for dynamically generating
+	// multiple variables. Data (after template expansion) must be keys with an
+	// optional value (<key>[=<value>]) separated by newlines.
+	// +optional
+	VarsTemplate string `json:"varsTemplate"`
 
 	// MatchFeatures specifies a set of matcher terms all of which must match.
 	// +optional
@@ -322,16 +328,31 @@ const (
 	// Both the input and value must be integer numbers, otherwise an error is
 	// returned.
 	MatchGt MatchOp = "Gt"
+	// MatchGe returns true if the input is greater than or equal to the value of the
+	// expression (number of values in the expression must be exactly one).
+	// Both the input and value must be integer numbers, otherwise an error is
+	// returned.
+	MatchGe MatchOp = "Ge"
 	// MatchLt returns true if the input is less  than the value of the
 	// expression (number of values in the expression must be exactly one).
 	// Both the input and value must be integer numbers, otherwise an error is
 	// returned.
 	MatchLt MatchOp = "Lt"
+	// MatchLe returns true if the input is less than or equal to the value of the
+	// expression (number of values in the expression must be exactly one).
+	// Both the input and value must be integer numbers, otherwise an error is
+	// returned.
+	MatchLe MatchOp = "Le"
 	// MatchGtLt returns true if the input is between two values, i.e. greater
 	// than the first value and less than the second value of the expression
 	// (number of values in the expression must be exactly two). Both the input
 	// and values must be integer numbers, otherwise an error is returned.
 	MatchGtLt MatchOp = "GtLt"
+	// MatchGeLe returns true if the input is between two values including the boundary values,
+	// i.e. greater than or equal to the first value and less than or equal to the second value
+	// of the expression (number of values in the expression must be exactly two). Both the input
+	// and values must be integer numbers, otherwise an error is returned.
+	MatchGeLe MatchOp = "GeLe"
 	// MatchIsTrue returns true if the input holds the value "true". The
 	// expression must not have any values.
 	MatchIsTrue MatchOp = "IsTrue"

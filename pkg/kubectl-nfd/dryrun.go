@@ -18,6 +18,7 @@ package kubectlnfd
 
 import (
 	"fmt"
+	"maps"
 	"os"
 	"strings"
 
@@ -70,7 +71,7 @@ func processNodeFeatureRule(nodeFeatureRule nfdv1alpha1.NodeFeatureRule, nodeFea
 
 	for _, rule := range nodeFeatureRule.Spec.Rules {
 		fmt.Println("Processing rule: ", rule.Name)
-		ruleOut, err := nodefeaturerule.Execute(&rule, &nodeFeature.Features)
+		ruleOut, err := nodefeaturerule.Execute(&rule, &nodeFeature.Features, true)
 		if err != nil {
 			errs = append(errs, fmt.Errorf("failed to process rule: %q - %w", rule.Name, err))
 			continue
@@ -106,9 +107,7 @@ func processNodeFeatureRule(nodeFeatureRule nfdv1alpha1.NodeFeatureRule, nodeFea
 			extendedResources[k] = v
 		}
 		// annotations
-		for k, v := range ruleOut.Annotations {
-			annotations[k] = v
-		}
+		maps.Copy(annotations, ruleOut.Annotations)
 	}
 
 	if len(taints) > 0 {

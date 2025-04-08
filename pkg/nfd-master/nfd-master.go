@@ -20,7 +20,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"maps"
-	"net"
+	"net/http"
 	"os"
 	"path"
 	"path/filepath"
@@ -31,10 +31,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	corev1 "k8s.io/api/core/v1"
 	apiequality "k8s.io/apimachinery/pkg/api/equality"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -83,7 +82,6 @@ type Restrictions struct {
 
 // NFDConfig contains the configuration settings of NfdMaster.
 type NFDConfig struct {
-	AutoDefaultNs     bool
 	DenyLabelNs       utils.StringSetVal
 	ExtraLabelNs      utils.StringSetVal
 	LabelWhiteList    *regexp.Regexp
@@ -116,18 +114,14 @@ type ConfigOverrideArgs struct {
 
 // Args holds command line arguments
 type Args struct {
-	ConfigFile string
-	Instance   string
-	Klog       map[string]*utils.KlogFlagVal
-	Kubeconfig string
-	Port       int
-	// GrpcHealthPort is only needed to avoid races between tests (by skipping the health server).
-	// Could be removed when gRPC labler service is dropped (when nfd-worker tests stop running nfd-master).
-	GrpcHealthPort       int
+	ConfigFile           string
+	Instance             string
+	Klog                 map[string]*utils.KlogFlagVal
+	Kubeconfig           string
+	Port                 int
 	Prune                bool
 	Options              string
 	EnableLeaderElection bool
-	MetricsPort          int
 
 	Overrides ConfigOverrideArgs
 }
@@ -140,7 +134,6 @@ type deniedNs struct {
 type NfdMaster interface {
 	Run() error
 	Stop()
-	WaitForReady(time.Duration) bool
 }
 
 type nfdMaster struct {
@@ -150,10 +143,7 @@ type nfdMaster struct {
 	namespace      string
 	nodeName       string
 	configFilePath string
-	server         *grpc.Server
-	healthServer   *grpc.Server
 	stop           chan struct{}
-	ready          chan struct{}
 	kubeconfig     *restclient.Config
 	k8sClient      k8sclient.Interface
 	nfdClient      nfdclientset.Interface
@@ -167,7 +157,6 @@ func NewNfdMaster(opts ...NfdMasterOption) (NfdMaster, error) {
 	nfd := &nfdMaster{
 		nodeName:  utils.NodeName(),
 		namespace: utils.GetKubernetesNamespace(),
-		ready:     make(chan struct{}),
 		stop:      make(chan struct{}),
 	}
 
@@ -249,7 +238,6 @@ func newDefaultConfig() *NFDConfig {
 		DenyLabelNs:       utils.StringSetVal{},
 		ExtraLabelNs:      utils.StringSetVal{},
 		NoPublish:         false,
-		AutoDefaultNs:     true,
 		NfdApiParallelism: 10,
 		EnableTaints:      false,
 		ResyncPeriod:      utils.DurationVal{Duration: time.Duration(1) * time.Hour},
@@ -299,22 +287,22 @@ func (m *nfdMaster) Run() error {
 		}
 	}
 
+	httpMux := http.NewServeMux()
+
 	// Register to metrics server
-	if m.args.MetricsPort > 0 {
-		m := utils.CreateMetricsServer(m.args.MetricsPort,
-			buildInfo,
-			nodeUpdateRequests,
-			nodeUpdates,
-			nodeUpdateFailures,
-			nodeLabelsRejected,
-			nodeERsRejected,
-			nodeTaintsRejected,
-			nfrProcessingTime,
-			nfrProcessingErrors)
-		go m.Run()
-		registerVersion(version.Get())
-		defer m.Stop()
-	}
+	promRegistry := prometheus.NewRegistry()
+	promRegistry.MustRegister(
+		buildInfo,
+		nodeUpdateRequests,
+		nodeUpdates,
+		nodeUpdateFailures,
+		nodeLabelsRejected,
+		nodeERsRejected,
+		nodeTaintsRejected,
+		nfrProcessingTime,
+		nfrProcessingErrors)
+	httpMux.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
+	registerVersion(version.Get())
 
 	// Run updater that handles events from the nfd CRD API.
 	if m.nfdController != nil {
@@ -325,60 +313,29 @@ func (m *nfdMaster) Run() error {
 		}
 	}
 
-	// Start gRPC server for liveness probe (at this point we're "live")
-	grpcErr := make(chan error)
-	if m.args.GrpcHealthPort != 0 {
-		if err := m.startGrpcHealthServer(grpcErr); err != nil {
-			return fmt.Errorf("failed to start gRPC health server: %w", err)
-		}
-	}
+	// Register health probe (at this point we're "ready and live")
+	httpMux.HandleFunc("/healthz", m.Healthz)
 
-	// Notify that we're ready to accept connections
-	close(m.ready)
+	// Start HTTP server
+	httpServer := http.Server{Addr: fmt.Sprintf(":%d", m.args.Port), Handler: httpMux}
+	go func() {
+		klog.InfoS("http server starting", "port", httpServer.Addr)
+		klog.InfoS("http server stopped", "exitCode", httpServer.ListenAndServe())
+	}()
+	defer httpServer.Close()
 
-	// NFD-Master main event loop
-	for {
-		select {
-		case err := <-grpcErr:
-			return fmt.Errorf("error in serving gRPC: %w", err)
-
-		case <-m.stop:
-			klog.InfoS("shutting down nfd-master")
-			return nil
-		}
-	}
+	<-m.stop
+	klog.InfoS("shutting down nfd-master")
+	return nil
 }
 
-// startGrpcHealthServer starts a gRPC health server for Kubernetes readiness/liveness probes.
-// TODO: improve status checking e.g. with watchdog in the main event loop and
-// cheking that node updater pool is alive.
-func (m *nfdMaster) startGrpcHealthServer(errChan chan<- error) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", m.args.GrpcHealthPort))
-	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
-	}
-
-	s := grpc.NewServer()
-	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
-	klog.InfoS("gRPC health server serving", "port", m.args.GrpcHealthPort)
-
-	go func() {
-		defer func() {
-			lis.Close()
-		}()
-		if err := s.Serve(lis); err != nil {
-			errChan <- fmt.Errorf("gRPC health server exited with an error: %w", err)
-		}
-		klog.InfoS("gRPC health server stopped")
-	}()
-	m.healthServer = s
-	return nil
+func (m *nfdMaster) Healthz(writer http.ResponseWriter, _ *http.Request) {
+	writer.WriteHeader(http.StatusOK)
 }
 
 // nfdAPIUpdateHandler handles events from the nfd API controller.
 func (m *nfdMaster) nfdAPIUpdateHandler() {
-	// We want to unconditionally update all nodes at startup if gRPC is
-	// disabled (i.e. NodeFeature API is enabled)
+	// We want to unconditionally update all nodes at startup
 	updateAll := true
 	updateNodes := make(map[string]struct{})
 	nodeFeatureGroup := make(map[string]struct{})
@@ -432,13 +389,6 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 
 // Stop NfdMaster
 func (m *nfdMaster) Stop() {
-	if m.server != nil {
-		m.server.GracefulStop()
-	}
-	if m.healthServer != nil {
-		m.healthServer.GracefulStop()
-	}
-
 	if m.nfdController != nil {
 		m.nfdController.stop()
 	}
@@ -446,16 +396,6 @@ func (m *nfdMaster) Stop() {
 	m.updaterPool.stop()
 
 	close(m.stop)
-}
-
-// Wait until NfdMaster is able able to accept connections.
-func (m *nfdMaster) WaitForReady(timeout time.Duration) bool {
-	select {
-	case <-m.ready:
-		return true
-	case <-time.After(timeout):
-	}
-	return false
 }
 
 // Prune erases all NFD related properties from the node objects of the cluster.
@@ -522,8 +462,7 @@ func (m *nfdMaster) updateMasterNode() error {
 
 // Filter labels by namespace and name whitelist, and, turn selected labels
 // into extended resources. This function also handles proper namespacing of
-// labels and ERs, i.e. adds the possibly missing default namespace for labels
-// arriving through the gRPC API.
+// labels and ERs, i.e. adds the possibly missing default namespace for labels.
 func (m *nfdMaster) filterFeatureLabels(labels Labels, features *nfdv1alpha1.Features) Labels {
 	outLabels := Labels{}
 	for name, value := range labels {
@@ -694,7 +633,7 @@ func (m *nfdMaster) getAndMergeNodeFeatures(nodeName string) (*nfdv1alpha1.NodeF
 			features.Labels = nil
 		}
 
-		if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
+		if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) {
 			features.Labels = addNsToMapKeys(features.Labels, nfdv1alpha1.FeatureLabelNs)
 		}
 
@@ -705,7 +644,7 @@ func (m *nfdMaster) getAndMergeNodeFeatures(nodeName string) (*nfdv1alpha1.NodeF
 				s.Labels = nil
 			}
 
-			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
+			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) {
 				s.Labels = addNsToMapKeys(s.Labels, nfdv1alpha1.FeatureLabelNs)
 			}
 
@@ -777,7 +716,7 @@ func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient nfdclientset.Interfac
 	if err != nil {
 		return fmt.Errorf("failed to get nodes: %w", err)
 	}
-	nodeFeaturesList := make([]*nfdv1alpha1.NodeFeature, 0)
+	nodeFeaturesList := make([]*nfdv1alpha1.Features, 0)
 	for _, node := range nodes.Items {
 		// Merge all NodeFeature objects into a single NodeFeatureSpec
 		nodeFeatures, err := m.getAndMergeNodeFeatures(node.Name)
@@ -788,23 +727,22 @@ func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient nfdclientset.Interfac
 			// Nothing to do for this node
 			continue
 		}
-		nodeFeaturesList = append(nodeFeaturesList, nodeFeatures)
+		nodeFeaturesList = append(nodeFeaturesList, &nodeFeatures.Spec.Features)
 	}
 
 	// Execute rules and create matching groups
 	nodePool := make([]nfdv1alpha1.FeatureGroupNode, 0)
 	nodeGroupValidator := make(map[string]bool)
-	for _, rule := range nodeFeatureGroup.Spec.Rules {
-		for _, feature := range nodeFeaturesList {
-			match, err := nodefeaturerule.ExecuteGroupRule(&rule, &feature.Spec.Features)
+	for _, features := range nodeFeaturesList {
+		for _, rule := range nodeFeatureGroup.Spec.Rules {
+			ruleOut, err := nodefeaturerule.ExecuteGroupRule(&rule, features, true)
 			if err != nil {
 				klog.ErrorS(err, "failed to evaluate rule", "ruleName", rule.Name)
 				continue
 			}
 
-			if match {
-				klog.ErrorS(err, "failed to evaluate rule", "ruleName", rule.Name, "nodeName", feature.Name)
-				system := feature.Spec.Features.Attributes["system.name"]
+			if ruleOut.MatchStatus.IsMatch {
+				system := features.Attributes["system.name"]
 				nodeName := system.Elements["nodename"]
 				if _, ok := nodeGroupValidator[nodeName]; !ok {
 					nodePool = append(nodePool, nfdv1alpha1.FeatureGroupNode{
@@ -813,6 +751,9 @@ func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient nfdclientset.Interfac
 					nodeGroupValidator[nodeName] = true
 				}
 			}
+
+			// Feed back vars from rule output to features map for subsequent rules to match
+			features.InsertAttributeFeatures(nfdv1alpha1.RuleBackrefDomain, nfdv1alpha1.RuleBackrefFeature, ruleOut.Vars)
 		}
 	}
 
@@ -873,7 +814,7 @@ func filterExtendedResource(name, value string, features *nfdv1alpha1.Features) 
 }
 
 func (m *nfdMaster) refreshNodeFeatures(cli k8sclient.Interface, node *corev1.Node, labels map[string]string, features *nfdv1alpha1.Features) error {
-	if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
+	if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) {
 		labels = addNsToMapKeys(labels, nfdv1alpha1.FeatureLabelNs)
 	} else if labels == nil {
 		labels = make(map[string]string)
@@ -1020,7 +961,7 @@ func (m *nfdMaster) processNodeFeatureRule(nodeName string, features *nfdv1alpha
 			klog.InfoS("executing NodeFeatureRule", "nodefeaturerule", klog.KObj(spec), "nodeName", nodeName)
 		}
 		for _, rule := range spec.Spec.Rules {
-			ruleOut, err := nodefeaturerule.Execute(&rule, features)
+			ruleOut, err := nodefeaturerule.Execute(&rule, features, true)
 			if err != nil {
 				klog.ErrorS(err, "failed to process rule", "ruleName", rule.Name, "nodefeaturerule", klog.KObj(spec), "nodeName", nodeName)
 				nfrProcessingErrors.Inc()
@@ -1031,7 +972,7 @@ func (m *nfdMaster) processNodeFeatureRule(nodeName string, features *nfdv1alpha
 			l := ruleOut.Labels
 			e := ruleOut.ExtendedResources
 			a := ruleOut.Annotations
-			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) && m.config.AutoDefaultNs {
+			if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) {
 				l = addNsToMapKeys(ruleOut.Labels, nfdv1alpha1.FeatureLabelNs)
 				e = addNsToMapKeys(ruleOut.ExtendedResources, nfdv1alpha1.ExtendedResourceNs)
 				a = addNsToMapKeys(ruleOut.Annotations, nfdv1alpha1.FeatureAnnotationNs)
@@ -1353,6 +1294,7 @@ func (m *nfdMaster) startNfdApiController() error {
 		ResyncPeriod:                 m.config.ResyncPeriod.Duration,
 		K8sClient:                    m.k8sClient,
 		NodeFeatureNamespaceSelector: m.config.Restrictions.NodeFeatureNamespaceSelector,
+		DisableNodeFeatureGroup:      !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureGroupAPI),
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize CRD controller: %w", err)

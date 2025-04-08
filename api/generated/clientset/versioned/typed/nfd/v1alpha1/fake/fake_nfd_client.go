@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2025 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,15 +29,15 @@ type FakeNfdV1alpha1 struct {
 }
 
 func (c *FakeNfdV1alpha1) NodeFeatures(namespace string) v1alpha1.NodeFeatureInterface {
-	return &FakeNodeFeatures{c, namespace}
+	return newFakeNodeFeatures(c, namespace)
 }
 
 func (c *FakeNfdV1alpha1) NodeFeatureGroups(namespace string) v1alpha1.NodeFeatureGroupInterface {
-	return &FakeNodeFeatureGroups{c, namespace}
+	return newFakeNodeFeatureGroups(c, namespace)
 }
 
 func (c *FakeNfdV1alpha1) NodeFeatureRules() v1alpha1.NodeFeatureRuleInterface {
-	return &FakeNodeFeatureRules{c}
+	return newFakeNodeFeatureRules(c)
 }
 
 // RESTClient returns a RESTClient that is used to communicate

@@ -56,11 +56,8 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always --match 'v*'`\" during build or run.")
 	}
-
-	// Plug klog into grpc logging infrastructure
-	utils.ConfigureGrpcKlog()
 
 	// Get new NfdWorker instance
 	instance, err := worker.NewNfdWorker(worker.WithArgs(args))
@@ -94,6 +91,8 @@ func parseArgs(flags *flag.FlagSet, osArgs ...string) *worker.Args {
 			args.Overrides.FeatureSources = overrides.FeatureSources
 		case "label-sources":
 			args.Overrides.LabelSources = overrides.LabelSources
+		case "no-owner-refs":
+			args.Overrides.NoOwnerRefs = overrides.NoOwnerRefs
 		}
 	})
 
@@ -109,10 +108,8 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 		"Kubeconfig to use")
 	flagset.BoolVar(&args.Oneshot, "oneshot", false,
 		"Do not publish feature labels")
-	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
-		"Port on which to expose metrics.")
-	flagset.IntVar(&args.GrpcHealthPort, "grpc-health", 8082,
-		"Port on which to expose the grpc health endpoint.")
+	flagset.IntVar(&args.Port, "port", 8080,
+		"Port on which to metrics and healthz endpoints are served")
 	flagset.StringVar(&args.Options, "options", "",
 		"Specify config options from command line. Config options are specified "+
 			"in the same format as in the config file (i.e. json or yaml). These options")
@@ -126,6 +123,8 @@ func initFlags(flagset *flag.FlagSet) (*worker.Args, *worker.ConfigOverrideArgs)
 	}
 	overrides.NoPublish = flagset.Bool("no-publish", false,
 		"Do not publish discovered features, disable connection to nfd-master and don't create NodeFeature object.")
+	overrides.NoOwnerRefs = flagset.Bool("no-owner-refs", false,
+		"Do not set owner references for NodeFeature object.")
 	flagset.Var(overrides.FeatureSources, "feature-sources",
 		"Comma separated list of feature sources. Special value 'all' enables all sources. "+
 			"Prefix the source name with '-' to disable it.")

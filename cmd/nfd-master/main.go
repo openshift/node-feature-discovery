@@ -83,11 +83,8 @@ func main() {
 
 	// Assert that the version is known
 	if version.Undefined() {
-		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always`\" during build or run.")
+		klog.InfoS("version not set! Set -ldflags \"-X github.com/openshift/node-feature-discovery/pkg/version.version=`git describe --tags --dirty --always --match 'v*'`\" during build or run.")
 	}
-
-	// Plug klog into grpc logging infrastructure
-	utils.ConfigureGrpcKlog()
 
 	// Get new NfdMaster instance
 	instance, err := master.NewNfdMaster(master.WithArgs(args))
@@ -111,10 +108,8 @@ func initFlags(flagset *flag.FlagSet) (*master.Args, *master.ConfigOverrideArgs)
 		"Config file to use.")
 	flagset.StringVar(&args.Kubeconfig, "kubeconfig", "",
 		"Kubeconfig to use")
-	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
-		"Port on which to expose metrics.")
-	flagset.IntVar(&args.GrpcHealthPort, "grpc-health", 8082,
-		"Port on which to expose the grpc health endpoint.")
+	flagset.IntVar(&args.Port, "port", 8080,
+		"Port which metrics and healthz endpoints are served on")
 	flagset.BoolVar(&args.Prune, "prune", false,
 		"Prune all NFD related attributes from all nodes of the cluster and exit.")
 	flagset.StringVar(&args.Options, "options", "",
@@ -142,11 +137,9 @@ func initFlags(flagset *flag.FlagSet) (*master.Args, *master.ConfigOverrideArgs)
 		"Do not publish feature labels")
 	flagset.Var(overrides.DenyLabelNs, "deny-label-ns",
 		"Comma separated list of denied label namespaces")
-	flagset.Var(overrides.ResyncPeriod, "resync-period",
-		"Specify the NFD API controller resync period."+
-			"It does not have effect when the NodeFeature API has been disabled (with -feature-gates NodeFeatureAPI=false).")
+	flagset.Var(overrides.ResyncPeriod, "resync-period", "Specify the NFD API controller resync period.")
 	overrides.NfdApiParallelism = flagset.Int("nfd-api-parallelism", 10, "Defines the maximum number of goroutines responsible of updating nodes. "+
-		"Can be used for the throttling mechanism. It does not have effect if NodeFeatureAPI feature gate is disabled.")
+		"Can be used for the throttling mechanism.")
 
 	return args, overrides
 }

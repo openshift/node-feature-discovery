@@ -1,4 +1,4 @@
-{{- if and .Values.gc.enable (or .Values.featureGates.NodeFeatureAPI .Values.topologyUpdater.enable) -}}
+{{- if and .Values.gc.enable -}}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -29,7 +29,10 @@ spec:
       {{- end }}
     spec:
       serviceAccountName: {{ include "node-feature-discovery.gc.serviceAccountName" . }}
-      dnsPolicy: ClusterFirstWithHostNet
+      dnsPolicy: {{ .Values.gc.dnsPolicy }}
+    {{- with .Values.priorityClassName }}
+      priorityClassName: {{ . }}
+    {{- end }}
     {{- with .Values.imagePullSecrets }}
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}

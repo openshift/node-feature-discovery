@@ -66,9 +66,9 @@ func init() {
 func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiControllerOptions) (*nfdController, error) {
 	c := &nfdController{
 		stopChan:                       make(chan struct{}),
-		updateAllNodesChan:             make(chan struct{}),
+		updateAllNodesChan:             make(chan struct{}, 1),
 		updateOneNodeChan:              make(chan string),
-		updateAllNodeFeatureGroupsChan: make(chan struct{}),
+		updateAllNodeFeatureGroupsChan: make(chan struct{}, 1),
 		updateNodeFeatureGroupChan:     make(chan string),
 	}
 
@@ -78,7 +78,12 @@ func newNfdController(config *restclient.Config, nfdApiControllerOptions nfdApiC
 			klog.ErrorS(err, "failed to convert label selector to map", "selector", nfdApiControllerOptions.NodeFeatureNamespaceSelector)
 			return nil, err
 		}
-		c.namespaceLister = newNamespaceLister(nfdApiControllerOptions.K8sClient, labelMap)
+		c.namespaceLister, err = newNamespaceLister(nfdApiControllerOptions.K8sClient, labelMap)
+		if err != nil {
+			klog.ErrorS(err, "coudn't create namespace lister")
+			return nil, err
+		}
+
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)

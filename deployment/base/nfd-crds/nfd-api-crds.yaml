@@ -67,8 +67,9 @@ spec:
                       properties:
                         elements:
                           additionalProperties:
-                            description: Nil is a dummy empty struct for protobuf
-                              compatibility
+                            description: |-
+                              Nil is a dummy empty struct for protobuf compatibility.
+                              NOTE: protobuf definitions have been removed but this is kept for API compatibility.
                             type: object
                           description: Individual features of the feature set.
                           type: object
@@ -354,6 +355,19 @@ spec:
                       type: array
                     name:
                       description: Name of the rule.
+                      type: string
+                    vars:
+                      additionalProperties:
+                        type: string
+                      description: |-
+                        Vars is the variables to store if the rule matches. Variables can be
+                        referenced from other rules enabling more complex rule hierarchies.
+                      type: object
+                    varsTemplate:
+                      description: |-
+                        VarsTemplate specifies a template to expand for dynamically generating
+                        multiple variables. Data (after template expansion) must be keys with an
+                        optional value (<key>[=<value>]) separated by newlines.
                       type: string
                   required:
                   - name

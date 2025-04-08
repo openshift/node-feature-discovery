@@ -38,7 +38,6 @@ import (
 	clientset "k8s.io/client-go/kubernetes"
 	taintutils "k8s.io/kubernetes/pkg/util/taints"
 	"k8s.io/kubernetes/test/e2e/framework"
-	e2enetwork "k8s.io/kubernetes/test/e2e/framework/network"
 	e2epod "k8s.io/kubernetes/test/e2e/framework/pod"
 	admissionapi "k8s.io/pod-security-admission/api"
 
@@ -46,6 +45,7 @@ import (
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	"github.com/openshift/node-feature-discovery/source/custom"
+	"github.com/openshift/node-feature-discovery/test/e2e/utils/namespace"
 	testutils "github.com/openshift/node-feature-discovery/test/e2e/utils"
 	testds "github.com/openshift/node-feature-discovery/test/e2e/utils/daemonset"
 	testpod "github.com/openshift/node-feature-discovery/test/e2e/utils/pod"
@@ -63,19 +63,19 @@ func cleanupNode(ctx context.Context, cs clientset.Interface) {
 		updateStatus := false
 		// Gather info about all NFD-managed node assets outside the default prefix
 		nfdLabels := map[string]struct{}{}
-		for _, name := range strings.Split(node.Annotations[nfdv1alpha1.FeatureLabelsAnnotation], ",") {
+		for name := range strings.SplitSeq(node.Annotations[nfdv1alpha1.FeatureLabelsAnnotation], ",") {
 			if strings.Contains(name, "/") {
 				nfdLabels[name] = struct{}{}
 			}
 		}
 		nfdAnnotations := map[string]struct{}{}
-		for _, name := range strings.Split(node.Annotations[nfdv1alpha1.FeatureAnnotationsTrackingAnnotation], ",") {
+		for name := range strings.SplitSeq(node.Annotations[nfdv1alpha1.FeatureAnnotationsTrackingAnnotation], ",") {
 			if strings.Contains(name, "/") {
 				nfdAnnotations[name] = struct{}{}
 			}
 		}
 		nfdERs := map[string]struct{}{}
-		for _, name := range strings.Split(node.Annotations[nfdv1alpha1.ExtendedResourceAnnotation], ",") {
+		for name := range strings.SplitSeq(node.Annotations[nfdv1alpha1.ExtendedResourceAnnotation], ",") {
 			if strings.Contains(name, "/") {
 				nfdERs[name] = struct{}{}
 			}
@@ -142,7 +142,7 @@ func cleanupNode(ctx context.Context, cs clientset.Interface) {
 
 	for _, n := range nodeList.Items {
 		var err error
-		for retry := 0; retry < 5; retry++ {
+		for range 5 {
 			if err = cleanup(n.Name); err == nil {
 				break
 			}
@@ -242,19 +242,13 @@ var _ = NFDDescribe(Label("nfd-master"), func() {
 			cleanupNode(ctx, f.ClientSet)
 
 			// Launch nfd-master
-			By("Creating nfd master pod and nfd-master service")
+			By("Creating nfd master pod")
 			podSpecOpts := append(extraMasterPodSpecOpts, testpod.SpecWithContainerImage(dockerImage()))
 
 			masterPod := e2epod.NewPodClient(f).CreateSync(ctx, testpod.NFDMaster(podSpecOpts...))
 
-			// Create nfd-master service
-			nfdSvc, err := testutils.CreateService(ctx, f.ClientSet, f.Namespace.Name)
-			Expect(err).NotTo(HaveOccurred())
-
 			By("Waiting for the nfd-master pod to be running")
 			Expect(e2epod.WaitTimeoutForPodRunningInNamespace(ctx, f.ClientSet, masterPod.Name, masterPod.Namespace, time.Minute)).NotTo(HaveOccurred())
-			By("Waiting for the nfd-master service to be up")
-			Expect(e2enetwork.WaitForService(ctx, f.ClientSet, f.Namespace.Name, nfdSvc.Name, true, time.Second, 10*time.Second)).NotTo(HaveOccurred())
 		})
 
 		AfterEach(func(ctx context.Context) {
@@ -893,6 +887,36 @@ core:
 					}
 					return reflect.DeepEqual(group.Status, expectedGroup.Status)
 				}, 5*time.Minute, 5*time.Second).Should(BeTrue())
+
+				// Deploy node feature object to have one different node
+				targetNodeName := nodes[0].Name
+				By("Creating NodeFeature object")
+				nodeFeatures, err := testutils.CreateOrUpdateNodeFeaturesFromFile(ctx, nfdClient, "nodefeature-1.yaml", f.Namespace.Name, targetNodeName)
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Creating NodeFeatureGroups #2")
+				Expect(testutils.CreateNodeFeatureGroupsFromFile(ctx, nfdClient, f.Namespace.Name, "nodefeaturegroup-2.yaml")).NotTo(HaveOccurred())
+
+				By("Verifying NodeFeatureGroups #2")
+				Eventually(func() bool {
+					group, err := nfdClient.NfdV1alpha1().NodeFeatureGroups(f.Namespace.Name).Get(ctx, "e2e-test-2", metav1.GetOptions{})
+					if err != nil {
+						return false
+					}
+					return len(group.Status.Nodes) == 1 && group.Status.Nodes[0].Name == targetNodeName
+				}, 1*time.Minute, 5*time.Second).Should(BeTrue())
+
+				By("Deleting NodeFeature object")
+				err = nfdClient.NfdV1alpha1().NodeFeatures(f.Namespace.Name).Delete(ctx, nodeFeatures[0], metav1.DeleteOptions{})
+				Expect(err).NotTo(HaveOccurred())
+
+				Eventually(func() bool {
+					group, err := nfdClient.NfdV1alpha1().NodeFeatureGroups(f.Namespace.Name).Get(ctx, "e2e-test-2", metav1.GetOptions{})
+					if err != nil {
+						return false
+					}
+					return len(group.Status.Nodes) == 0
+				}, 1*time.Minute, 5*time.Second).Should(BeTrue())
 			})
 		})
 
@@ -1018,20 +1042,7 @@ resyncPeriod: "1s"
 				Expect(targetNodeName).ToNot(BeEmpty(), "No suitable worker node found")
 
 				// label the namespace in which node feature object is created
-				// TODO(TessaIO): add a utility for this.
-				patches, err := json.Marshal(
-					[]utils.JsonPatch{
-						utils.NewJsonPatch(
-							"add",
-							"/metadata/labels",
-							"e2etest",
-							"fake",
-						),
-					},
-				)
-				Expect(err).NotTo(HaveOccurred())
-
-				_, err = f.ClientSet.CoreV1().Namespaces().Patch(ctx, f.Namespace.Name, types.JSONPatchType, patches, metav1.PatchOptions{})
+				err = namespace.PatchLabels(f.Namespace.Name, "e2etest", "fake", utils.JSONAddOperation, ctx, f)
 				Expect(err).NotTo(HaveOccurred())
 
 				// Apply Node Feature object
@@ -1051,20 +1062,9 @@ resyncPeriod: "1s"
 				eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchLabels(expectedLabels, nodes))
 
 				// remove label the namespace in which node feature object is created
-				patches, err = json.Marshal(
-					[]utils.JsonPatch{
-						utils.NewJsonPatch(
-							"remove",
-							"/metadata/labels",
-							"e2etest",
-							"fake",
-						),
-					},
-				)
+				err = namespace.PatchLabels(f.Namespace.Name, "e2etest", "fake", utils.JSONRemoveOperation, ctx, f)
 				Expect(err).NotTo(HaveOccurred())
 
-				_, err = f.ClientSet.CoreV1().Namespaces().Patch(ctx, f.Namespace.Name, types.JSONPatchType, patches, metav1.PatchOptions{})
-				Expect(err).NotTo(HaveOccurred())
 				By("Verifying node labels from NodeFeature object #1 are not created")
 				// No labels should be created since the f.Namespace is not in the selected Namespaces
 				expectedLabels = map[string]k8sLabels{
@@ -1214,6 +1214,19 @@ restrictions:
 				Expect(err).NotTo(HaveOccurred())
 			})
 			It("No feature labels should be created", func(ctx context.Context) {
+				// deploy worker to make sure that labels created by worker are not ignored by denyNodeFeatureLabels restriction
+				By("Creating nfd-worker daemonset")
+				podSpecOpts := []testpod.SpecOption{
+					testpod.SpecWithContainerImage(dockerImage()),
+					testpod.SpecWithContainerExtraArgs("-label-sources=fake"),
+				}
+				workerDS := testds.NFDWorker(podSpecOpts...)
+				workerDS, err := f.ClientSet.AppsV1().DaemonSets(f.Namespace.Name).Create(ctx, workerDS, metav1.CreateOptions{})
+				Expect(err).NotTo(HaveOccurred())
+
+				By("Waiting for worker daemonset pods to be ready")
+				Expect(testpod.WaitForReady(ctx, f.ClientSet, f.Namespace.Name, workerDS.Spec.Template.Labels["name"], 2)).NotTo(HaveOccurred())
+
 				// deploy node feature object
 				nodes, err := getNonControlPlaneNodes(ctx, f.ClientSet)
 				Expect(err).NotTo(HaveOccurred())
@@ -1241,7 +1254,7 @@ restrictions:
 						"e2e.feature.node.kubernetes.io/restricted-annoation-1": "yes",
 						"nfd.node.kubernetes.io/feature-annotations":            "e2e.feature.node.kubernetes.io/restricted-annoation-1",
 						"nfd.node.kubernetes.io/extended-resources":             "e2e.feature.node.kubernetes.io/restricted-er-1",
-						"nfd.node.kubernetes.io/feature-labels":                 "e2e.feature.node.kubernetes.io/restricted-label-1",
+						"nfd.node.kubernetes.io/feature-labels":                 "e2e.feature.node.kubernetes.io/restricted-label-1,fake-fakefeature1,fake-fakefeature2,fake-fakefeature3",
 					},
 				}
 				eventuallyNonControlPlaneNodes(ctx, f.ClientSet).Should(MatchAnnotations(expectedAnnotations, nodes))
@@ -1253,11 +1266,12 @@ restrictions:
 				}
 				eventuallyNonControlPlaneNodes(ctx, f.ClientSet).WithTimeout(1 * time.Minute).Should(MatchCapacity(expectedCapacity, nodes))
 
-				// TODO(TessaIO): we need one more test where we deploy nfd-worker that would create
-				// a non 3rd-party NF that shouldn't be ignored by this restriction
 				By("Verifying node labels from NodeFeature object #6 are not created")
 				expectedLabels := map[string]k8sLabels{
 					"*": {
+						nfdv1alpha1.FeatureLabelNs + "/fake-fakefeature1":   "true",
+						nfdv1alpha1.FeatureLabelNs + "/fake-fakefeature2":   "true",
+						nfdv1alpha1.FeatureLabelNs + "/fake-fakefeature3":   "true",
 						"e2e.feature.node.kubernetes.io/restricted-label-1": "true",
 					},
 				}

@@ -14,7 +14,7 @@ MDL ?= mdl
 
 K8S_CODE_GENERATOR ?= ../code-generator
 
-VERSION := $(shell git describe --tags --dirty --always)
+VERSION := $(shell git describe --tags --dirty --always --match "v*")
 
 IMAGE_REGISTRY ?= registry.k8s.io/nfd
 IMAGE_TAG_NAME ?= $(VERSION)
@@ -147,6 +147,7 @@ helm-lint:
 
 test:
 	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
+	cd api/nfd && $(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./...
 
 e2e-test:
 	@if [ -z ${KUBECONFIG} ]; then echo "[ERR] KUBECONFIG missing, must be defined"; exit 1; fi

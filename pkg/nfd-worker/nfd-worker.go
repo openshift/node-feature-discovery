@@ -19,24 +19,26 @@ package nfdworker
 import (
 	"encoding/json"
 	"fmt"
-	"net"
+	"net/http"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"sort"
 	"strings"
 	"time"
 
-	"golang.org/x/exp/maps"
+	"maps"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"golang.org/x/net/context"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/health"
-	"google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/validation"
 	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
         apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -78,6 +80,7 @@ type coreConfig struct {
 	Klog           klogutils.KlogConfigOpts
 	LabelWhiteList utils.RegexpVal
 	NoPublish      bool
+	NoOwnerRefs    bool
 	FeatureSources []string
 	Sources        *[]string
 	LabelSources   []string
@@ -91,21 +94,21 @@ type Labels map[string]string
 
 // Args are the command line arguments of NfdWorker.
 type Args struct {
-	ConfigFile     string
-	Klog           map[string]*utils.KlogFlagVal
-	Kubeconfig     string
-	Oneshot        bool
-	Options        string
-	MetricsPort    int
-	GrpcHealthPort int
+	ConfigFile  string
+	Klog        map[string]*utils.KlogFlagVal
+	Kubeconfig  string
+	Oneshot     bool
+	Options     string
+	Port        int
+	NoOwnerRefs bool
 
 	Overrides ConfigOverrideArgs
 }
 
 // ConfigOverrideArgs are args that override config file options
 type ConfigOverrideArgs struct {
-	NoPublish *bool
-
+	NoPublish      *bool
+	NoOwnerRefs    *bool
 	FeatureSources *utils.StringSliceVal
 	LabelSources   *utils.StringSliceVal
 }
@@ -115,7 +118,6 @@ type nfdWorker struct {
 	configFilePath      string
 	config              *NFDConfig
 	kubernetesNamespace string
-	healthServer        *grpc.Server
 	k8sClient           k8sclient.Interface
 	nfdClient           nfdclient.Interface
 	stop                chan struct{} // channel for signaling stop
@@ -203,6 +205,10 @@ func newDefaultConfig() *NFDConfig {
 	}
 }
 
+func (w *nfdWorker) Healthz(writer http.ResponseWriter, _ *http.Request) {
+	writer.WriteHeader(http.StatusOK)
+}
+
 func (i *infiniteTicker) Reset(d time.Duration) {
 	switch {
 	case d > 0:
@@ -212,29 +218,6 @@ func (i *infiniteTicker) Reset(d time.Duration) {
 		// as if it was set to an infinite duration by not ticking.
 		i.Ticker.Stop()
 	}
-}
-
-func (w *nfdWorker) startGrpcHealthServer(errChan chan<- error) error {
-	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", w.args.GrpcHealthPort))
-	if err != nil {
-		return fmt.Errorf("failed to listen: %w", err)
-	}
-
-	s := grpc.NewServer()
-	grpc_health_v1.RegisterHealthServer(s, health.NewServer())
-	klog.InfoS("gRPC health server serving", "port", w.args.GrpcHealthPort)
-
-	go func() {
-		defer func() {
-			lis.Close()
-		}()
-		if err := s.Serve(lis); err != nil {
-			errChan <- fmt.Errorf("gRPC health server exited with an error: %w", err)
-		}
-		klog.InfoS("gRPC health server stopped")
-	}()
-	w.healthServer = s
-	return nil
 }
 
 // Run feature discovery.
@@ -265,7 +248,47 @@ func (w *nfdWorker) runFeatureDiscovery() error {
 	return nil
 }
 
-// Run NfdWorker client. Returns if a fatal error is encountered, or, after
+// Set owner ref
+func (w *nfdWorker) setOwnerReference() error {
+	ownerReference := []metav1.OwnerReference{}
+
+	if !w.config.Core.NoOwnerRefs {
+		// Get pod owner reference
+		podName := os.Getenv("POD_NAME")
+		// Add pod owner reference if it exists
+		if podName != "" {
+			if selfPod, err := w.k8sClient.CoreV1().Pods(w.kubernetesNamespace).Get(context.TODO(), podName, metav1.GetOptions{}); err != nil {
+				klog.ErrorS(err, "failed to get self pod, cannot inherit ownerReference for NodeFeature")
+				return err
+			} else {
+				for _, owner := range selfPod.OwnerReferences {
+					owner.BlockOwnerDeletion = ptr.To(false)
+					ownerReference = append(ownerReference, owner)
+				}
+			}
+
+			podUID := os.Getenv("POD_UID")
+			if podUID != "" {
+				ownerReference = append(ownerReference, metav1.OwnerReference{
+					APIVersion: "v1",
+					Kind:       "Pod",
+					Name:       podName,
+					UID:        types.UID(podUID),
+				})
+			} else {
+				klog.InfoS("Cannot append POD ownerReference to NodeFeature, POD_UID not specified")
+			}
+		} else {
+			klog.InfoS("Cannot set NodeFeature owner references, POD_NAME not specified")
+		}
+	}
+
+	w.ownerReference = ownerReference
+
+	return nil
+}
+
+// Run NfdWorker client. Returns an error if a fatal error is encountered, or, after
 // one request if OneShot is set to 'true' in the worker args.
 func (w *nfdWorker) Run() error {
 	klog.InfoS("Node Feature Discovery Worker", "version", version.Get(), "nodeName", utils.NodeName(), "namespace", w.kubernetesNamespace)
@@ -281,39 +304,13 @@ func (w *nfdWorker) Run() error {
 	labelTrigger.Reset(w.config.Core.SleepInterval.Duration)
 	defer labelTrigger.Stop()
 
-	// Create owner ref
-	ownerReference := []metav1.OwnerReference{}
-	// Get pod owner reference
-	podName := os.Getenv("POD_NAME")
-
-	// Add pod owner reference if it exists
-	if podName != "" {
-		podUID := os.Getenv("POD_UID")
-		if podUID != "" {
-			ownerReference = append(ownerReference, metav1.OwnerReference{
-				APIVersion: "v1",
-				Kind:       "Pod",
-				Name:       podName,
-				UID:        types.UID(podUID),
-			})
-		} else {
-			klog.InfoS("Cannot append POD ownerReference to NodeFeature, POD_UID not specified")
-		}
-	} else {
-		klog.InfoS("Cannot set NodeFeature owner references, POD_NAME not specified")
-	}
-
-	w.ownerReference = ownerReference
+	httpMux := http.NewServeMux()
 
 	// Register to metrics server
-	if w.args.MetricsPort > 0 {
-		m := utils.CreateMetricsServer(w.args.MetricsPort,
-			buildInfo,
-			featureDiscoveryDuration)
-		go m.Run()
-		registerVersion(version.Get())
-		defer m.Stop()
-	}
+	promRegistry := prometheus.NewRegistry()
+	promRegistry.MustRegister(buildInfo, featureDiscoveryDuration)
+	httpMux.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
+	registerVersion(version.Get())
 
 	err = w.runFeatureDiscovery()
 	if err != nil {
@@ -325,20 +322,19 @@ func (w *nfdWorker) Run() error {
 		return nil
 	}
 
-	grpcErr := make(chan error)
+	// Register health endpoint (at this point we're "ready and live")
+	httpMux.HandleFunc("/healthz", w.Healthz)
 
-	// Start gRPC server for liveness probe (at this point we're "live")
-	if w.args.GrpcHealthPort != 0 {
-		if err := w.startGrpcHealthServer(grpcErr); err != nil {
-			return fmt.Errorf("failed to start gRPC health server: %w", err)
-		}
-	}
+	// Start HTTP server
+	httpServer := http.Server{Addr: fmt.Sprintf(":%d", w.args.Port), Handler: httpMux}
+	go func() {
+		klog.InfoS("http server starting", "port", httpServer.Addr)
+		klog.InfoS("http server stopped", "exitCode", httpServer.ListenAndServe())
+	}()
+	defer httpServer.Close()
 
 	for {
 		select {
-		case err := <-grpcErr:
-			return fmt.Errorf("error in serving gRPC: %w", err)
-
 		case <-labelTrigger.C:
 			err = w.runFeatureDiscovery()
 			if err != nil {
@@ -347,9 +343,6 @@ func (w *nfdWorker) Run() error {
 
 		case <-w.stop:
 			klog.InfoS("shutting down nfd-worker")
-			if w.healthServer != nil {
-				w.healthServer.GracefulStop()
-			}
 			return nil
 		}
 	}
@@ -380,7 +373,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 	for _, name := range c.FeatureSources {
 		if name == "all" {
 			for n, s := range source.GetAllFeatureSources() {
-				if ts, ok := s.(source.TestSource); !ok || !ts.IsTestSource() {
+				if ts, ok := s.(source.SupplementalSource); !ok || !ts.DisableByDefault() {
 					featureSources[n] = s
 				}
 			}
@@ -403,7 +396,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 		}
 	}
 
-	w.featureSources = maps.Values(featureSources)
+	w.featureSources = slices.Collect(maps.Values(featureSources))
 
 	sort.Slice(w.featureSources, func(i, j int) bool { return w.featureSources[i].Name() < w.featureSources[j].Name() })
 
@@ -412,7 +405,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 	for _, name := range c.LabelSources {
 		if name == "all" {
 			for n, s := range source.GetAllLabelSources() {
-				if ts, ok := s.(source.TestSource); !ok || !ts.IsTestSource() {
+				if ts, ok := s.(source.SupplementalSource); !ok || !ts.DisableByDefault() {
 					labelSources[n] = s
 				}
 			}
@@ -435,7 +428,7 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 		}
 	}
 
-	w.labelSources = maps.Values(labelSources)
+	w.labelSources = slices.Collect(maps.Values(labelSources))
 
 	sort.Slice(w.labelSources, func(i, j int) bool {
 		iP, jP := w.labelSources[i].Priority(), w.labelSources[j].Priority()
@@ -457,6 +450,11 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 			n[i] = s.Name()
 		}
 		klogV.InfoS("enabled label sources", "labelSources", n)
+	}
+
+	err = w.setOwnerReference()
+	if err != nil {
+		return err
 	}
 
 	return nil
@@ -503,6 +501,9 @@ func (w *nfdWorker) configure(filepath string, overrides string) error {
 
 	if w.args.Overrides.NoPublish != nil {
 		c.Core.NoPublish = *w.args.Overrides.NoPublish
+	}
+	if w.args.Overrides.NoOwnerRefs != nil {
+		c.Core.NoOwnerRefs = *w.args.Overrides.NoOwnerRefs
 	}
 	if w.args.Overrides.FeatureSources != nil {
 		c.Core.FeatureSources = *w.args.Overrides.FeatureSources

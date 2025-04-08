@@ -29,18 +29,16 @@ spec:
               cpu: 100m
               memory: 128Mi
           livenessProbe:
-            grpc:
-              port: 8082
-            initialDelaySeconds: 10
-            periodSeconds: 10
+            httpGet:
+              path: /healthz
+              port: http
           readinessProbe:
-            grpc:
-              port: 8082
-            initialDelaySeconds: 5
-            periodSeconds: 10
+            httpGet:
+              path: /healthz
+              port: http
             failureThreshold: 10
           command:
             - "nfd-master"
           ports:
-            - name: metrics
-              containerPort: 8081
+            - name: http
+              containerPort: 8080
