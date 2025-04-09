@@ -412,7 +412,7 @@ metadata:
     controller-gen.kubebuilder.io/version: v0.16.3
   name: nodefeaturerules.nfd.openshift.io
 spec:
-  group: nfd.openshift.io
+  group: nfd.k8s-sigs.io
   names:
     kind: NodeFeatureRule
     listKind: NodeFeatureRuleList
