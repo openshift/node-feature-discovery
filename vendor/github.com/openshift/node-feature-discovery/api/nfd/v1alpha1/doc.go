@@ -17,5 +17,5 @@ limitations under the License.
 // Package v1alpha1 is the v1alpha1 version of the nfd API.
 // +k8s:deepcopy-gen=package
 // +kubebuilder:object:generate=true
-// +groupName=nfd.openshift.io
+// +groupName=nfd.k8s-sigs.io
 package v1alpha1
