@@ -305,12 +305,10 @@ func (m *nfdMaster) Run() error {
 	registerVersion(version.Get())
 
 	// Run updater that handles events from the nfd CRD API.
-	if m.nfdController != nil {
-		if m.args.EnableLeaderElection {
-			go m.nfdAPIUpdateHandlerWithLeaderElection()
-		} else {
-			go m.nfdAPIUpdateHandler()
-		}
+	if m.args.EnableLeaderElection {
+		go m.nfdAPIUpdateHandlerWithLeaderElection()
+	} else {
+		go m.nfdAPIUpdateHandler()
 	}
 
 	// Register health probe (at this point we're "ready and live")
@@ -389,10 +387,7 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 
 // Stop NfdMaster
 func (m *nfdMaster) Stop() {
-	if m.nfdController != nil {
-		m.nfdController.stop()
-	}
-
+	m.nfdController.stop()
 	m.updaterPool.stop()
 
 	close(m.stop)
@@ -666,10 +661,6 @@ func (m *nfdMaster) isThirdPartyNodeFeature(nodeFeature nfdv1alpha1.NodeFeature,
 }
 
 func (m *nfdMaster) nfdAPIUpdateOneNode(cli k8sclient.Interface, node *corev1.Node) error {
-	if m.nfdController == nil || m.nfdController.featureLister == nil {
-		return nil
-	}
-
 	// Merge all NodeFeature objects into a single NodeFeatureSpec
 	nodeFeatures, err := m.getAndMergeNodeFeatures(node.Name)
 	if err != nil {
@@ -707,9 +698,6 @@ func (m *nfdMaster) nfdAPIUpdateAllNodeFeatureGroups() error {
 
 func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient nfdclientset.Interface, nodeFeatureGroup *nfdv1alpha1.NodeFeatureGroup) error {
 	klog.V(2).InfoS("evaluating NodeFeatureGroup", "nodeFeatureGroup", klog.KObj(nodeFeatureGroup))
-	if m.nfdController == nil || m.nfdController.featureLister == nil {
-		return nil
-	}
 
 	// Get all Nodes
 	nodes, err := getNodes(m.k8sClient)
