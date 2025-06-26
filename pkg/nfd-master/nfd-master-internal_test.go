@@ -378,12 +378,13 @@ func TestFilterLabels(t *testing.T) {
 	}
 
 	type TC struct {
-		description   string
-		labelName     string
-		labelValue    string
-		features      nfdv1alpha1.Features
-		expectErr     bool
-		expectedValue string
+		description          string
+		labelName            string
+		labelValue           string
+		features             nfdv1alpha1.Features
+		expectErr            bool
+		expectedValue        string
+		expectedExtResources ExtendedResources
 	}
 
 	tcs := []TC{
@@ -458,6 +459,24 @@ func TestFilterLabels(t *testing.T) {
 			}
 		})
 	}
+
+	tcs = []TC{
+		{
+			description:          "Unprefixed extended resources should not be allowed",
+			expectedExtResources: ExtendedResources{},
+		},
+	}
+
+	extendedResources := ExtendedResources{"micromicrowaves": "10", "tooster": "5"}
+	for _, tc := range tcs {
+		t.Run(tc.description, func(t *testing.T) {
+			outExtendedResources := fakeMaster.filterExtendedResources(&tc.features, extendedResources)
+			Convey("Unprefixed extended resources should npotbe allowed", t, func() {
+				So(outExtendedResources, ShouldEqual, tc.expectedExtResources)
+			})
+		})
+	}
+
 	// Create a new fake master with the feature gate enabled
 	fakeMaster = newFakeMasterWithFeatureGate()
 	tcs = []TC{
@@ -477,6 +496,26 @@ func TestFilterLabels(t *testing.T) {
 			})
 			Convey("Label value should be correct", t, func() {
 				So(labelValue, ShouldEqual, tc.expectedValue)
+			})
+		})
+	}
+
+	tcs = []TC{
+		{
+			description: "Unprefixed extended resources should be allowed",
+			expectedExtResources: ExtendedResources{
+				"micromicrowaves": "10",
+				"tooster":         "5",
+			},
+		},
+	}
+
+	extendedResources = ExtendedResources{"micromicrowaves": "10", "tooster": "5"}
+	for _, tc := range tcs {
+		t.Run(tc.description, func(t *testing.T) {
+			outExtendedResources := fakeMaster.filterExtendedResources(&tc.features, extendedResources)
+			Convey("Unprefixed extended resources should be allowed", t, func() {
+				So(outExtendedResources, ShouldEqual, tc.expectedExtResources)
 			})
 		})
 	}
