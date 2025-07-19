@@ -37,6 +37,7 @@ import (
 	"k8s.io/apimachinery/pkg/util/validation"
 	k8sclient "k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
+	"k8s.io/utils/ptr"
 	"sigs.k8s.io/yaml"
 
         apiequality "k8s.io/apimachinery/pkg/api/equality"
@@ -265,29 +266,23 @@ func (w *nfdWorker) runFeatureDiscovery() error {
 	return nil
 }
 
-// Run NfdWorker client. Returns if a fatal error is encountered, or, after
-// one request if OneShot is set to 'true' in the worker args.
-func (w *nfdWorker) Run() error {
-	klog.InfoS("Node Feature Discovery Worker", "version", version.Get(), "nodeName", utils.NodeName(), "namespace", w.kubernetesNamespace)
-
-	// Read configuration file
-	err := w.configure(w.configFilePath, w.args.Options)
-	if err != nil {
-		return err
-	}
-
-	// Create ticker for feature discovery and run feature discovery once before the loop.
-	labelTrigger := infiniteTicker{Ticker: time.NewTicker(1)}
-	labelTrigger.Reset(w.config.Core.SleepInterval.Duration)
-	defer labelTrigger.Stop()
-
-	// Create owner ref
+func (w *nfdWorker) setOwnerReference() error {
 	ownerReference := []metav1.OwnerReference{}
+
 	// Get pod owner reference
 	podName := os.Getenv("POD_NAME")
-
 	// Add pod owner reference if it exists
 	if podName != "" {
+		if selfPod, err := w.k8sClient.CoreV1().Pods(w.kubernetesNamespace).Get(context.TODO(), podName, metav1.GetOptions{}); err != nil {
+			klog.ErrorS(err, "failed to get self pod, cannot inherit ownerReference for NodeFeature")
+			return err
+		} else {
+			for _, owner := range selfPod.OwnerReferences {
+				owner.BlockOwnerDeletion = ptr.To(false)
+				ownerReference = append(ownerReference, owner)
+			}
+		}
+
 		podUID := os.Getenv("POD_UID")
 		if podUID != "" {
 			ownerReference = append(ownerReference, metav1.OwnerReference{
@@ -305,6 +300,25 @@ func (w *nfdWorker) Run() error {
 
 	w.ownerReference = ownerReference
 
+	return nil
+}
+
+// Run NfdWorker client. Returns if a fatal error is encountered, or, after
+// one request if OneShot is set to 'true' in the worker args.
+func (w *nfdWorker) Run() error {
+	klog.InfoS("Node Feature Discovery Worker", "version", version.Get(), "nodeName", utils.NodeName(), "namespace", w.kubernetesNamespace)
+
+	// Read configuration file
+	err := w.configure(w.configFilePath, w.args.Options)
+	if err != nil {
+		return err
+	}
+
+	// Create ticker for feature discovery and run feature discovery once before the loop.
+	labelTrigger := infiniteTicker{Ticker: time.NewTicker(1)}
+	labelTrigger.Reset(w.config.Core.SleepInterval.Duration)
+	defer labelTrigger.Stop()
+	
 	// Register to metrics server
 	if w.args.MetricsPort > 0 {
 		m := utils.CreateMetricsServer(w.args.MetricsPort,
@@ -457,6 +471,11 @@ func (w *nfdWorker) configureCore(c coreConfig) error {
 			n[i] = s.Name()
 		}
 		klogV.InfoS("enabled label sources", "labelSources", n)
+	}
+
+	err = w.setOwnerReference()
+	if err != nil {
+		return err
 	}
 
 	return nil
