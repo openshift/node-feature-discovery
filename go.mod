@@ -27,15 +27,15 @@ require (
 	golang.org/x/net v0.39.0
 	golang.org/x/time v0.11.0
 	google.golang.org/grpc v1.72.0
-	k8s.io/api v0.33.0
+	k8s.io/api v0.33.3
 	k8s.io/apiextensions-apiserver v0.33.0
-	k8s.io/apimachinery v0.33.0
-	k8s.io/client-go v0.33.0
-	k8s.io/component-base v0.33.0
+	k8s.io/apimachinery v0.33.3
+	k8s.io/client-go v0.33.3
+	k8s.io/component-base v0.33.3
 	k8s.io/klog/v2 v2.130.1
 	k8s.io/kubectl v0.33.0
-	k8s.io/kubelet v0.32.3
-	k8s.io/kubernetes v1.32.3
+	k8s.io/kubelet v0.33.3
+	k8s.io/kubernetes v1.33.0
 	k8s.io/pod-security-admission v0.33.0
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
 	oras.land/oras-go/v2 v2.5.0
@@ -56,10 +56,12 @@ require (
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
-	github.com/containerd/containerd/api v1.7.19 // indirect
-	github.com/containerd/errdefs v0.1.0 // indirect
+	github.com/containerd/containerd/api v1.8.0 // indirect
+	github.com/containerd/errdefs v1.0.0 // indirect
+	github.com/containerd/errdefs/pkg v0.3.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
-	github.com/containerd/ttrpc v1.2.5 // indirect
+	github.com/containerd/ttrpc v1.2.6 // indirect
+	github.com/containerd/typeurl/v2 v2.2.2 // indirect
 	github.com/coreos/go-semver v0.3.1 // indirect
 	github.com/coreos/go-systemd/v22 v22.5.0 // indirect
 	github.com/cyphar/filepath-securejoin v0.4.1 // indirect
@@ -81,7 +83,7 @@ require (
 	github.com/gogo/protobuf v1.3.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/google/btree v1.1.3 // indirect
-	github.com/google/cadvisor v0.51.0 // indirect
+	github.com/google/cadvisor v0.52.1 // indirect
 	github.com/google/cel-go v0.23.2 // indirect
 	github.com/google/gnostic-models v0.6.9 // indirect
 	github.com/google/pprof v0.0.0-20250403155104-27863c87afa6 // indirect
@@ -110,6 +112,7 @@ require (
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/mxk/go-flowrate v0.0.0-20140419014527-cca7078d478f // indirect
+	github.com/opencontainers/cgroups v0.0.1 // indirect
 	github.com/opencontainers/go-digest v1.0.0 // indirect
 	github.com/opencontainers/runtime-spec v1.2.0 // indirect
 	github.com/opencontainers/selinux v1.11.1 // indirect
@@ -159,15 +162,15 @@ require (
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	howett.net/plist v1.0.0 // indirect
-	k8s.io/apiserver v0.33.0 // indirect
+	k8s.io/apiserver v0.33.3 // indirect
 	k8s.io/cloud-provider v0.32.2 // indirect
-	k8s.io/component-helpers v0.33.0 // indirect
+	k8s.io/component-helpers v0.33.3 // indirect
 	k8s.io/controller-manager v0.32.2 // indirect
-	k8s.io/cri-api v0.32.3 // indirect
-	k8s.io/cri-client v0.31.3 // indirect
+	k8s.io/cri-api v0.33.3 // indirect
+	k8s.io/cri-client v0.33.0 // indirect
 	k8s.io/csi-translation-lib v0.32.2 // indirect
-	k8s.io/dynamic-resource-allocation v0.32.2 // indirect
-	k8s.io/kms v0.33.0 // indirect
+	k8s.io/dynamic-resource-allocation v0.33.3 // indirect
+	k8s.io/kms v0.33.3 // indirect
 	k8s.io/kube-openapi v0.0.0-20250318190949-c8a335a9a2ff // indirect
 	k8s.io/kube-scheduler v0.32.2 // indirect
 	k8s.io/mount-utils v0.32.2 // indirect
