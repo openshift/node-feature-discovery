@@ -38,7 +38,7 @@ require (
 	k8s.io/kubernetes v1.33.0
 	k8s.io/pod-security-admission v0.33.0
 	k8s.io/utils v0.0.0-20241104100929-3ea5e8cea738
-	oras.land/oras-go/v2 v2.5.0
+	oras.land/oras-go/v2 v2.6.0
 	sigs.k8s.io/yaml v1.4.0
 )
 
@@ -148,7 +148,7 @@ require (
 	go.uber.org/zap v1.27.0 // indirect
 	golang.org/x/crypto v0.37.0 // indirect
 	golang.org/x/oauth2 v0.27.0 // indirect
-	golang.org/x/sync v0.13.0 // indirect
+	golang.org/x/sync v0.14.0 // indirect
 	golang.org/x/sys v0.32.0 // indirect
 	golang.org/x/term v0.31.0 // indirect
 	golang.org/x/text v0.24.0 // indirect
