@@ -25,7 +25,7 @@ require (
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/net v0.40.0
-	golang.org/x/time v0.11.0
+	golang.org/x/time v0.12.0
 	google.golang.org/grpc v1.72.2
 	k8s.io/api v0.33.1
 	k8s.io/apiextensions-apiserver v0.33.1
