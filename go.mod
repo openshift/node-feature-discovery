@@ -182,7 +182,4 @@ require (
 
 // The k8s "sub-"packages do not have 'semver' compatible versions. Thus, we
 // need to override with commits (corresponding their kubernetes-* tags)
-replace (
-	github.com/gogo/protobuf => github.com/gogo/protobuf v1.3.2
-	github.com/openshift/node-feature-discovery/api/nfd => ./api/nfd
-)
+replace github.com/openshift/node-feature-discovery/api/nfd => ./api/nfd
