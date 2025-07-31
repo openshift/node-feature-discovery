@@ -307,7 +307,7 @@ github.com/k8stopologyawareschedwg/podfingerprint
 # github.com/karrick/godirwalk v1.17.0
 ## explicit; go 1.13
 github.com/karrick/godirwalk
-# github.com/klauspost/cpuid/v2 v2.2.11
+# github.com/klauspost/cpuid/v2 v2.3.0
 ## explicit; go 1.22
 github.com/klauspost/cpuid/v2
 # github.com/kylelemons/godebug v1.1.0
