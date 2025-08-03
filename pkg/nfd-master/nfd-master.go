@@ -92,6 +92,7 @@ type NFDConfig struct {
 	NfdApiParallelism int
 	Klog              klogutils.KlogConfigOpts
 	Restrictions      Restrictions
+	InformerPageSize  int64
 }
 
 // LeaderElectionConfig contains the configuration for leader election
@@ -110,6 +111,7 @@ type ConfigOverrideArgs struct {
 	NoPublish         *bool
 	ResyncPeriod      *utils.DurationVal
 	NfdApiParallelism *int
+	InformerPageSize  *int64
 }
 
 // Args holds command line arguments
@@ -122,6 +124,7 @@ type Args struct {
 	Prune                bool
 	Options              string
 	EnableLeaderElection bool
+	MetricsPort          int
 
 	Overrides ConfigOverrideArgs
 }
@@ -150,6 +153,9 @@ type nfdMaster struct {
 	updaterPool    *updaterPool
 	deniedNs
 	config *NFDConfig
+
+	// isLeader indicates if this instance is the leader, changing dynamically
+	isLeader bool
 }
 
 // NewNfdMaster creates a new NfdMaster server instance.
@@ -241,6 +247,7 @@ func newDefaultConfig() *NFDConfig {
 		NfdApiParallelism: 10,
 		EnableTaints:      false,
 		ResyncPeriod:      utils.DurationVal{Duration: time.Duration(1) * time.Hour},
+		InformerPageSize:  200,
 		LeaderElection: LeaderElectionConfig{
 			LeaseDuration: utils.DurationVal{Duration: time.Duration(15) * time.Second},
 			RetryPeriod:   utils.DurationVal{Duration: time.Duration(2) * time.Second},
@@ -305,13 +312,12 @@ func (m *nfdMaster) Run() error {
 	registerVersion(version.Get())
 
 	// Run updater that handles events from the nfd CRD API.
-	if m.nfdController != nil {
-		if m.args.EnableLeaderElection {
-			go m.nfdAPIUpdateHandlerWithLeaderElection()
-		} else {
-			go m.nfdAPIUpdateHandler()
-		}
+	if m.args.EnableLeaderElection {
+		go m.startLeaderElectionHandler()
+	} else {
+		m.isLeader = true
 	}
+	go m.nfdAPIUpdateHandler()
 
 	// Register health probe (at this point we're "ready and live")
 	httpMux.HandleFunc("/healthz", m.Healthz)
@@ -352,6 +358,12 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 		case nodeFeatureGroupName := <-m.nfdController.updateNodeFeatureGroupChan:
 			nodeFeatureGroup[nodeFeatureGroupName] = struct{}{}
 		case <-rateLimit:
+			// If we're not the leader, don't do anything, sleep a bit longer
+			if !m.isLeader {
+				rateLimit = time.After(5 * time.Second)
+				break
+			}
+
 			// NodeFeature
 			errUpdateAll := false
 			if updateAll {
@@ -389,10 +401,7 @@ func (m *nfdMaster) nfdAPIUpdateHandler() {
 
 // Stop NfdMaster
 func (m *nfdMaster) Stop() {
-	if m.nfdController != nil {
-		m.nfdController.stop()
-	}
-
+	m.nfdController.stop()
 	m.updaterPool.stop()
 
 	close(m.stop)
@@ -481,7 +490,6 @@ func (m *nfdMaster) filterFeatureLabels(labels Labels, features *nfdv1alpha1.Fea
 
 	return outLabels
 }
-
 func (m *nfdMaster) filterFeatureLabel(name, value string, features *nfdv1alpha1.Features) (string, error) {
 	// Check if Value is dynamic
 	var filteredValue string
@@ -503,7 +511,9 @@ func (m *nfdMaster) filterFeatureLabel(name, value string, features *nfdv1alpha1
 			return "", fmt.Errorf("namespace %q is not allowed", ns)
 		}
 	} else if err != nil {
-		return "", err
+		if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) || err != validate.ErrUnprefixedKeysNotAllowed {
+			return "", err
+		}
 	}
 
 	// Skip if label doesn't match labelWhiteList
@@ -666,10 +676,6 @@ func (m *nfdMaster) isThirdPartyNodeFeature(nodeFeature nfdv1alpha1.NodeFeature,
 }
 
 func (m *nfdMaster) nfdAPIUpdateOneNode(cli k8sclient.Interface, node *corev1.Node) error {
-	if m.nfdController == nil || m.nfdController.featureLister == nil {
-		return nil
-	}
-
 	// Merge all NodeFeature objects into a single NodeFeatureSpec
 	nodeFeatures, err := m.getAndMergeNodeFeatures(node.Name)
 	if err != nil {
@@ -707,9 +713,6 @@ func (m *nfdMaster) nfdAPIUpdateAllNodeFeatureGroups() error {
 
 func (m *nfdMaster) nfdAPIUpdateNodeFeatureGroup(nfdClient nfdclientset.Interface, nodeFeatureGroup *nfdv1alpha1.NodeFeatureGroup) error {
 	klog.V(2).InfoS("evaluating NodeFeatureGroup", "nodeFeatureGroup", klog.KObj(nodeFeatureGroup))
-	if m.nfdController == nil || m.nfdController.featureLister == nil {
-		return nil
-	}
 
 	// Get all Nodes
 	nodes, err := getNodes(m.k8sClient)
@@ -807,7 +810,9 @@ func filterExtendedResource(name, value string, features *nfdv1alpha1.Features) 
 	// Validate
 	err := validate.ExtendedResource(name, filteredValue)
 	if err != nil {
-		return "", err
+		if !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.DisableAutoPrefix) || err != validate.ErrUnprefixedKeysNotAllowed {
+			return "", err
+		}
 	}
 
 	return filteredValue, nil
@@ -1189,6 +1194,9 @@ func (m *nfdMaster) configure(filepath string, overrides string) error {
 	if m.args.Overrides.NfdApiParallelism != nil {
 		c.NfdApiParallelism = *m.args.Overrides.NfdApiParallelism
 	}
+	if m.args.Overrides.InformerPageSize != nil {
+		c.InformerPageSize = *m.args.Overrides.InformerPageSize
+	}
 
 	if c.NfdApiParallelism <= 0 {
 		return fmt.Errorf("the maximum number of concurrent labelers should be a non-zero positive number")
@@ -1295,6 +1303,7 @@ func (m *nfdMaster) startNfdApiController() error {
 		K8sClient:                    m.k8sClient,
 		NodeFeatureNamespaceSelector: m.config.Restrictions.NodeFeatureNamespaceSelector,
 		DisableNodeFeatureGroup:      !nfdfeatures.NFDFeatureGate.Enabled(nfdfeatures.NodeFeatureGroupAPI),
+		ListSize:                     m.config.InformerPageSize,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to initialize CRD controller: %w", err)
@@ -1302,7 +1311,7 @@ func (m *nfdMaster) startNfdApiController() error {
 	return nil
 }
 
-func (m *nfdMaster) nfdAPIUpdateHandlerWithLeaderElection() {
+func (m *nfdMaster) startLeaderElectionHandler() {
 	ctx := context.Background()
 	lock := &resourcelock.LeaseLock{
 		LeaseMeta: metav1.ObjectMeta{
@@ -1323,11 +1332,15 @@ func (m *nfdMaster) nfdAPIUpdateHandlerWithLeaderElection() {
 		RenewDeadline: m.config.LeaderElection.RenewDeadline.Duration,
 		Callbacks: leaderelection.LeaderCallbacks{
 			OnStartedLeading: func(_ context.Context) {
-				m.nfdAPIUpdateHandler()
+				m.isLeader = true
 			},
 			OnStoppedLeading: func() {
 				// We lost the lock.
 				klog.InfoS("leaderelection lock was lost")
+				// We stop (i.e. exit), makes sure that in-flight
+				// requests/re-tries will be stopped TODO: more graceful
+				// handling that does not exit the pod (set m.isLeader to false
+				// and flush updater queue and flush updater queues...)
 				m.Stop()
 			},
 		},

@@ -19,9 +19,12 @@ package nfdgarbagecollector
 import (
 	"context"
 	"fmt"
+	"net/http"
 	"time"
 
 	topologyv1alpha2 "github.com/k8stopologyawareschedwg/noderesourcetopology-api/pkg/apis/topology/v1alpha2"
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -46,9 +49,9 @@ var (
 
 // Args are the command line arguments
 type Args struct {
-	GCPeriod    time.Duration
-	Kubeconfig  string
-	MetricsPort int
+	GCPeriod   time.Duration
+	Kubeconfig string
+	Port       int
 }
 
 type NfdGarbageCollector interface {
@@ -77,6 +80,10 @@ func New(args *Args) (NfdGarbageCollector, error) {
 		client:   cli,
 		factory:  metadatainformer.NewSharedInformerFactory(cli, 0),
 	}, nil
+}
+
+func (n *nfdGarbageCollector) Healthz(writer http.ResponseWriter, _ *http.Request) {
+	writer.WriteHeader(http.StatusOK)
 }
 
 func (n *nfdGarbageCollector) deleteNodeFeature(namespace, name string) {
@@ -240,15 +247,29 @@ func (n *nfdGarbageCollector) startNodeInformer() error {
 
 // Run is a blocking function that removes stale NRT objects when Node is deleted and runs periodic GC to make sure any obsolete objects are removed
 func (n *nfdGarbageCollector) Run() error {
-	if n.args.MetricsPort > 0 {
-		m := utils.CreateMetricsServer(n.args.MetricsPort,
-			buildInfo,
-			objectsDeleted,
-			objectDeleteErrors)
-		go m.Run()
-		registerVersion(version.Get())
-		defer m.Stop()
-	}
+	httpMux := http.NewServeMux()
+	promRegistry := prometheus.NewRegistry()
+	promRegistry.MustRegister(
+		buildInfo,
+		objectsDeleted,
+		objectDeleteErrors)
+	httpMux.Handle("/metrics", promhttp.HandlerFor(promRegistry, promhttp.HandlerOpts{}))
+	registerVersion(version.Get())
+
+	// Register health endpoint (at this point we're "ready and live")
+	httpMux.HandleFunc("/healthz", n.Healthz)
+
+	// Start HTTP server
+	httpServer := http.Server{Addr: fmt.Sprintf(":%d", n.args.Port), Handler: httpMux}
+	go func() {
+		klog.InfoS("starting HTTP server", "port", n.args.Port)
+		if err := httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			klog.ErrorS(err, "failed to start HTTP server")
+		} else {
+			klog.InfoS("HTTP server stopped")
+		}
+	}()
+	defer httpServer.Close()
 
 	if err := n.startNodeInformer(); err != nil {
 		return err

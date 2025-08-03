@@ -83,8 +83,8 @@ func initFlags(flagset *flag.FlagSet) *nfdgarbagecollector.Args {
 		"interval between cleanup of obsolete api objects")
 	flagset.StringVar(&args.Kubeconfig, "kubeconfig", "",
 		"Kubeconfig to use")
-	flagset.IntVar(&args.MetricsPort, "metrics", 8081,
-		"Port on which to expose metrics.")
+	flagset.IntVar(&args.Port, "port", 8080,
+		"Port which metrics and healthz endpoints are served on")
 
 	klog.InitFlags(flagset)
 

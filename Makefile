@@ -145,8 +145,10 @@ mdlint:
 helm-lint:
 	helm lint --strict deployment/helm/node-feature-discovery/
 
+TESTS ?= ./cmd/... ./pkg/... ./source/...
+
 test:
-	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./cmd/... ./pkg/... ./source/...
+	$(GO_CMD) test -covermode=atomic -coverprofile=coverage.out $(TESTS)
 	cd api/nfd && $(GO_CMD) test -covermode=atomic -coverprofile=coverage.out ./...
 
 e2e-test:
