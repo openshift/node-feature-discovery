@@ -21,7 +21,7 @@ require (
 	github.com/prometheus/client_golang v1.23.0
 	github.com/smartystreets/goconvey v1.8.1
 	github.com/spf13/cobra v1.9.1
-	github.com/stretchr/testify v1.10.0
+	github.com/stretchr/testify v1.11.1
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56
 	golang.org/x/net v0.43.0
