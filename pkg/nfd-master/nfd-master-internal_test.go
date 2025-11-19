@@ -17,6 +17,7 @@ limitations under the License.
 package nfdmaster
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
@@ -34,7 +35,6 @@ import (
 	nfdinformers "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions"
 	"github.com/openshift/node-feature-discovery/pkg/utils"
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/net/context"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/api/resource"
