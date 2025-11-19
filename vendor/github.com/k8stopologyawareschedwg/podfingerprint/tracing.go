@@ -18,6 +18,7 @@ package podfingerprint
 
 import (
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -66,6 +67,25 @@ type Status struct {
 	FingerprintComputed string           `json:"fingerprintComputed,omitempty"`
 	Pods                []NamespacedName `json:"pods,omitempty"`
 	NodeName            string           `json:"nodeName,omitempty"`
+}
+
+func (s Status) Equal(x Status) bool {
+	if s.NodeName != x.NodeName {
+		return false
+	}
+	if s.FingerprintExpected != x.FingerprintExpected {
+		return false
+	}
+	if s.FingerprintComputed != x.FingerprintComputed {
+		return false
+	}
+	if len(s.Pods) != len(x.Pods) {
+		return false
+	}
+	if len(s.Pods) > 0 && !reflect.DeepEqual(s.Pods, x.Pods) {
+		return false
+	}
+	return true
 }
 
 func MakeStatus(nodeName string) Status {
