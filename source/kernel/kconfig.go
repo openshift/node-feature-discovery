@@ -35,14 +35,14 @@ func readKconfigGzip(filename string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer f.Close() // nolint: errcheck
 
 	// Uncompress data
 	r, err := gzip.NewReader(f)
 	if err != nil {
 		return nil, err
 	}
-	defer r.Close()
+	defer r.Close() // nolint: errcheck
 
 	return io.ReadAll(r)
 }
@@ -71,19 +71,21 @@ func parseKconfig(configPath string) (realKconfig, legacyKconfig map[string]stri
 		searchPaths = []string{
 			"/proc/config.gz",
 			hostpath.UsrDir.Path("src/linux-" + kVer + "/.config"),
+			hostpath.UsrDir.Path("src/linux-rt-" + kVer + "/.config"),
 			hostpath.UsrDir.Path("src/linux/.config"),
 			hostpath.UsrDir.Path("lib/modules/" + kVer + "/config"),
 			hostpath.UsrDir.Path("lib/ostree-boot/config-" + kVer),
 			hostpath.UsrDir.Path("lib/kernel/config-" + kVer),
 			hostpath.UsrDir.Path("src/linux-headers-" + kVer + "/.config"),
 			"/lib/modules/" + kVer + "/build/.config",
+			hostpath.UsrDir.Path("src/linux-rt-headers-" + kVer + "/.config"),
 			hostpath.BootDir.Path("config-" + kVer),
 		}
 	}
 
 	for _, path := range append([]string{configPath}, searchPaths...) {
 		if len(path) > 0 {
-			if ".gz" == filepath.Ext(path) {
+			if filepath.Ext(path) == ".gz" {
 				if raw, err = readKconfigGzip(path); err == nil {
 					break
 				}

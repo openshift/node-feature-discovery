@@ -4,7 +4,7 @@ this_dir=`dirname $0`
 
 # Install deps
 gobinpath="$(go env GOPATH)/bin"
-curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v1.64.5
+curl -sfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh| sh -s -- -b "$gobinpath" v2.4.0
 export PATH=$PATH:$(go env GOPATH)/bin
 
 curl -sfL https://raw.githubusercontent.com/helm/helm/master/scripts/get-helm-3 | bash -s -- --version v3.15.3
@@ -17,7 +17,8 @@ curl https://keybase.io/codecovsecurity/pgp_keys.asc | gpg --no-default-keyring 
 curl -Os https://uploader.codecov.io/latest/linux/codecov
 chmod +x codecov
 
-go install sigs.k8s.io/logtools/logcheck@v0.8.1
+# TODO: update logcheck version when there is a new release (newer than v0.9.0)
+go install sigs.k8s.io/logtools/logcheck@v0.9.1-0.20251007102500-d35c84c015fe
 
 # Run verify steps
 echo "Checking gofmt"
@@ -66,3 +67,20 @@ for d in `ls deployment/overlays/* -d`; do
     echo "Verifying $d"
     kubectl kustomize $d > /dev/null
 done
+
+# Check that the Helm validation schema is in sync
+echo "Verifying Helm values schema"
+helm plugin install --version 2.3.0 https://github.com/losisin/helm-values-schema-json.git
+make helm-schema
+if ! git diff --quiet; then
+    echo "Helm validation schema is not in sync. Run 'make helm-schema' to update"
+    exit 1
+fi
+
+# Check that the Helm README is in sync
+echo "Verifying Helm README"
+make helm-docs
+if ! git diff --quiet; then
+    echo "Helm README is not in sync. Run 'make helm-docs' to update"
+    exit 1
+fi

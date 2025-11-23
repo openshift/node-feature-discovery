@@ -54,7 +54,7 @@ func TestGetLabelsWithMockSources(t *testing.T) {
 			mockLabelSource.On("Name").Return(fakeLabelSourceName)
 			mockLabelSource.On("GetLabels").Return(fakeFeatures, nil)
 
-			returnedLabels, err := getFeatureLabels(fakeLabelSource, labelWhiteList.Regexp)
+			returnedLabels, err := GetFeatureLabels(fakeLabelSource, labelWhiteList.Regexp)
 			Convey("Proper label is returned", func() {
 				So(returnedLabels, ShouldResemble, fakeFeatureLabels)
 			})
@@ -67,7 +67,7 @@ func TestGetLabelsWithMockSources(t *testing.T) {
 			expectedError := errors.New("fake error")
 			mockLabelSource.On("GetLabels").Return(nil, expectedError)
 
-			returnedLabels, err := getFeatureLabels(fakeLabelSource, labelWhiteList.Regexp)
+			returnedLabels, err := GetFeatureLabels(fakeLabelSource, labelWhiteList.Regexp)
 			Convey("No label is returned", func() {
 				So(returnedLabels, ShouldBeNil)
 			})
@@ -129,7 +129,11 @@ func TestConfigParse(t *testing.T) {
 		})
 		// Create a temporary config file
 		f, err := os.CreateTemp("", "nfd-test-")
-		defer os.Remove(f.Name())
+		defer func() {
+			if err := os.Remove(f.Name()); err != nil {
+				t.Errorf("failed to remove temp file %s: %v", f.Name(), err)
+			}
+		}()
 		So(err, ShouldBeNil)
 		_, err = f.WriteString(`
 core:
@@ -145,7 +149,8 @@ sources:
   pci:
     deviceClassWhitelist:
       - "ff"`)
-		f.Close()
+		So(err, ShouldBeNil)
+		err = f.Close()
 		So(err, ShouldBeNil)
 
 		Convey("and a proper config file is specified", func() {

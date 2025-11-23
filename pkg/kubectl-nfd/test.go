@@ -17,15 +17,16 @@ limitations under the License.
 package kubectlnfd
 
 import (
+	"context"
 	"fmt"
 	"os"
-	"time"
+	"strings"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sLabels "k8s.io/apimachinery/pkg/labels"
 	"k8s.io/client-go/tools/clientcmd"
 
 	nfdclientset "github.com/openshift/node-feature-discovery/api/generated/clientset/versioned"
-	nfdinformers "github.com/openshift/node-feature-discovery/api/generated/informers/externalversions"
 	nfdv1alpha1 "github.com/openshift/node-feature-discovery/api/nfd/v1alpha1"
 
 	"sigs.k8s.io/yaml"
@@ -35,25 +36,29 @@ func Test(nodefeaturerulepath, nodeName, kubeconfig string) []error {
 	var errs []error
 	var err error
 
-	nfr := nfdv1alpha1.NodeFeatureRule{}
-
-	if kubeconfig == "" {
-		kubeconfig = os.Getenv("KUBECONFIG")
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	if kubeconfig != "" {
+		loadingRules.ExplicitPath = kubeconfig
 	}
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
+	config, err := clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, &clientcmd.ConfigOverrides{}).ClientConfig()
 	if err != nil {
 		return []error{fmt.Errorf("error building kubeconfig: %w", err)}
 	}
 
 	nfdClient := nfdclientset.NewForConfigOrDie(config)
-	informerFactory := nfdinformers.NewSharedInformerFactory(nfdClient, 1*time.Second)
-	featureLister := informerFactory.Nfd().V1alpha1().NodeFeatures().Lister()
 
 	sel := k8sLabels.SelectorFromSet(k8sLabels.Set{nfdv1alpha1.NodeFeatureObjNodeNameLabel: nodeName})
-	objs, err := featureLister.List(sel)
+	list, err := nfdClient.NfdV1alpha1().NodeFeatures(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{LabelSelector: sel.String()})
 	if err != nil {
 		return []error{fmt.Errorf("failed to get NodeFeature resources for node %q: %w", nodeName, err)}
 	}
+	objs := list.Items
+	names := make([]string, len(objs))
+	for i, o := range objs {
+		names[i] = o.Namespace + "/" + o.Name
+	}
+	fmt.Printf("Found %d NodeFeature objects for node %q: %s\n", len(objs), nodeName, strings.Join(names, ", "))
+
 	features := nfdv1alpha1.NewNodeFeatureSpec()
 	if len(objs) > 0 {
 		features = objs[0].Spec.DeepCopy()
@@ -68,6 +73,7 @@ func Test(nodefeaturerulepath, nodeName, kubeconfig string) []error {
 		return []error{fmt.Errorf("error reading NodeFeatureRule file: %w", err)}
 	}
 
+	nfr := nfdv1alpha1.NodeFeatureRule{}
 	err = yaml.Unmarshal(nfrFile, &nfr)
 	if err != nil {
 		return []error{fmt.Errorf("error parsing NodeFeatureRule: %w", err)}

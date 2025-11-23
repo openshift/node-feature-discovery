@@ -68,7 +68,7 @@ func parseArgs(flags *flag.FlagSet, osArgs ...string) *nfdgarbagecollector.Args 
 
 	_ = flags.Parse(osArgs)
 	if len(flags.Args()) > 0 {
-		fmt.Fprintf(flags.Output(), "unknown command line argument: %s\n", flags.Args()[0])
+		_, _ = fmt.Fprintf(flags.Output(), "unknown command line argument: %s\n", flags.Args()[0])
 		flags.Usage()
 		os.Exit(2)
 	}
@@ -85,6 +85,8 @@ func initFlags(flagset *flag.FlagSet) *nfdgarbagecollector.Args {
 		"Kubeconfig to use")
 	flagset.IntVar(&args.Port, "port", 8080,
 		"Port which metrics and healthz endpoints are served on")
+	flagset.Int64Var(&args.ListSize, "list-size", 200,
+		"the pagination size used when listing node features")
 
 	klog.InitFlags(flagset)
 

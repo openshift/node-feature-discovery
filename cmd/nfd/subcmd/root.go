@@ -23,6 +23,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/openshift/node-feature-discovery/cmd/nfd/subcmd/compat"
+	"github.com/openshift/node-feature-discovery/cmd/nfd/subcmd/export"
 )
 
 // RootCmd represents the base command when called without any subcommands
@@ -33,6 +34,8 @@ var RootCmd = &cobra.Command{
 
 func init() {
 	RootCmd.AddCommand(compat.CompatCmd)
+	RootCmd.AddCommand(export.ExportCmd)
+	RootCmd.SilenceUsage = true
 }
 
 // Execute adds all child commands to the root command and sets flags appropriately.

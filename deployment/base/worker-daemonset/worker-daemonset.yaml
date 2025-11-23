@@ -33,8 +33,13 @@ spec:
       readOnlyRootFilesystem: true
       containers:
         - name: nfd-worker
-          image: k8s.gcr.io/nfd/node-feature-discovery:v0.11.0
-          imagePullPolicy: IfNotPresent
+          image: gcr.io/k8s-staging-nfd/node-feature-discovery:master
+          imagePullPolicy: Always
+          env:
+          - name: GOMEMLIMIT
+            valueFrom:
+              resourceFieldRef:
+                resource: limits.memory
           livenessProbe:
             httpGet:
               path: /healthz
