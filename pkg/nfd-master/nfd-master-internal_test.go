@@ -116,10 +116,12 @@ func withNFDClient(cli nfdclientset.Interface) NfdMasterOption {
 
 func newFakeMaster(opts ...NfdMasterOption) *nfdMaster {
 	nfdCli := fakenfdclient.NewSimpleClientset()
+	//nolint:staticcheck // See issue #2400 for migration to NewClientset
+	k8sCli := fakeclient.NewSimpleClientset()
 	defaultOpts := []NfdMasterOption{
 		withNodeName(testNodeName),
 		withConfig(&NFDConfig{Restrictions: Restrictions{AllowOverwrite: true}}),
-		WithKubernetesClient(fakeclient.NewSimpleClientset()),
+		WithKubernetesClient(k8sCli),
 		withNFDClient(nfdCli),
 	}
 	m, err := NewNfdMaster(append(defaultOpts, opts...)...)
@@ -135,10 +137,12 @@ func newFakeMaster(opts ...NfdMasterOption) *nfdMaster {
 
 func newFakeMasterWithFeatureGate(opts ...NfdMasterOption) *nfdMaster {
 	nfdCli := fakenfdclient.NewSimpleClientset()
+	//nolint:staticcheck // See issue #2400 for migration to NewClientset
+	k8sCli := fakeclient.NewSimpleClientset()
 	defaultOpts := []NfdMasterOption{
 		withNodeName(testNodeName),
 		withConfig(&NFDConfig{Restrictions: Restrictions{AllowOverwrite: true}}),
-		WithKubernetesClient(fakeclient.NewSimpleClientset()),
+		WithKubernetesClient(k8sCli),
 		withNFDClient(nfdCli),
 	}
 	m, err := NewNfdMaster(append(defaultOpts, opts...)...)
@@ -200,6 +204,7 @@ func TestUpdateNodeObject(t *testing.T) {
 		testNode.Annotations[nfdv1alpha1.AnnotationNs+"/feature-labels"] = "old-feature"
 
 		// Create fake api client and initialize NfdMaster instance
+		//nolint:staticcheck // See issue #2400 for migration to NewClientset
 		fakeCli := fakeclient.NewSimpleClientset(testNode)
 		fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 
@@ -252,6 +257,7 @@ func TestUpdateMasterNode(t *testing.T) {
 		testNode.Annotations["nfd.node.kubernetes.io/master.version"] = "foo"
 
 		Convey("When update operation succeeds", func() {
+			//nolint:staticcheck // See issue #2400 for migration to NewClientset
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
 			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 			err := fakeMaster.updateMasterNode()
@@ -267,6 +273,7 @@ func TestUpdateMasterNode(t *testing.T) {
 		})
 
 		Convey("When getting API node object fails", func() {
+			//nolint:staticcheck // See issue #2400 for migration to NewClientset
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
 			fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 			fakeMaster.nodeName = "does-not-exist"
@@ -279,6 +286,7 @@ func TestUpdateMasterNode(t *testing.T) {
 
 		Convey("When updating node object fails", func() {
 			fakeErr := errors.New("Fake error when patching node")
+			//nolint:staticcheck // See issue #2400 for migration to NewClientset
 			fakeCli := fakeclient.NewSimpleClientset(testNode)
 			fakeCli.CoreV1().(*fakecorev1client.FakeCoreV1).PrependReactor("patch", "nodes", func(action clienttesting.Action) (handled bool, ret runtime.Object, err error) {
 				return true, &corev1.Node{}, fakeErr
@@ -710,6 +718,7 @@ func newTestNodeList() *corev1.NodeList {
 }
 
 func BenchmarkNfdAPIUpdateAllNodes(b *testing.B) {
+	//nolint:staticcheck // See issue #2400 for migration to NewClientset
 	fakeCli := fakeclient.NewSimpleClientset(newTestNodeList())
 	fakeMaster := newFakeMaster(WithKubernetesClient(fakeCli))
 	fakeMaster.nfdController = newFakeNfdAPIController(fakenfdclient.NewSimpleClientset())
