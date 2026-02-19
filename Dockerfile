@@ -7,7 +7,7 @@ COPY . .
 # Do actual build
 ARG VERSION=v0.10.0
 ARG HOSTMOUNT_PREFIX=/host-
-RUN make install VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
+RUN make build VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 
 # Create full variant of the production image
 FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
@@ -16,4 +16,4 @@ FROM registry.ci.openshift.org/ocp/4.20:base-rhel9
 ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
 
 COPY --from=builder /go/node-feature-discovery/deployment/components/worker-config/nfd-worker.conf.example /etc/kubernetes/node-feature-discovery/nfd-worker.conf
-COPY --from=builder /go/bin/* /usr/bin/
+COPY --from=builder /go/node-feature-discovery/bin/* /usr/bin/
