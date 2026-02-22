@@ -21,7 +21,7 @@ import (
 
 	"k8s.io/klog/v2"
 
-	"sigs.k8s.io/node-feature-discovery/pkg/utils/hostpath"
+	"github.com/openshift/node-feature-discovery/pkg/utils/hostpath"
 )
 
 // KvmEnabled detects if kvm has been enabled in the kernel
