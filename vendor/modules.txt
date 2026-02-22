@@ -178,7 +178,7 @@ github.com/huandu/xstrings
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/jaypipes/ghw v0.21.2
+# github.com/jaypipes/ghw v0.21.3
 ## explicit; go 1.21
 github.com/jaypipes/ghw
 github.com/jaypipes/ghw/pkg/accelerator
@@ -186,7 +186,6 @@ github.com/jaypipes/ghw/pkg/baseboard
 github.com/jaypipes/ghw/pkg/bios
 github.com/jaypipes/ghw/pkg/block
 github.com/jaypipes/ghw/pkg/chassis
-github.com/jaypipes/ghw/pkg/context
 github.com/jaypipes/ghw/pkg/cpu
 github.com/jaypipes/ghw/pkg/gpu
 github.com/jaypipes/ghw/pkg/linuxdmi
@@ -198,7 +197,6 @@ github.com/jaypipes/ghw/pkg/option
 github.com/jaypipes/ghw/pkg/pci
 github.com/jaypipes/ghw/pkg/pci/address
 github.com/jaypipes/ghw/pkg/product
-github.com/jaypipes/ghw/pkg/snapshot
 github.com/jaypipes/ghw/pkg/topology
 github.com/jaypipes/ghw/pkg/unitutil
 github.com/jaypipes/ghw/pkg/usb
