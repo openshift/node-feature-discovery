@@ -178,9 +178,11 @@ github.com/huandu/xstrings
 # github.com/inconshreveable/mousetrap v1.1.0
 ## explicit; go 1.18
 github.com/inconshreveable/mousetrap
-# github.com/jaypipes/ghw v0.21.3
+# github.com/jaypipes/ghw v0.23.0
 ## explicit; go 1.21
 github.com/jaypipes/ghw
+github.com/jaypipes/ghw/internal/config
+github.com/jaypipes/ghw/internal/log
 github.com/jaypipes/ghw/pkg/accelerator
 github.com/jaypipes/ghw/pkg/baseboard
 github.com/jaypipes/ghw/pkg/bios
@@ -331,7 +333,7 @@ github.com/opencontainers/runc/libcontainer/intelrdt
 ## explicit
 github.com/opencontainers/runtime-spec/specs-go
 # github.com/openshift/node-feature-discovery/api/nfd v0.0.0-00010101000000-000000000000 => ./api/nfd
-## explicit; go 1.23.0
+## explicit; go 1.24.0
 github.com/openshift/node-feature-discovery/api/nfd/v1alpha1
 # github.com/pkg/errors v0.9.1
 ## explicit
