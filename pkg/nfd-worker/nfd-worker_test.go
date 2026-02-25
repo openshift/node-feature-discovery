@@ -17,11 +17,11 @@ limitations under the License.
 package nfdworker_test
 
 import (
+	"context"
 	"os"
 	"testing"
 
 	. "github.com/smartystreets/goconvey/convey"
-	"golang.org/x/net/context"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	fakeclient "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/klog/v2"
@@ -55,9 +55,11 @@ func TestRun(t *testing.T) {
 					LabelSources:   &utils.StringSliceVal{"fake"},
 				},
 			}
+			//nolint:staticcheck // See issue #2400 for migration to NewClientset
+			k8sCli := fakeclient.NewSimpleClientset()
 			w, _ := worker.NewNfdWorker(
 				worker.WithArgs(args),
-				worker.WithKubernetesClient(fakeclient.NewSimpleClientset()),
+				worker.WithKubernetesClient(k8sCli),
 				worker.WithNFDClient(nfdCli),
 			)
 			err := w.Run()
