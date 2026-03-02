@@ -146,7 +146,11 @@ func detectSwap() (map[string]string, error) {
 	procBasePath := hostpath.ProcDir.Path("swaps")
 	lines, err := getNumberOfNonEmptyLinesFromFile(procBasePath)
 	if err != nil {
-		return nil, fmt.Errorf("failed to read swaps file: %w", err)
+		if errors.Is(err, os.ErrNotExist) {
+			return map[string]string{"enabled": "false",}, nil
+		} else {
+			return nil, fmt.Errorf("failed to read swaps file: %w", err)
+		}
 	}
 	// /proc/swaps has a header row
 	// If there is more than a header then we assume we have swap.
