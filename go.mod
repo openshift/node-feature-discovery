@@ -32,7 +32,7 @@ require (
 	k8s.io/klog/v2 v2.100.1
 	k8s.io/kubectl v0.28.3
 	k8s.io/kubelet v0.28.3
-	k8s.io/kubernetes v1.28.3
+	k8s.io/kubernetes v1.26.0-alpha.1
 	k8s.io/pod-security-admission v0.28.3
 	k8s.io/utils v0.0.0-20230406110748-d93618cff8a2
 	sigs.k8s.io/yaml v1.3.0
@@ -119,7 +119,7 @@ require (
 	github.com/mistifyio/go-zfs v2.1.2-0.20190413222219-f784269be439+incompatible // indirect
 	github.com/mitchellh/go-homedir v1.1.0 // indirect
 	github.com/moby/ipvs v1.1.0 // indirect
-	github.com/moby/spdystream v0.2.0 // indirect
+	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/moby/sys/mountinfo v0.6.2 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -231,3 +231,6 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.28.3
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.28.3
 )
+
+// https://redhat.atlassian.net/browse/OCPBUGS-82664
+replace k8s.io/kubernetes => k8s.io/kubernetes v1.28.3
