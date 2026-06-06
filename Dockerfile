@@ -1,5 +1,5 @@
 # Build node feature discovery
-FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.25-openshift-4.22 AS builder
+FROM registry.ci.openshift.org/ocp/builder:rhel-9-golang-1.26-openshift-5.0 AS builder
 
 WORKDIR /go/node-feature-discovery
 COPY . .
@@ -10,7 +10,7 @@ ARG HOSTMOUNT_PREFIX=/host-
 RUN make build VERSION=${VERSION} HOSTMOUNT_PREFIX=${HOSTMOUNT_PREFIX}
 
 # Create full variant of the production image
-FROM registry.ci.openshift.org/ocp/4.22:base-rhel9
+FROM registry.ci.openshift.org/ocp/5.0:base-rhel9
 
 # Use more verbose logging of gRPC
 ENV GRPC_GO_LOG_SEVERITY_LEVEL="INFO"
