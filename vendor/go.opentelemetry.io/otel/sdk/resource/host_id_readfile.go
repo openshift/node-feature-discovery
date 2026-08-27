@@ -3,12 +3,12 @@
 
 //go:build linux || dragonfly || freebsd || netbsd || openbsd || solaris
 
-package resource
+package resource // import "go.opentelemetry.io/otel/sdk/resource"
 
 import "os"
 
 func readFile(filename string) (string, error) {
-	b, err := os.ReadFile(filename) // nolint:gosec // false positive
+	b, err := os.ReadFile(filename)
 	if err != nil {
 		return "", err
 	}
