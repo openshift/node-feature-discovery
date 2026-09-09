@@ -7,7 +7,7 @@ require (
 	github.com/ghodss/yaml v1.0.0
 	github.com/gogo/protobuf v1.3.2
 	github.com/golang/protobuf v1.5.2
-	github.com/google/go-cmp v0.5.5
+	github.com/google/go-cmp v0.6.0
 	github.com/jaypipes/ghw v0.8.1-0.20210827132705-c7224150a17e
 	github.com/k8stopologyawareschedwg/noderesourcetopology-api v0.0.12
 	github.com/klauspost/cpuid/v2 v2.1.0
@@ -17,7 +17,7 @@ require (
 	github.com/smartystreets/goconvey v1.6.4
 	github.com/stretchr/testify v1.7.0
 	github.com/vektra/errors v0.0.0-20140903201135-c64d83aba85a
-	golang.org/x/net v0.0.0-20211209124913-491a49abca63
+	golang.org/x/net v0.25.0
 	google.golang.org/grpc v1.40.0
 	google.golang.org/protobuf v1.27.1
 	k8s.io/api v0.23.1
@@ -170,12 +170,12 @@ require (
 	go.uber.org/atomic v1.7.0 // indirect
 	go.uber.org/multierr v1.6.0 // indirect
 	go.uber.org/zap v1.19.0 // indirect
-	golang.org/x/crypto v0.0.0-20220315160706-3147a52a75dd // indirect
+	golang.org/x/crypto v0.33.0 // indirect
 	golang.org/x/oauth2 v0.0.0-20210819190943-2bc19b11175f // indirect
-	golang.org/x/sync v0.0.0-20210220032951-036812b2e83c // indirect
-	golang.org/x/sys v0.0.0-20220704084225-05e143d24a9e // indirect
-	golang.org/x/term v0.0.0-20210615171337-6886f2dfbf5b // indirect
-	golang.org/x/text v0.3.7 // indirect
+	golang.org/x/sync v0.11.0 // indirect
+	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/term v0.29.0 // indirect
+	golang.org/x/text v0.22.0 // indirect
 	golang.org/x/time v0.0.0-20210723032227-1f47c861a9ac // indirect
 	golang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 // indirect
 	google.golang.org/api v0.46.0 // indirect
@@ -237,3 +237,5 @@ replace (
 	k8s.io/pod-security-admission => k8s.io/pod-security-admission v0.23.1
 	k8s.io/sample-apiserver => k8s.io/sample-apiserver v0.23.1
 )
+
+replace golang.org/x/net => github.com/openshift-sustaining/net v0.35.0-sec.4
